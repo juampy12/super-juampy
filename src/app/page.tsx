@@ -1,23 +1,21 @@
 export default function Home() {
   return (
-    <main className="min-h-screen bg-white text-gray-900">
-      <section className="max-w-3xl mx-auto px-4 py-8 grid gap-4">
-        <div className="flex items-center gap-3">
-          <img src="/super-juampy-logo.png" alt="Super Juampy" width={64} height={64} />
-          <h1 className="text-3xl font-extrabold tracking-tight">Super Juampy</h1>
-        </div>
+    <section>
+      <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'8px' }}>
+        <img src="/super-juampy-logo.png" alt="Super Juampy" width={48} height={48} />
+        <h1 style={{ margin:0, fontSize:'28px' }}>Super Juampy</h1>
+      </div>
 
-        <p className="text-sm text-gray-600">
-          Elegí una sección. Si no estás logueado, te pedirá iniciar sesión.
-        </p>
+      <p style={{ color:'#4b5563', fontSize:'14px' }}>
+        Elegí una sección. Si no estás logueado, te pedirá iniciar sesión.
+      </p>
 
-        <div className="grid gap-3">
-          <a href="/pos"       className="rounded-lg px-4 py-3 bg-green-700  text-white hover:bg-green-800  transition">Ir al POS</a>
-          <a href="/inventory" className="rounded-lg px-4 py-3 bg-indigo-600 text-white hover:bg-indigo-700 transition">Inventario</a>
-          <a href="/reports"   className="rounded-lg px-4 py-3 bg-yellow-400 text-gray-900 hover:bg-yellow-500 transition">Reportes</a>
-          <a href="/login"     className="rounded-lg px-4 py-3 bg-gray-900  text-white hover:opacity-90    transition">Login</a>
-        </div>
-      </section>
-    </main>
+      <div style={{ display:'grid', gap:'10px', marginTop:'14px' }}>
+        <a href="/pos"       style={{ background:'#2E7D32', color:'#fff', padding:'10px 14px', borderRadius:'10px', textDecoration:'none' }}>Ir al POS</a>
+        <a href="/inventory" style={{ background:'#3F51B5', color:'#fff', padding:'10px 14px', borderRadius:'10px', textDecoration:'none' }}>Inventario</a>
+        <a href="/reports"   style={{ background:'#FDD835', color:'#111827', padding:'10px 14px', borderRadius:'10px', textDecoration:'none' }}>Reportes</a>
+        <a href="/login"     style={{ background:'#111827', color:'#fff', padding:'10px 14px', borderRadius:'10px', textDecoration:'none' }}>Login</a>
+      </div>
+    </section>
   );
 }

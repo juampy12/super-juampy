@@ -11,22 +11,20 @@ export default function TopBar() {
   }
 
   return (
-    <header className="w-full bg-primary text-primary-foreground shadow-card">
-      <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-4">
-        <Link href="/" className="flex items-center gap-2">
-          <img src="/super-juampy-logo.png" alt="Super Juampy" width={28} height={28} />
-          <span className="font-semibold tracking-tight">Super Juampy</span>
+    <header className="topbar">
+      <div className="topbar__inner">
+        <Link href="/" className="brand">
+          <img src="/super-juampy-logo.png" alt="Super Juampy" />
+          <span>Super Juampy</span>
         </Link>
 
-        <nav className="ml-6 flex items-center gap-4 text-sm">
-          <Link href="/pos" className="hover:underline">POS</Link>
-          <Link href="/inventory" className="hover:underline">Inventario</Link>
-          <Link href="/reports" className="hover:underline">Reportes</Link>
+        <nav className="topnav">
+          <Link href="/pos">POS</Link>
+          <Link href="/inventory">Inventario</Link>
+          <Link href="/reports">Reportes</Link>
         </nav>
 
-        <button onClick={logout} className="ml-auto underline text-sm">
-          Cerrar sesión
-        </button>
+        <button className="logout" onClick={logout}>Cerrar sesión</button>
       </div>
     </header>
   )
