@@ -5,14 +5,9 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Paleta Super Juampy (podés ajustar hex según tu logo)
         primary: { DEFAULT: '#E53935', foreground: '#ffffff' },   // rojo
         secondary: { DEFAULT: '#2E7D32', foreground: '#ffffff' }, // verde
         accent: { DEFAULT: '#FDD835', foreground: '#111827' },    // amarillo
-      },
-      borderRadius: {
-        xl: '1rem',
-        '2xl': '1.25rem',
       },
       boxShadow: {
         card: '0 8px 30px rgba(0,0,0,0.06)',
