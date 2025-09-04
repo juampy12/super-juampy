@@ -112,7 +112,6 @@ export default function Home() {
   const router = useRouter()
 
   useEffect(() => {
-    // si no hay sesión, va a /login
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) router.replace('/login')
       else setReady(true)
@@ -132,4 +131,3 @@ export default function Home() {
     </main>
   )
 }
-
