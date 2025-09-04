@@ -101,3 +101,35 @@ export default function Home() {
     </div>
   );
 }
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '../lib/supabaseClient'
+
+export default function Home() {
+  const [ready, setReady] = useState(false)
+  const router = useRouter()
+
+  useEffect(() => {
+    // si no hay sesión, va a /login
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) router.replace('/login')
+      else setReady(true)
+    })
+  }, [router])
+
+  if (!ready) return <div className="p-6">Cargando…</div>
+
+  return (
+    <main className="p-6 grid gap-4">
+      <h1 className="text-2xl font-bold">Super Juampy</h1>
+      <div className="grid gap-3">
+        <a className="inline-block rounded-lg px-4 py-2 bg-black text-white" href="/pos">Ir al POS</a>
+        <a className="inline-block rounded-lg px-4 py-2 bg-black text-white" href="/inventory">Inventario</a>
+        <a className="inline-block rounded-lg px-4 py-2 bg-black text-white" href="/reports">Reportes</a>
+      </div>
+    </main>
+  )
+}
+
