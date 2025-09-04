@@ -45,5 +45,11 @@ h1, h2, h3, label {
 html, body { background:#ffffff !important; color:#111827 !important; }
 th { color:#374151; }
 h1, h2, h3, label { color:#111827; }
+@layer components {
+  .btn { @apply inline-block rounded-xl px-4 py-2 font-medium transition; }
+  .btn-primary { @apply btn bg-primary text-primary-foreground hover:opacity-90; }
+  .btn-secondary { @apply btn bg-secondary text-secondary-foreground hover:opacity-90; }
+  .btn-accent { @apply btn bg-accent text-accent-foreground hover:opacity-90; }
+}
 
 
