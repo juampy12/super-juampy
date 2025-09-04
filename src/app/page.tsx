@@ -1,10 +1,9 @@
-@'
 export default function Home() {
   return (
     <main className="min-h-screen bg-white text-gray-900">
       <section className="max-w-3xl mx-auto px-4 py-12 grid gap-4">
         <div className="flex items-center gap-3">
-          <img src="/super-juampy-logo.png" alt="Super Juampy" width="64" height="64" />
+          <img src="/super-juampy-logo.png" alt="Super Juampy" width={64} height={64} />
           <h1 className="text-3xl font-extrabold tracking-tight">Super Juampy</h1>
         </div>
 
@@ -22,5 +21,4 @@ export default function Home() {
     </main>
   );
 }
-'@ | Set-Content -Encoding utf8 src\app\page.tsx
 

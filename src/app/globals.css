@@ -2,5 +2,4 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Estilos globales mínimos */
 html, body { height: 100%; }
