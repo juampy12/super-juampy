@@ -1,0 +1,7 @@
+{
+  "extends": "next/tsconfig",
+  "compilerOptions": {
+    "baseUrl": "."
+  }
+}
+
