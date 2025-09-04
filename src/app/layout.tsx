@@ -12,7 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es">
       <body>
         <TopBar />
-        <main className="container">{children}</main>
+        <main className="container autostyle">{children}</main>
       </body>
     </html>
   )

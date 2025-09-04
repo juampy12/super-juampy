@@ -159,3 +159,93 @@ body{ background:var(--bg); color:var(--ink); }
 
 /* POS / helpers */
 .searchbar{ display:grid; grid-template-columns:220px 1fr 110px; gap:10px; }
+/* ===== AutoStyle para POS / Inventario / Reportes ===== */
+.autostyle h1{ font-size:28px; margin:12px 0 16px; }
+.autostyle h2{ font-size:20px; margin:18px 0 10px; }
+
+/* Convierte en "card" el bloque que viene después de cada h2 */
+.autostyle h2 + *{
+  background:#fff;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  padding:16px;
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
+  margin-bottom:16px;
+}
+
+/* Inputs bonitos */
+.autostyle input[type=text],
+.autostyle input[type=number],
+.autostyle input[type=search],
+.autostyle input[type=datetime-local],
+.autostyle select,
+.autostyle textarea{
+  width:100%;
+  padding:10px 12px;
+  border:1px solid #d1d5db;
+  border-radius:10px;
+  outline:none;
+  background:#fff;
+  font:inherit;
+  color:#111827;
+}
+.autostyle input:focus,
+.autostyle select:focus,
+.autostyle textarea:focus{
+  border-color:#2563eb;
+  box-shadow:0 0 0 3px rgba(37,99,235,.15);
+}
+
+/* Botones */
+.autostyle button,
+.autostyle .btn,
+.autostyle a.btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:10px 14px;
+  border:0;
+  border-radius:10px;
+  cursor:pointer;
+  font-weight:600;
+  text-decoration:none;
+  transition:filter .15s;
+  background:#111827;
+  color:#fff;
+}
+.autostyle button:hover,
+.autostyle .btn:hover,
+.autostyle a.btn:hover{ filter:brightness(.95); }
+
+/* Variantes rápidas por si las usás */
+.autostyle .btn-primary{ background:#2E7D32; }
+.autostyle .btn-secondary{ background:#3F51B5; }
+.autostyle .btn-warning{ background:#FDD835; color:#111827; }
+.autostyle .btn-outline{ background:#fff; color:#111827; border:1px solid #d1d5db; }
+
+/* Tablas */
+.autostyle table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  overflow:hidden;
+}
+.autostyle thead th{
+  background:#f8fafc;
+  text-align:left;
+  padding:10px 12px;
+  font-size:14px;
+  color:#374151;
+  border-bottom:1px solid #e5e7eb;
+}
+.autostyle tbody td{
+  padding:10px 12px;
+  border-bottom:1px solid #f1f5f9;
+}
+.autostyle tbody tr:nth-child(even){ background:#fcfcfd; }
+
+/* Un poco de separación automática entre bloques */
+.autostyle > * + *{ margin-top:12px; }
