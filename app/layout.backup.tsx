@@ -24,7 +24,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     
     
     <meta charSet="utf-8" /></head>
-      <body className={`${inter.className} min-h-dvh bg-[#f8fafc] text-[#111]`}><BrandTheme />
+      <body className={`${inter.className} min-h-dvh bg-[#f8fafc] text-[#111]`}>
+    <Navbar />
+        
+    <div className="mx-auto max-w-6xl px-4 py-6"><BrandTheme />
         <HeaderNav />
         <div className="max-w-7xl mx-auto">
           {children}
@@ -40,7 +43,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   )
 }
-
 
 
 
