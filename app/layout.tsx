@@ -18,8 +18,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es">
       <head>
     <meta name="description" content="Super Juampy ofrece panificados frescos, fiambrería y productos de supermercado en Charata, Chaco." />
-    <link rel="canonical" href="System.Management.Automation.Internal.Host.InternalHost" />
-    <meta name="robots" content="index,follow" /><meta charSet="utf-8" /></head>
+    <link rel="canonical" href="https://super-juampy.vercel.app" />
+    <meta name="robots" content="index,follow" />
+    
+    
+    <meta charSet="utf-8" /></head>
       <body className={`${inter.className} min-h-dvh bg-[#f8fafc] text-[#111]`}>
         <BrandTheme />
         <HeaderNav />
@@ -32,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   )
 }
+
 
 
 
