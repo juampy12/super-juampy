@@ -225,7 +225,7 @@ const confirmDisabled =
       </div>
 
       <div className="relative">
-        <input id="input7" name="input7"
+        <input aria-label="campo7" id="input7" name="input7"
           ref={inputRef}
           value={code}
           onChange={(e) => onChange(e.target.value)}
@@ -286,7 +286,7 @@ const confirmDisabled =
 
   <div>
     <label htmlFor="amountGiven" className="block text-sm mb-1">Monto recibido</label>
-    <input id="input8" name="input8"
+    <input aria-label="campo8" id="input8" name="input8"
       type="number"
       inputMode="decimal"
       className="w-full border rounded-xl p-2"
@@ -343,6 +343,7 @@ const confirmDisabled =
     </main>
   )
 }
+
 
 
 

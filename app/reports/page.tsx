@@ -356,7 +356,7 @@ export default function ReportsPage() {
           {/* Controles y export */}
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2">
-              <input id="input6" name="input6" type="checkbox" checked={compareMode} onChange={(e) => setCompareMode(e.target.checked)} />
+              <input aria-label="campo6" id="input6" name="input6" type="checkbox" checked={compareMode} onChange={(e) => setCompareMode(e.target.checked)} />
               <span>Comparar sucursales (barras lado a lado)</span>
             </label>
 
@@ -458,6 +458,7 @@ export default function ReportsPage() {
     </main>
   )
 }
+
 
 
 

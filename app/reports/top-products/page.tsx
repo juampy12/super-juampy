@@ -278,7 +278,7 @@ export default function TopProductsPage() {
 
           <div className="flex items-center gap-2">
             <span className="text-sm opacity-70">Top N:</span>
-            <input id="input5" name="input5"
+            <input aria-label="campo5" id="input5" name="input5"
               type="number" min={1} max={50} step={1}
               value={topN}
               onChange={e=>setTopN(Math.max(1, Math.min(50, Number(e.target.value))))}
@@ -355,6 +355,7 @@ export default function TopProductsPage() {
     </main>
   )
 }
+
 
 
 

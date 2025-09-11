@@ -81,11 +81,11 @@ export default function ProductsPage() {
       </div>
 
       <div className="grid grid-cols-4 gap-2">
-        <input id="input1" name="input1" className="border p-2 rounded" placeholder="SKU"
+        <input aria-label="campo1" id="input1" name="input1" className="border p-2 rounded" placeholder="SKU"
           value={form.sku} onChange={e=>setForm({...form, sku:e.target.value})} />
-        <input id="input2" name="input2" className="border p-2 rounded" placeholder="Nombre"
+        <input aria-label="campo2" id="input2" name="input2" className="border p-2 rounded" placeholder="Nombre"
           value={form.name} onChange={e=>setForm({...form, name:e.target.value})} />
-        <input id="input3" name="input3" className="border p-2 rounded" type="number" placeholder="Precio"
+        <input aria-label="campo3" id="input3" name="input3" className="border p-2 rounded" type="number" placeholder="Precio"
           value={form.price} onChange={e=>setForm({...form, price:Number(e.target.value)})} />
         <button onClick={saveProduct} className="rounded bg-black text-white">Guardar producto</button>
       </div>
@@ -104,7 +104,7 @@ export default function ProductsPage() {
                 <td>{p.sku}</td>
                 <td>${p.price.toFixed(2)}</td>
                 <td>
-                  <input id="input4" name="input4"
+                  <input aria-label="campo4" id="input4" name="input4"
                     type="number"
                     className="border rounded p-1 w-24"
                     value={p.stock}
@@ -127,5 +127,6 @@ export default function ProductsPage() {
     </main>
   )
 }
+
 
 
