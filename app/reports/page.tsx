@@ -1,5 +1,4 @@
-﻿export const revalidate = 60;
-'use client'
+﻿'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
@@ -459,6 +458,7 @@ export default function ReportsPage() {
     </main>
   )
 }
+
 
 
 

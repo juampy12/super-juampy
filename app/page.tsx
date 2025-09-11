@@ -1,5 +1,4 @@
-﻿export const revalidate = 60;
-'use client';
+﻿'use client';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
@@ -344,6 +343,7 @@ const confirmDisabled =
     </main>
   )
 }
+
 
 
 

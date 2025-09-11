@@ -1,5 +1,4 @@
-﻿export const revalidate = 60;
-'use client'
+﻿'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns'
@@ -356,6 +355,7 @@ export default function TopProductsPage() {
     </main>
   )
 }
+
 
 
 
