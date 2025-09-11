@@ -1,4 +1,5 @@
-﻿import "./globals.css"
+﻿import JsonLd from './seo-jsonld';
+import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import HeaderNav from "./_components/HeaderNav"
@@ -23,8 +24,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </div>
         <Toaster position="top-right" />
-      </body>
+        <JsonLd />
+</body>
     </html>
   )
 }
+
 
