@@ -1,16 +1,17 @@
 ﻿'use client';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import toast from 'react-hot-toast';
-import { supabase } from '@/lib/supabase';
-import { exportReceiptPDF } from './_utils/receipt';
-function parseMoney(v: number | string | ''): number {
-  if (typeof v === 'number') return v;
-  const s = String(v ?? '').trim()
-    .replace(/[^\d.,-]/g, '')
-    .replace(/\.(?=\d{3}(?:\D|$))/g, '')
-    .replace(',', '.');
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
+import { exportReceiptPDF } from './_utils/receipt'
+import { exportReceiptPDF } from './_utils/receipt'
+import { exportReceiptPDF } from './_utils/receipt'
+import { exportReceiptPDF } from './_utils/receipt'
+function parseMoney(v: number | string): number {
+  if (typeof v === 'number') return v
+  if (typeof v !== 'string') return 0
+  const n = v
+    .replace(/[^\d.,-]/g,'')               // deja solo dígitos, coma, punto y signo
+    .replace(/\.(?=\d{3}(?:\D|$))/g,'')    // quita puntos de miles estilo 1.234.567
+    .replace(',', '.');                    // coma decimal -> punto
+  const f = parseFloat(n)
+  return Number.isFinite(f) ? f : 0
 }
 export default function POS() {
   const [stores, setStores] = useState<Store[]>([])
@@ -343,12 +344,6 @@ const confirmDisabled =
     </main>
   )
 }
-
-
-
-
-
-
 
 
 

@@ -1,16 +1,19 @@
 ﻿'use client';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import { exportReceiptPDF } from './_utils/receipt';
-function parseMoney(v: number | string | ''): number {
+function parseMoney(v: number | '' | string) {
   if (typeof v === 'number') return v;
-  const s = String(v ?? '').trim()
+  const s = String(v).trim()
+    // saca símbolos de moneda y separadores raros
     .replace(/[^\d.,-]/g, '')
+    // quita puntos de miles (deja el último punto si es decimal con miles)
     .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+    // usa coma como decimal si aparece
     .replace(',', '.');
   const n = parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
+  return Number.isNaN(n) ? 0 : n;
 }
 export default function POS() {
   const [stores, setStores] = useState<Store[]>([])
@@ -72,7 +75,7 @@ const confirmSaleWithPayment = async () => {
     setPayMethod('efectivo')
   } catch (err) {
     console.error(err)
-    toast.error('No se pudo confirmar la venta: ' + (err?.message || JSON.stringify(err)))
+    toast.error('No se pudo confirmar la venta')
   }
 }
   const [suggestions, setSuggestions] = useState<Product[]>([])
@@ -343,9 +346,6 @@ const confirmDisabled =
     </main>
   )
 }
-
-
-
 
 
 
