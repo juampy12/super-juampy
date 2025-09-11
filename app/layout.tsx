@@ -1,4 +1,5 @@
-﻿import JsonLd from './seo-jsonld';
+﻿import Navbar from './components/Navbar';
+import JsonLd from './seo-jsonld';
 import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
@@ -24,7 +25,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     
     <meta charSet="utf-8" /></head>
       <body className={`${inter.className} min-h-dvh bg-[#f8fafc] text-[#111]`}>
-        <BrandTheme />
+    <Navbar />
+        
+    <div className="mx-auto max-w-6xl px-4 py-6"><BrandTheme />
         <HeaderNav />
         <div className="max-w-7xl mx-auto">
           {children}
@@ -35,10 +38,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     Super Juampy es tu supermercado en Charata, Chaco. Panificados frescos, fiambrería y productos de almacén.
     Consultá stock por sucursal, registrá ventas con nuestro POS y mirá reportes diarios.
   </footer>
-</body>
+    </div>
+
     </html>
   )
 }
+
 
 
 
