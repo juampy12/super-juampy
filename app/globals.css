@@ -96,3 +96,7 @@ input:focus, select:focus, textarea:focus{
 /* --- Tablas pro (ya agregado, sumo hover si no lo tenías) --- */
 .table tbody tr:hover{ background:#f1f5ff; } /* leve */
 
+/* SEO/Lighthouse base */
+html { font-size: 16px; }
+body { -webkit-text-size-adjust: 100%; }
+a, button { min-height: 48px; min-width: 48px; }
