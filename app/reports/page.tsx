@@ -86,11 +86,11 @@ export default function ReportsPage() {
     if (!range.from || !range.to) return
     setLoading(true)
     let query = supabase
-      .from('v_sales_daily')
+      .from('v_resumen_diario_mv')
       .select('day,tickets,revenue,store_id')
       .gte('day', toISOBoundary(range.from, 'start'))
       .lte('day', toISOBoundary(range.to, 'end'))
-      .order('day', { ascending: true })
+      .order('fecha', { ascending: true })
     if (storeId) query = query.eq('store_id', storeId)
     const { data, error } = await query
     if (!error && data) {
@@ -112,11 +112,11 @@ export default function ReportsPage() {
   const loadAllForCompare = async () => {
     if (!range.from || !range.to) return
     const { data, error } = await supabase
-      .from('v_sales_daily')
+      .from('v_resumen_diario_mv')
       .select('day,tickets,revenue,store_id')
       .gte('day', toISOBoundary(range.from, 'start'))
       .lte('day', toISOBoundary(range.to, 'end'))
-      .order('day', { ascending: true })
+      .order('fecha', { ascending: true })
     if (!error && data) {
       setRowsAll(
         (data as any[]).map(r => ({
@@ -458,6 +458,7 @@ export default function ReportsPage() {
     </main>
   )
 }
+
 
 
 

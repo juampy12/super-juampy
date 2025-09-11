@@ -79,7 +79,7 @@ export default function TopProductsPage() {
       .select('day,store_id,product_id,sku,name,price,units,revenue')
       .gte('day', toISOBoundary(range.from, 'start'))
       .lte('day', toISOBoundary(range.to, 'end'))
-      .order('day', { ascending: true })
+      .order('fecha', { ascending: true })
 
     if (storeId) q = q.eq('store_id', storeId)
 
@@ -355,6 +355,7 @@ export default function TopProductsPage() {
     </main>
   )
 }
+
 
 
 
