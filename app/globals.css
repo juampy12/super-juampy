@@ -109,3 +109,85 @@ header.sticky nav { height: 56px; display: flex; align-items: center; }
 
 /* Contenedor base (ya definido antes, lo reforzamos) */
 .container { max-width: 72rem; margin-inline: auto; padding-inline: 1rem; }
+/* ====== Base tema (claro) y modo oscuro con data-theme ====== */
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --fg: #111827;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --emerald: #16a34a;
+}
+html[data-theme="dark"] {
+  --bg: #0b0b0b;
+  --card: #111111;
+  --fg: #fafafa;
+  --muted: #9ca3af;
+  --border: #222;
+}
+
+/* Tipografía general */
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ====== Navbar sin Tailwind ====== */
+.site-header {
+  position: sticky; top: 0; z-index: 1000;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  height: 56px;
+}
+.nav {
+  max-width: 1120px; margin-inline: auto;
+  padding-inline: 16px;
+  height: 56px; display: flex; align-items: center; justify-content: space-between;
+}
+.brand { display: flex; align-items: center; gap: 16px; }
+.brand-link { display: inline-flex; align-items: center; gap: 8px; color: var(--fg); text-decoration: none; }
+.brand-logo { width: 28px; height: 28px; display: block; }
+.brand-name { font-weight: 800; }
+
+.nav-links { display: none; gap: 6px; }
+@media (min-width: 640px) { .nav-links { display: inline-flex; } }
+.nav-link {
+  color: var(--fg); text-decoration: none;
+  padding: 8px 12px; border-radius: 10px;
+}
+.nav-link:hover { background: color-mix(in srgb, var(--emerald) 10%, transparent); }
+
+.theme-btn {
+  background: var(--emerald); color: #fff; border: 0;
+  padding: 10px 14px; border-radius: 10px; font-weight: 600; cursor: pointer;
+}
+.theme-btn:hover { filter: brightness(0.95); }
+.theme-btn:active { transform: scale(0.98); }
+
+/* ====== Contenido ====== */
+.container { max-width: 1120px; margin-inline: auto; padding: 24px 16px; }
+
+/* Deja espacio para que nada se esconda bajo el header */
+#page { padding-top: 16px; }
+
+/* ====== Tarjetas / bordes (opcional para tu UI actual) ====== */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px;
+}
+
+/* Asegura tap targets razonables en móvil */
+a, button { min-height: 44px; min-width: 44px; }
+
+/* Inputs visualmente consistentes */
+input, select, textarea {
+  background: var(--card); color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px;
+}
