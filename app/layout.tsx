@@ -13,7 +13,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="es">
       <body>
         <Navbar />
-        <main className="mx-auto max-w-6xl px-4 py-6">
+        <main id="page" className="container">
           {children}
         </main>
         <footer id="seo-footer" className="px-4 py-6 text-sm" style={{ color: 'var(--muted)' }}>
@@ -24,3 +24,4 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     </html>
   );
 }
+

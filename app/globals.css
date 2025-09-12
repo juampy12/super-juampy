@@ -100,3 +100,12 @@ input:focus, select:focus, textarea:focus{
 html { font-size: 16px; }
 body { -webkit-text-size-adjust: 100%; }
 a, button { min-height: 48px; min-width: 48px; }
+/* --- Layout spacing for sticky header --- */
+header.sticky { position: sticky; top: 0; z-index: 50; }
+header.sticky nav { height: 56px; display: flex; align-items: center; }
+
+/* Deja espacio arriba para que el contenido no quede debajo del header */
+#page { padding-top: 72px; padding-bottom: 24px; }
+
+/* Contenedor base (ya definido antes, lo reforzamos) */
+.container { max-width: 72rem; margin-inline: auto; padding-inline: 1rem; }
