@@ -273,3 +273,38 @@ html[data-theme="dark"] main.container {
   background: transparent !important;
   color: var(--fg) !important;
 }
+/* ===== Dark: tablas y texto dentro de paneles ===== */
+html[data-theme="dark"] table,
+html[data-theme="dark"] table th,
+html[data-theme="dark"] table td {
+  background: var(--card) !important;
+  color: var(--fg) !important;
+  border-color: var(--border) !important;
+  opacity: 1 !important; /* por si alguna lib pone opacidad */
+}
+
+/* Encabezados con más contraste */
+html[data-theme="dark"] thead th {
+  color: #e5e7eb !important;
+  font-weight: 700 !important;
+}
+
+/* Forzar color legible en contenedores de tablas/paneles */
+html[data-theme="dark"] .table,
+html[data-theme="dark"] .table-container,
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .card * {
+  color: var(--fg) !important;
+}
+
+/* Botones "Guardar" dentro de la tabla: que no hereden blanco sobre blanco */
+html[data-theme="dark"] .table button,
+html[data-theme="dark"] .table-container button {
+  background: #1a1a1a !important;
+  color: #fff !important;
+  border: 1px solid var(--border) !important;
+}
+html[data-theme="dark"] .table button:hover,
+html[data-theme="dark"] .table-container button:hover {
+  filter: brightness(1.06);
+}
