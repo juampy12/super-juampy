@@ -308,3 +308,32 @@ html[data-theme="dark"] .table button:hover,
 html[data-theme="dark"] .table-container button:hover {
   filter: brightness(1.06);
 }
+/* ==== Clickability fix: asegurar que nada tape el contenido ==== */
+
+/* El header encima, pero que NO extienda una capa invisible */
+.site-header { position: sticky; top: 0; z-index: 1000; }
+.site-header::before, .site-header::after { pointer-events: none !important; }
+
+/* El contenido por encima de cualquier overlay de fondo */
+#page, main, .container, .content, .pos, form { position: relative; z-index: 10; }
+
+/* Botones must-click */
+button { pointer-events: auto !important; position: relative; z-index: 20; }
+
+/* Por si alguna librería agregó un overlay tapando todo */
+.overlay, .backdrop, .scrim {
+  pointer-events: none !important;
+}
+
+/* Calendario (day-picker) no debe tapar al resto cuando está cerrado */
+.rdp { position: relative; z-index: 5; }
+
+/* Evitar que algún contenedor fijo/pegajoso cubra el centro de la página */
+.fixed, .sticky {
+  pointer-events: auto;
+}
+
+/* En oscuro, reasegurar contraste y evitar opacidades */
+html[data-theme="dark"] * {
+  opacity: 1 !important;
+}
