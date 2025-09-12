@@ -191,3 +191,85 @@ input, select, textarea {
   border: 1px solid var(--border);
   border-radius: 10px; padding: 10px 12px;
 }
+/* ==== Dark mode fixes for cards, forms and day-picker ==== */
+
+/* Contenedores que suelen venir con fondo blanco en librerías */
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .panel,
+html[data-theme="dark"] .box,
+html[data-theme="dark"] .container-white,
+html[data-theme="dark"] .table,
+html[data-theme="dark"] .table-container,
+html[data-theme="dark"] .content,
+html[data-theme="dark"] .report,
+html[data-theme="dark"] .reports,
+html[data-theme="dark"] .section,
+html[data-theme="dark"] .wrapper {
+  background: var(--card) !important;
+  color: var(--fg) !important;
+  border-color: var(--border) !important;
+}
+
+/* Inputs/selects/textarea en oscuro */
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background: #0f0f10 !important;
+  color: var(--fg) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* Botones estándar para no perder contraste */
+html[data-theme="dark"] button {
+  color: var(--fg);
+  background-color: #1a1a1a;
+  border: 1px solid var(--border);
+}
+html[data-theme="dark"] button:hover { filter: brightness(1.06); }
+
+/* Day Picker (react-day-picker v8 clases .rdp-*) */
+html[data-theme="dark"] .rdp,
+html[data-theme="dark"] .rdp-months,
+html[data-theme="dark"] .rdp-month,
+html[data-theme="dark"] .rdp-table,
+html[data-theme="dark"] .rdp-caption,
+html[data-theme="dark"] .rdp-head,
+html[data-theme="dark"] .rdp-body {
+  background: var(--card) !important;
+  color: var(--fg) !important;
+}
+
+html[data-theme="dark"] .rdp-cell,
+html[data-theme="dark"] .rdp-day {
+  color: var(--fg) !important;
+}
+
+html[data-theme="dark"] .rdp-day:hover {
+  background: #1f2937 !important; /* hover sutil */
+}
+
+html[data-theme="dark"] .rdp-day_selected,
+html[data-theme="dark"] .rdp-day_selected:focus-visible,
+html[data-theme="dark"] .rdp-day_selected:hover {
+  background: #3b82f6 !important; /* azul visible */
+  color: white !important;
+}
+
+/* Títulos/meses del calendario */
+html[data-theme="dark"] .rdp-caption_label,
+html[data-theme="dark"] .rdp-head_cell {
+  color: var(--fg) !important;
+}
+
+/* Bordes suaves en oscuro */
+html[data-theme="dark"] .rdp,
+html[data-theme="dark"] .rdp-month {
+  border-color: var(--border) !important;
+}
+
+/* Asegurar que el gran contenedor de Reportes herede bien */
+html[data-theme="dark"] #page,
+html[data-theme="dark"] main.container {
+  background: transparent !important;
+  color: var(--fg) !important;
+}
