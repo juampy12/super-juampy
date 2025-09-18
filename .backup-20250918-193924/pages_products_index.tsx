@@ -7,29 +7,37 @@ type Product = { id: string; sku: string; name: string; price: number }
 type StockRow = { product_id: string; store_id: string; stock: number }
 
 export default function ProductsPage() {
-  console.log("DEBUG_PRODUCTS: rendering from app\\products\\page.tsx (UI FIX)")
+  console.log("DEBUG_PRODUCTS: rendering from pages\products\index.tsx")
 
   const [stores, setStores] = useState<Store[]>([])
   const [storeId, setStoreId] = useState<string | null>(null)
 
   const [products, setProducts] = useState<Product[]>([])
-  const [stocks, setStocks] = useState<Record<string, number>>({}) // DB (verdad)
-  const [edits, setEdits] = useState<Record<string, number>>({})   // Nuevo (borrador controlado)
+  const [stocks, setStocks] = useState<Record<string, number>>({}) // DB
+  const [edits, setEdits] = useState<Record<string, number>>({})   // Nuevo (borrador)
 
   const [form, setForm] = useState({ sku: "", name: "", price: 0 })
 
-  useEffect(() => { (async () => {
-    const { data, error } = await supabase.from("stores").select("id,name").order("name")
-    if (error) { console.error(error); return }
-    if (data && data.length) { setStores(data); if (!storeId) setStoreId(data[0].id) }
-  })() }, [])
+  // Sucursales
+  useEffect(() => {
+    ;(async () => {
+      const { data, error } = await supabase.from("stores").select("id,name").order("name")
+      if (error) { console.error(error); return }
+      if (data && data.length) {
+        setStores(data)
+        if (!storeId) setStoreId(data[0].id)
+      }
+    })()
+  }, [])
 
+  // Catálogo
   const loadProducts = async () => {
     const { data, error } = await supabase.from("products").select("id,sku,name,price").order("name")
     if (error) { alert(error.message); return }
     setProducts((data || []).map((p:any) => ({ id:p.id, sku:p.sku??"", name:p.name??"", price:Number(p.price??0) })))
   }
 
+  // Stock por sucursal
   const loadStocks = async () => {
     if (!storeId) return
     const { data, error } = await supabase
@@ -40,18 +48,19 @@ export default function ProductsPage() {
     const map: Record<string, number> = {}
     ;(data as StockRow[] || []).forEach(r => { map[r.product_id] = Number(r.stock||0) })
     setStocks(map)
-    setEdits({}) // limpiamos borradores; inputs usarán value controlado con fallback al actual
+    setEdits({}) // limpiar borradores al sincronizar
   }
 
   useEffect(() => { loadProducts() }, [])
   useEffect(() => { loadStocks() }, [storeId])
 
+  // Realtime + polling
   useEffect(() => {
     if (!storeId) return
     const ch = supabase
       .channel("stock-movements-"+storeId)
       .on("postgres_changes",
-        { event: "*", schema: "public", table: "stock_movements", filter: `store_id=eq.${storeId}` },
+        { event: "*", schema: "public", table: "stock_movements", filter: store_id=eq. },
         () => { loadStocks() }
       )
       .subscribe()
@@ -59,25 +68,24 @@ export default function ProductsPage() {
     return () => { supabase.removeChannel(ch); clearInterval(id) }
   }, [storeId])
 
-  // Ahora “desired” (lo que se ve en “Nuevo”) es el edit si existe; si no, el actual de DB.
   const list = useMemo(() =>
-    products.map(p => ({
-      ...p,
-      actual: stocks[p.id] ?? 0,
-      desired: (edits[p.id] ?? (stocks[p.id] ?? 0))
-    })),
+    products.map(p => ({ ...p, actual: stocks[p.id] ?? 0, nuevo: edits[p.id] })),
   [products, stocks, edits])
 
+  // Crear producto
   const saveProduct = async () => {
     if (!form.sku || !form.name) return alert("Completar SKU y nombre")
     const { error } = await supabase.from("products").insert({ sku: form.sku, name: form.name, price: Number(form.price||0) })
     if (error) return alert(error.message)
-    setForm({ sku:"", name:"", price:0 }); await loadProducts(); await loadStocks()
+    setForm({ sku:"", name:"", price:0 })
+    await loadProducts(); await loadStocks()
   }
 
-  const saveStock = async (product_id: string, target: number) => {
+  // Ajuste de stock (objetivo)
+  const saveStock = async (product_id: string) => {
     if (!storeId) return alert("Elegí una sucursal")
-    const { error } = await supabase.rpc("fn_set_stock", { p_product_id: product_id, p_store_id: storeId, p_target: Number(target) })
+    const target = Number(edits[product_id] ?? stocks[product_id] ?? 0)
+    const { error } = await supabase.rpc("fn_set_stock", { p_product_id: product_id, p_store_id: storeId, p_target: target })
     if (error) return alert(error.message)
     await loadStocks()
   }
@@ -117,20 +125,16 @@ export default function ProductsPage() {
               <tr className="border-b" key={p.id}>
                 <td>{p.name}</td>
                 <td>{p.sku}</td>
-                <td>${Number(p.price||0).toFixed(2)}</td>
+                <td></td>
                 <td className="font-mono">{p.actual}</td>
                 <td>
-                  <input
-                    type="number"
-                    className="border rounded p-1 w-24"
-                    value={p.desired}
+                  <input type="number" className="border rounded p-1 w-24"
+                    defaultValue={p.actual}
                     onChange={e => setEdits(prev => ({ ...prev, [p.id]: Number(e.target.value) }))}
                   />
                 </td>
                 <td>
-                  <button onClick={() => saveStock(p.id, (edits[p.id] ?? p.actual))} className="px-3 py-1 rounded border">
-                    Guardar
-                  </button>
+                  <button onClick={() => saveStock(p.id)} className="px-3 py-1 rounded border">Guardar</button>
                 </td>
               </tr>
             ))}
@@ -138,8 +142,9 @@ export default function ProductsPage() {
           </tbody>
         </table>
 
+        {/* Banner DEBUG para saber qué archivo se renderiza */}
         <div style={{fontSize:12,opacity:.7,marginTop:8}}>
-          DEBUG_PRODUCTS — UI FIX (controlado)
+          DEBUG_PRODUCTS — rendered from: pages\products\index.tsx
         </div>
       </div>
     </main>
