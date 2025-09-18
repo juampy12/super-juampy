@@ -1,4 +1,6 @@
-﻿'use client';
+'use client';
+import { posConfirmarVenta } from '@/lib/posConfirm'; // o '../lib/posConfirm' si no tenés alias '@/'﻿
+'use client';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
