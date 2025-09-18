@@ -1,0 +1,44 @@
+﻿'use client';
+import { useState } from 'react';
+import ConfirmSaleButton from "../../components/ConfirmSaleButton";
+import SalesPreview from "../../components/SalesPreview";
+
+export default function Page() {
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+
+  // ✅ Sucursal (stores.id)
+  const storeId = "fb38a57d-78cc-4ccc-92d4-c2cc2cefd22f";
+
+  // ✅ Producto de ejemplo
+  const productId = "2602b049-f549-41a1-8222-aa87b7a09c7b";
+  const qty = 2;
+  const price = 5100;
+
+  // ✅ Carrito con precio
+  const cartItems = [{ id: productId, qty, price }];
+
+  return (
+    <div className="p-6 space-y-4">
+      <h1 className="text-2xl font-bold">Super Juampy — Confirmar Venta</h1>
+
+      {okMsg && (
+        <div className="text-sm rounded-md bg-green-600/10 text-green-700 border border-green-600/30 px-3 py-2">
+          {okMsg}
+        </div>
+      )}
+
+      <ConfirmSaleButton
+        storeId={storeId}
+        cartItems={cartItems}
+        onConfirmed={(saleId) => {
+          setOkMsg(`Venta confirmada ✔️ #${saleId.slice(0, 8)}`);
+          // limpialo a los 3s si querés
+          setTimeout(() => setOkMsg(null), 3000);
+        }}
+      />
+
+      <h2 className="text-xl font-semibold mt-8">Últimos ítems insertados</h2>
+      <SalesPreview />
+    </div>
+  );
+}
