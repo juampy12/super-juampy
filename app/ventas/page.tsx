@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 
 type Product = { id: string; sku: string; name: string; price: number; stock?: number | null };
 type CartItem = Product & { qty: number; subtotal: number };
+type Store = { id: string; name: string };
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,13 +20,18 @@ function useDebounced<T>(value: T, delay = 250) {
 }
 
 export default function VentasPage() {
+  // Sucursal
+  const [stores, setStores] = useState<Store[]>([]);
+  const [storeId, setStoreId] = useState<string>("");
+
+  // Búsqueda / carrito
   const [sku, setSku] = useState("");
   const [nombre, setNombre] = useState("");
   const [qty, setQty] = useState<number>(1);
   const [results, setResults] = useState<Product[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart,   setCart]   = useState<CartItem[]>([]);
   const [searching, setSearching] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading,   setLoading]   = useState(false);
 
   // Pago
   const [payMethod, setPayMethod] = useState<"cash"|"debit"|"credit"|"transfer"|"mixed">("cash");
@@ -35,25 +41,30 @@ export default function VentasPage() {
   const debouncedNombre = useDebounced(nombre, 300);
 
   const total = useMemo(() => cart.reduce((a, i) => a + i.subtotal, 0), [cart]);
+  const change = useMemo(() => Math.max(0, (payBreakdown.cash || 0) - total), [payBreakdown.cash, total]);
 
-  // Al cambiar método simple, setear importe == total
+  // Cargar sucursales
   useEffect(() => {
-    if (payMethod !== "mixed") {
-      setPayBreakdown(b => {
-        const v = total;
-        return {
-          cash:   payMethod==="cash"     ? v : 0,
-          debit:  payMethod==="debit"    ? v : 0,
-          credit: payMethod==="credit"   ? v : 0,
-          transfer: payMethod==="transfer"? v : 0,
-        };
-      });
+    (async () => {
+      const { data, error } = await supabase.from("stores").select("id,name").order("name", { ascending: true });
+      if (error) { console.error(error); return; }
+      setStores(data || []);
+      if (!storeId && data && data.length) setStoreId(String(data[0].id));
+    })();
+  }, []);
+
+  // Si NO es mixto y NO es efectivo => importe bloqueado = total
+  useEffect(() => {
+    if (payMethod !== "mixed" && payMethod !== "cash") {
+      setPayBreakdown({ cash: 0, debit: 0, credit: 0, transfer: 0, [payMethod]: total } as any);
     }
+    // efectivo queda editable y NO se toca aquí
   }, [payMethod, total]);
 
   const skuRef = useRef<HTMLInputElement>(null);
   useEffect(() => { skuRef.current?.focus(); }, []);
 
+  // Buscar
   const buscar = async (opts?: { silent?: boolean }) => {
     const _sku = debouncedSku.trim();
     const _nombre = debouncedNombre.trim();
@@ -73,7 +84,6 @@ export default function VentasPage() {
       if (!opts?.silent) toast.error(e?.message ?? "Error buscando");
     } finally { setSearching(false); }
   };
-
   useEffect(() => {
     if (debouncedSku.length >= 3 || debouncedNombre.length >= 1) buscar({ silent:true });
     else setResults([]);
@@ -94,11 +104,11 @@ export default function VentasPage() {
     });
     setSku(""); setNombre(""); setQty(1); setResults([]); skuRef.current?.focus();
   };
-
   const remove = (id: string) => setCart(prev => prev.filter(i => i.id !== id));
   const clear  = () => setCart([]);
 
   const confirmar = async () => {
+    if (!storeId) { toast.error("Elegí una sucursal"); return; }
     if (cart.length === 0) { toast("Carrito vacío", { icon: "🛒" }); return; }
 
     // Validación pago
@@ -110,15 +120,18 @@ export default function VentasPage() {
         return;
       }
       payment = { method: "mixed", ...payBreakdown };
+    } else if (payMethod === "cash") {
+      // efectivo editable: aceptamos cualquier monto; se envía el vuelto
+      payment = { method: "cash", cash: payBreakdown.cash||0, change };
     } else {
-      // Simple: el importe ya copia al total y va en el campo correspondiente
-      payment = { method: payMethod, ...payBreakdown };
+      // otros simples bloqueados = total
+      payment = { method: payMethod, [payMethod]: total };
     }
 
     setLoading(true);
     try {
       const items = cart.map(i => ({ product_id: i.id, qty: i.qty, unit_price: i.price }));
-      const payload = { items, total, payment };
+      const payload = { items, total, payment, storeId };
 
       const res = await fetch("/api/pos/confirm", {
         method: "POST",
@@ -130,39 +143,48 @@ export default function VentasPage() {
 
       toast.success(j?.simulated ? "Venta confirmada (simulada)" : "Venta confirmada");
       setCart([]);
+      // reset de efectivo para siguiente venta
+      if (payMethod === "cash") setPayBreakdown(b => ({ ...b, cash: 0 }));
       skuRef.current?.focus();
     } catch (e:any) {
       toast.error(e?.message ?? "No se pudo confirmar");
     } finally { setLoading(false); }
   };
 
-  const ImporteSimple = () => {
-    const value =
-      payMethod==="cash" ? payBreakdown.cash :
-      payMethod==="debit" ? payBreakdown.debit :
-      payMethod==="credit" ? payBreakdown.credit :
-      payMethod==="transfer" ? payBreakdown.transfer : 0;
-    return (
-      <input
-        type="number"
-        readOnly
-        value={value.toFixed(2)}
-        className="w-full border rounded-xl px-3 py-2 bg-gray-50 text-gray-600"
-        title="Se usa el total automáticamente en métodos simples"
-      />
-    );
-  };
+  // UI Pago
+  const ImporteSimpleBloqueado = () => (
+    <input type="number" readOnly value={total.toFixed(2)} className="w-full border rounded-xl px-3 py-2 bg-gray-50 text-gray-600" />
+  );
+  const ImporteEfectivoEditable = () => (
+    <input
+      type="number"
+      min={0}
+      value={payBreakdown.cash ?? 0}
+      onChange={(e)=>setPayBreakdown(b => ({ ...b, cash: Number(e.target.value || 0) }))}
+      placeholder="Importe recibido"
+      className="w-full border rounded-xl px-3 py-2"
+    />
+  );
 
   const PagoUI = () => (
     <div className="rounded-2xl border bg-white/70 backdrop-blur p-4 md:p-5 shadow-sm space-y-3">
+      {/* Sucursal */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+        <div className="md:col-span-2">
+          <label className="block text-sm mb-1">Sucursal</label>
+          <select
+            className="border rounded-xl px-3 py-2 w-full"
+            value={storeId}
+            onChange={(e)=>setStoreId(e.target.value)}
+          >
+            {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+
+        {/* Medio / Importe / Total / Acciones */}
         <div>
           <label className="block text-sm mb-1">Medio de pago</label>
-          <select
-            className="border rounded-xl px-3 py-2"
-            value={payMethod}
-            onChange={(e)=>setPayMethod(e.target.value as any)}
-          >
+          <select className="border rounded-xl px-3 py-2 w-full" value={payMethod} onChange={(e)=>setPayMethod(e.target.value as any)}>
             <option value="cash">Efectivo</option>
             <option value="debit">Débito</option>
             <option value="credit">Crédito</option>
@@ -171,52 +193,47 @@ export default function VentasPage() {
           </select>
         </div>
 
-        <div className="md:col-span-2">
+        <div>
           <label className="block text-sm mb-1">Importe</label>
-          {payMethod === "mixed" ? (
-            <div className="grid grid-cols-2 gap-3">
+          {payMethod === "cash" ? (
+            <ImporteEfectivoEditable />
+          ) : payMethod === "mixed" ? (
+            <div className="grid grid-cols-2 gap-2">
               {(["cash","debit"] as const).map(k => (
-                <input
-                  key={k}
-                  type="number"
-                  min={0}
-                  placeholder={k}
+                <input key={k} type="number" min={0} placeholder={k}
                   value={(payBreakdown as any)[k] ?? 0}
                   onChange={(e)=>setPayBreakdown(b => ({ ...b, [k]: Number(e.target.value || 0) }))}
-                  className="w-full border rounded-xl px-3 py-2"
-                />
+                  className="w-full border rounded-xl px-3 py-2" />
               ))}
               {(["credit","transfer"] as const).map(k => (
-                <input
-                  key={k}
-                  type="number"
-                  min={0}
-                  placeholder={k}
+                <input key={k} type="number" min={0} placeholder={k}
                   value={(payBreakdown as any)[k] ?? 0}
                   onChange={(e)=>setPayBreakdown(b => ({ ...b, [k]: Number(e.target.value || 0) }))}
-                  className="w-full border rounded-xl px-3 py-2"
-                />
+                  className="w-full border rounded-xl px-3 py-2" />
               ))}
             </div>
           ) : (
-            <ImporteSimple />
+            <ImporteSimpleBloqueado />
           )}
         </div>
 
         <div>
           <label className="block text-sm mb-1">Total</label>
           <div className="px-3 py-2 border rounded-xl bg-gray-50 font-semibold">${total.toFixed(2)}</div>
+          {payMethod === "cash" && (payBreakdown.cash||0) > 0 && (
+            <div className="text-xs mt-1 text-gray-600">Vuelto: <b>${change.toFixed(2)}</b></div>
+          )}
         </div>
 
-        <div className="md:col-span-1 flex gap-2 justify-end">
+        <div className="flex gap-2 justify-end">
           <button
             disabled={loading || cart.length===0}
             onClick={confirmar}
-            className="rounded-lg px-4 py-2 bg-black text-white disabled:opacity-50 shadow w-full"
+            className="rounded-lg px-4 py-2 bg-black text-white disabled:opacity-50 shadow"
           >
             {loading ? "Confirmando..." : "Confirmar venta"}
           </button>
-          <button onClick={clear} className="rounded-lg px-4 py-2 border bg-white hover:bg-gray-50 shadow w-full">
+          <button onClick={clear} className="rounded-lg px-4 py-2 border bg-white hover:bg-gray-50 shadow">
             Vaciar
           </button>
         </div>
@@ -230,6 +247,7 @@ export default function VentasPage() {
 
       <PagoUI />
 
+      {/* Buscador */}
       <section className="rounded-2xl border bg-white/70 backdrop-blur p-4 md:p-5 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
           <div className="md:col-span-2">
@@ -252,6 +270,7 @@ export default function VentasPage() {
         </div>
       </section>
 
+      {/* Resultados */}
       <section className="rounded-2xl border bg-white/70 backdrop-blur p-4 md:p-5 shadow-sm">
         <div className="mb-2 font-semibold text-lg">Resultados</div>
         {results.length===0 ? (
@@ -286,6 +305,7 @@ export default function VentasPage() {
         )}
       </section>
 
+      {/* Carrito */}
       <section className="rounded-2xl border bg-white/70 backdrop-blur p-4 md:p-5 shadow-sm">
         <div className="mb-2 font-semibold text-lg">Carrito</div>
         {cart.length===0 ? (
