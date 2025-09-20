@@ -29,8 +29,10 @@ export default function HeaderNav(){
           })}
         </div>
       </div>
-    </nav>
+      <a href="/ventas" className="ml-4">POS</a>
+</nav>
   )
 }
+
 
 

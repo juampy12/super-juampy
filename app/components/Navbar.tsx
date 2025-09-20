@@ -37,10 +37,13 @@ export default function Navbar() {
         <button type="button" onClick={toggleTheme} className="theme-btn">
           {theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
         </button>
-      </nav>
+        <a href="/ventas" className="ml-4">POS</a>
+</nav>
     </header>
   );
 }
+
+
 
 
 
