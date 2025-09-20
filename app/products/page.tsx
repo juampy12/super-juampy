@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -17,6 +17,7 @@ export default function ProductsByStorePage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [nameFilter, setNameFilter] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0); // 👈 FIX refrescar
 
   // carga sucursales
   useEffect(() => {
@@ -42,7 +43,7 @@ export default function ProductsByStorePage() {
       setLoading(false);
     };
     load();
-  }, [storeId, nameFilter]);
+  }, [storeId, nameFilter, refreshTick]); // 👈 ahora escucha refreshTick
 
   const onSave = async (productId: string, newValue: number) => {
     if (!storeId) return;
@@ -83,6 +84,7 @@ export default function ProductsByStorePage() {
           <input
             value={nameFilter}
             onChange={e => setNameFilter(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") setRefreshTick(t => t + 1); }} // 👈 enter también refresca
             className="border rounded px-3 py-2"
             placeholder="Filtrar por nombre o SKU"
           />
@@ -90,7 +92,7 @@ export default function ProductsByStorePage() {
 
         <button
           className="px-4 py-2 rounded bg-black text-white"
-          onClick={() => setNameFilter(nameFilter)}
+          onClick={() => setRefreshTick(t => t + 1)} // 👈 ahora sí refresca
           disabled={loading}
         >
           {loading ? "Cargando..." : "Refrescar"}
