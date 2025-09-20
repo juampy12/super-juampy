@@ -1,30 +1,16 @@
 ﻿'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import TopProducts from './components/TopProducts';
+import React from 'react';
 import { posConfirmarVenta } from '@/lib/posConfirm';
 import toast from 'react-hot-toast';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export default function PageClient() {
-  useEffect(() => {
-    // (async () => {
-    //   const { data, error } = await supabase.from('stores').select('id,name');
-    // })();
-  }, []);
-
   const handleConfirmar = async () => {
     try {
       await posConfirmarVenta();
       toast.success('Venta confirmada');
-    } catch (e) {
-      const msg = (e && e.message) ? e.message : 'Error al confirmar';
-      toast.error(msg);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Error al confirmar');
     }
   };
 
@@ -39,8 +25,11 @@ export default function PageClient() {
           Confirmar venta
         </button>
       </div>
-      <TopProducts />
+
+      <p className="text-muted-foreground">
+        Super Juampy es tu supermercado en Charata, Chaco: panificados frescos, fiambrería y productos de almacén.
+        Consultá stock por sucursal y registrá ventas con nuestro POS.
+      </p>
     </main>
   );
 }
-
