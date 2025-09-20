@@ -37,11 +37,21 @@ export default function VentasPage() {
   const [payMethod, setPayMethod] = useState<"cash"|"debit"|"credit"|"transfer"|"mixed">("cash");
   const [payBreakdown, setPayBreakdown] = useState({ cash: 0, debit: 0, credit: 0, transfer: 0 });
 
+  // 👇 Importe de efectivo como STRING para no perder foco
+  const [cashStr, setCashStr] = useState<string>("");
+
   const debouncedSku = useDebounced(sku, 250);
   const debouncedNombre = useDebounced(nombre, 300);
 
   const total = useMemo(() => cart.reduce((a, i) => a + i.subtotal, 0), [cart]);
-  const change = useMemo(() => Math.max(0, (payBreakdown.cash || 0) - total), [payBreakdown.cash, total]);
+
+  // Parse seguro del efectivo escrito
+  const cashValue = useMemo(() => {
+    const v = parseFloat((cashStr || "").replace(",", "."));
+    return Number.isFinite(v) ? v : 0;
+  }, [cashStr]);
+
+  const change = useMemo(() => Math.max(0, cashValue - total), [cashValue, total]);
 
   // Cargar sucursales
   useEffect(() => {
@@ -58,8 +68,13 @@ export default function VentasPage() {
     if (payMethod !== "mixed" && payMethod !== "cash") {
       setPayBreakdown({ cash: 0, debit: 0, credit: 0, transfer: 0, [payMethod]: total } as any);
     }
-    // efectivo queda editable y NO se toca aquí
+    // Si cambiamos a efectivo, dejamos lo que el usuario venía tipeando (cashStr).
   }, [payMethod, total]);
+
+  // Si cambio de método desde efectivo a otro, limpio el campo string para no confundir
+  useEffect(() => {
+    if (payMethod !== "cash") setCashStr("");
+  }, [payMethod]);
 
   const skuRef = useRef<HTMLInputElement>(null);
   useEffect(() => { skuRef.current?.focus(); }, []);
@@ -121,10 +136,8 @@ export default function VentasPage() {
       }
       payment = { method: "mixed", ...payBreakdown };
     } else if (payMethod === "cash") {
-      // efectivo editable: aceptamos cualquier monto; se envía el vuelto
-      payment = { method: "cash", cash: payBreakdown.cash||0, change };
+      payment = { method: "cash", cash: cashValue, change };
     } else {
-      // otros simples bloqueados = total
       payment = { method: payMethod, [payMethod]: total };
     }
 
@@ -143,8 +156,8 @@ export default function VentasPage() {
 
       toast.success(j?.simulated ? "Venta confirmada (simulada)" : "Venta confirmada");
       setCart([]);
-      // reset de efectivo para siguiente venta
-      if (payMethod === "cash") setPayBreakdown(b => ({ ...b, cash: 0 }));
+      // reset efectivo
+      setCashStr("");
       skuRef.current?.focus();
     } catch (e:any) {
       toast.error(e?.message ?? "No se pudo confirmar");
@@ -157,10 +170,12 @@ export default function VentasPage() {
   );
   const ImporteEfectivoEditable = () => (
     <input
-      type="number"
-      min={0}
-      value={payBreakdown.cash ?? 0}
-      onChange={(e)=>setPayBreakdown(b => ({ ...b, cash: Number(e.target.value || 0) }))}
+      // 👇 mantener foco: usar string + text con teclado decimal
+      type="text"
+      inputMode="decimal"
+      step="0.01"
+      value={cashStr}
+      onChange={(e)=>setCashStr(e.target.value)}
       placeholder="Importe recibido"
       className="w-full border rounded-xl px-3 py-2"
     />
@@ -220,7 +235,7 @@ export default function VentasPage() {
         <div>
           <label className="block text-sm mb-1">Total</label>
           <div className="px-3 py-2 border rounded-xl bg-gray-50 font-semibold">${total.toFixed(2)}</div>
-          {payMethod === "cash" && (payBreakdown.cash||0) > 0 && (
+          {payMethod === "cash" && cashStr && (
             <div className="text-xs mt-1 text-gray-600">Vuelto: <b>${change.toFixed(2)}</b></div>
           )}
         </div>
