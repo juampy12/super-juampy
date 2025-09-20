@@ -1,4 +1,5 @@
-﻿import Navbar from './components/Navbar';
+﻿'use client';
+import Navbar from './components/Navbar';
 import JsonLd from './seo-jsonld';
 import "./globals.css"
 import type { Metadata } from "next"
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   )
 }
+
 
 
 
