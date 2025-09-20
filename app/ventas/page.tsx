@@ -20,11 +20,11 @@ function useDebounced<T>(value: T, delay = 250) {
 }
 
 export default function VentasPage() {
-  // Sucursal
+  // --- Sucursal ---
   const [stores, setStores] = useState<Store[]>([]);
   const [storeId, setStoreId] = useState<string>("");
 
-  // Búsqueda / carrito
+  // --- Búsqueda / carrito ---
   const [sku, setSku] = useState("");
   const [nombre, setNombre] = useState("");
   const [qty, setQty] = useState<number>(1);
@@ -33,12 +33,13 @@ export default function VentasPage() {
   const [searching, setSearching] = useState(false);
   const [loading,   setLoading]   = useState(false);
 
-  // Pago
+  // --- Pago ---
   const [payMethod, setPayMethod] = useState<"cash"|"debit"|"credit"|"transfer"|"mixed">("cash");
   const [payBreakdown, setPayBreakdown] = useState({ cash: 0, debit: 0, credit: 0, transfer: 0 });
 
-  // 👇 Importe de efectivo como STRING para no perder foco
+  // 👇 Importe de efectivo como STRING + ref para no perder foco
   const [cashStr, setCashStr] = useState<string>("");
+  const cashRef = useRef<HTMLInputElement>(null);
 
   const debouncedSku = useDebounced(sku, 250);
   const debouncedNombre = useDebounced(nombre, 300);
@@ -68,10 +69,9 @@ export default function VentasPage() {
     if (payMethod !== "mixed" && payMethod !== "cash") {
       setPayBreakdown({ cash: 0, debit: 0, credit: 0, transfer: 0, [payMethod]: total } as any);
     }
-    // Si cambiamos a efectivo, dejamos lo que el usuario venía tipeando (cashStr).
   }, [payMethod, total]);
 
-  // Si cambio de método desde efectivo a otro, limpio el campo string para no confundir
+  // Si dejo efectivo, conservo lo escrito; si cambio a otro, limpio el string
   useEffect(() => {
     if (payMethod !== "cash") setCashStr("");
   }, [payMethod]);
@@ -156,7 +156,6 @@ export default function VentasPage() {
 
       toast.success(j?.simulated ? "Venta confirmada (simulada)" : "Venta confirmada");
       setCart([]);
-      // reset efectivo
       setCashStr("");
       skuRef.current?.focus();
     } catch (e:any) {
@@ -164,22 +163,41 @@ export default function VentasPage() {
     } finally { setLoading(false); }
   };
 
-  // UI Pago
+  // --- UI Pago ---
   const ImporteSimpleBloqueado = () => (
     <input type="number" readOnly value={total.toFixed(2)} className="w-full border rounded-xl px-3 py-2 bg-gray-50 text-gray-600" />
   );
-  const ImporteEfectivoEditable = () => (
-    <input
-      // 👇 mantener foco: usar string + text con teclado decimal
-      type="text"
-      inputMode="decimal"
-      step="0.01"
-      value={cashStr}
-      onChange={(e)=>setCashStr(e.target.value)}
-      placeholder="Importe recibido"
-      className="w-full border rounded-xl px-3 py-2"
-    />
-  );
+
+  const ImporteEfectivoEditable = () => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      setCashStr(val);
+      // Re-enfocar y mantener cursor al final después del re-render
+      requestAnimationFrame(() => {
+        const el = cashRef.current;
+        if (el) {
+          const pos = el.value.length;
+          el.focus();
+          try { el.setSelectionRange(pos, pos); } catch {}
+        }
+      });
+    };
+    return (
+      <input
+        ref={cashRef}
+        type="text"
+        inputMode="decimal"
+        step="0.01"
+        value={cashStr}
+        onChange={handleChange}
+        placeholder="Importe recibido"
+        className="w-full border rounded-xl px-3 py-2"
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+      />
+    );
+  };
 
   const PagoUI = () => (
     <div className="rounded-2xl border bg-white/70 backdrop-blur p-4 md:p-5 shadow-sm space-y-3">
@@ -187,11 +205,7 @@ export default function VentasPage() {
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
         <div className="md:col-span-2">
           <label className="block text-sm mb-1">Sucursal</label>
-          <select
-            className="border rounded-xl px-3 py-2 w-full"
-            value={storeId}
-            onChange={(e)=>setStoreId(e.target.value)}
-          >
+          <select className="border rounded-xl px-3 py-2 w-full" value={storeId} onChange={(e)=>setStoreId(e.target.value)}>
             {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
@@ -241,16 +255,10 @@ export default function VentasPage() {
         </div>
 
         <div className="flex gap-2 justify-end">
-          <button
-            disabled={loading || cart.length===0}
-            onClick={confirmar}
-            className="rounded-lg px-4 py-2 bg-black text-white disabled:opacity-50 shadow"
-          >
+          <button disabled={loading || cart.length===0} onClick={confirmar} className="rounded-lg px-4 py-2 bg-black text-white disabled:opacity-50 shadow">
             {loading ? "Confirmando..." : "Confirmar venta"}
           </button>
-          <button onClick={clear} className="rounded-lg px-4 py-2 border bg-white hover:bg-gray-50 shadow">
-            Vaciar
-          </button>
+          <button onClick={clear} className="rounded-lg px-4 py-2 border bg-white hover:bg-gray-50 shadow">Vaciar</button>
         </div>
       </div>
     </div>
