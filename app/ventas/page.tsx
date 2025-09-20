@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { posConfirmarVenta } from "@/lib/posConfirm";
 import { createClient } from "@supabase/supabase-js";
 
 type Product = { id: string; sku: string; name: string; price: number; stock?: number | null };
@@ -40,7 +39,6 @@ export default function VentasPage() {
   const skuRef = useRef<HTMLInputElement>(null);
   useEffect(() => { skuRef.current?.focus(); }, []);
 
-  // Buscar por SKU o Nombre
   const buscar = async (opts?: { silent?: boolean }) => {
     const _sku = debouncedSku.trim();
     const _nombre = debouncedNombre.trim();
@@ -80,7 +78,6 @@ export default function VentasPage() {
     }
   };
 
-  // Búsqueda en vivo
   useEffect(() => {
     if (debouncedSku.length >= 3 || debouncedNombre.length >= 1) {
       buscar({ silent: true });
@@ -108,6 +105,7 @@ export default function VentasPage() {
   const remove = (id: string) => setCart(prev => prev.filter(i => i.id !== id));
   const clear  = () => setCart([]);
 
+  // Llamada a la API server para confirmar la venta
   const confirmar = async () => {
     if (cart.length === 0) { toast("Carrito vacío", { icon: "🛒" }); return; }
     setLoading(true);
@@ -115,12 +113,15 @@ export default function VentasPage() {
       const items = cart.map(i => ({ product_id: i.id, qty: i.qty, unit_price: i.price }));
       const payload: any = { items, total };
 
-      // 1) intento con payload (firma nueva)
-      try {
-        await posConfirmarVenta(payload);
-      } catch (_e) {
-        // 2) fallback: firma vieja sin argumentos
-        await posConfirmarVenta();
+      const res = await fetch("/api/pos/confirm", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const j = await res.json().catch(()=> ({}));
+        throw new Error(j?.error || "No se pudo confirmar");
       }
 
       toast.success("Venta confirmada");
@@ -136,7 +137,6 @@ export default function VentasPage() {
 
   return (
     <main className="p-6 md:p-8 max-w-6xl mx-auto space-y-6">
-      {/* Header / acciones */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">POS / Ventas</h1>
         <div className="flex gap-2">
@@ -157,7 +157,6 @@ export default function VentasPage() {
         </div>
       </div>
 
-      {/* Buscador */}
       <section className="rounded-2xl border bg-white/70 backdrop-blur p-4 md:p-5 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
           <div className="md:col-span-2">
@@ -203,10 +202,14 @@ export default function VentasPage() {
             </button>
           </div>
         </div>
+      </section>
 
-        {/* Resultados */}
-        {results.length>0 && (
-          <div className="mt-5 overflow-x-auto rounded-xl border">
+      <section className="rounded-2xl border bg-white/70 backdrop-blur p-4 md:p-5 shadow-sm">
+        <div className="mb-2 font-semibold text-lg">Resultados</div>
+        {results.length===0 ? (
+          <div className="text-sm text-gray-500">Escribí SKU o nombre para buscar.</div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
                 <tr className="text-left border-b">
@@ -240,7 +243,6 @@ export default function VentasPage() {
         )}
       </section>
 
-      {/* Carrito */}
       <section className="rounded-2xl border bg-white/70 backdrop-blur p-4 md:p-5 shadow-sm">
         <div className="mb-2 font-semibold text-lg">Carrito</div>
         {cart.length===0 ? (
