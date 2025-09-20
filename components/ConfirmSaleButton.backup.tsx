@@ -30,14 +30,12 @@ export default function ConfirmSaleButton({ saleId, productId, defaultQty=1, onC
         <input type="number" min={1} step={1} value={qty}
           onChange={(e)=>setQty(Number(e.target.value))}
           className="border rounded px-2 py-1 w-20" />
-        <button onClick={handleConfirm} disabled={loading}
-          className="px-3 py-2 rounded bg-black text-white disabled:opacity-60">
-          {loading ? "Confirmando..." : "Confirmar venta"}
-        </button>
+        
       </div>
       {okMsg && <div className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded border border-green-300">{okMsg}</div>}
       {errMsg && <div className="text-sm bg-red-100 text-red-700 px-2 py-1 rounded border border-red-300">{errMsg}</div>}
     </div>
   );
 }
+
 

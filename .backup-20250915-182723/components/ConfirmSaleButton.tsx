@@ -46,14 +46,8 @@ export default function ConfirmSaleButton({ saleId, productId, qty, onConfirmed 
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={loading}
-      className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-    >
-      {loading ? "Confirmando..." : "Confirmar venta"}
-    </button>
+    
   );
 }
+
 

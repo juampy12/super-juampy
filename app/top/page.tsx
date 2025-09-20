@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React from 'react';
-import TopProducts from '@/app/components/TopProducts';
+import TopProducts from '../components/TopProducts'; // <- relativo a app/top/page.tsx
 
 export default function TopPage() {
   return (

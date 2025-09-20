@@ -80,7 +80,7 @@ export default function ConfirmSaleButton({
       setLoading(true);
       console.log("🔊 BTN: llamando RPC con rows =", rows);
 
-      const saleId = await posConfirmarVenta(storeId, rows);
+      const saleId = await 
 
       console.log("🔊 BTN: RPC OK saleId =", saleId);
       const msg = `Venta confirmada ✔️ #${String(saleId).slice(0,8)}`;
@@ -104,14 +104,7 @@ export default function ConfirmSaleButton({
 
   return (
     <div className="flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={loading}
-        className="px-4 py-2 rounded-md bg-blue-600 text-white disabled:opacity-50"
-      >
-        {loading ? "Confirmando..." : "Confirmar venta"}
-      </button>
+      
 
       {okMsg && (
         <div className="text-sm rounded-md bg-green-600/10 text-green-700 border border-green-600/30 px-3 py-2">
@@ -121,3 +114,4 @@ export default function ConfirmSaleButton({
     </div>
   );
 }
+

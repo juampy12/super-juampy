@@ -31,7 +31,7 @@ export default function Navbar() {
           <div className="nav-links">
             <Link href="/products" className="nav-link">Productos</Link>
             <Link href="/reports" className="nav-link">Reportes</Link>
-            <Link href="/reports/top-products" className="nav-link">Top</Link>
+            <Link href="/top" className="nav-link">Top</Link>
           </div>
         </div>
         <button type="button" onClick={toggleTheme} className="theme-btn">
@@ -41,4 +41,5 @@ export default function Navbar() {
     </header>
   );
 }
+
 

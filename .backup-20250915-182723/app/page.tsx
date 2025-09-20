@@ -1,6 +1,6 @@
 ﻿'use client';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import toast from 'react-hot-toast';
+
 import { supabase } from '@/lib/supabase';
 import { exportReceiptPDF } from './_utils/receipt';
 function parseMoney(v: number | string | ''): number {
@@ -238,87 +238,7 @@ const confirmDisabled =
             {suggestions.map((p, i) => {
               const disabled = p.stock <= 0
               return (
-                <button
-                  key={p.id}
-                  onClick={() => !disabled && addItem(p)}
-                  disabled={disabled}
-                  className={`w-full text-left px-3 py-2 hover:bg-black/5 ${i === activeIndex ? 'bg-white/10' : ''} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  <div className="font-medium">{p.name}</div>
-                  <div className="opacity-70">
-                    SKU {p.sku}  |  <span className={disabled ? 'line-through' : ''}>${p.price.toFixed(2)}</span>  |  Stock: {p.stock}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="border rounded-2xl p-4">
-        <table className="table">
-          <thead><tr className="text-left border-b"><th>Producto</th><th>SKU</th><th>Cant.</th><th>Precio</th><th>Subt.</th></tr></thead>
-          <tbody>
-            {items.map(it => (
-              <tr key={it.id} className="border-b">
-                <td>{it.name}</td><td>{it.sku}</td><td>{it.qty}</td><td>${it.price.toFixed(2)}</td><td>${it.subtotal.toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot><tr><td colSpan={4} className="text-right font-bold">TOTAL</td><td className="font-bold">${total.toFixed(2)}</td></tr></tfoot>
-        </table>
-      </div>
-
-      {/* Pago */}
-<div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-  <div>
-    <label className="block text-sm mb-1">Método de pago</label>
-    <select
-      value={payMethod}
-      onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}
-      className="w-full border rounded-xl p-2"
-    >
-      <option value="efectivo">Efectivo</option>
-      <option value="tarjeta">Tarjeta</option>
-      <option value="transferencia">Transferencia</option>
-    </select>
-  </div>
-
-  <div>
-    <label htmlFor="amountGiven" className="block text-sm mb-1">Monto recibido</label>
-    <input aria-label="campo8" id="input8" name="input8"
-      type="number"
-      inputMode="decimal"
-      className="w-full border rounded-xl p-2"
-      placeholder={payMethod === 'efectivo' ? 'Ej: 5000' : 'Se autocompleta'}
-      value={amountGiven}
-      onChange={(e) => setAmountGiven(e.target.value === '' ? '' : Number(e.target.value))}
-      disabled={payMethod !== 'efectivo'}
-    />
-  </div>
-
-  <div className="flex items-end">
-    <div className="border rounded-xl p-3 w-full">
-      <div className="text-sm opacity-70">Vuelto</div>
-      <div className="text-2xl font-semibold">${change.toFixed(2)}</div>
-    </div>
-  </div>
-</div>
-<div className="flex gap-2">
-  <button
-    onClick={() => addByQuery(code)}
-    className="px-4 py-2 rounded-xl border"
-  >
-    Agregar
-  </button>
-
-  <button
-    onClick={confirmSaleWithPayment}
-    className="px-4 py-2 rounded-xl btn-primary border-none"
-    disabled={confirmDisabled}
-  >
-    Confirmar venta
-  </button>
+                
 
   <button
     onClick={clearTicket}
@@ -343,6 +263,7 @@ const confirmDisabled =
     </main>
   )
 }
+
 
 
 

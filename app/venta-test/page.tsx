@@ -47,9 +47,7 @@ export default function VentaTest() {
         </div>
       </div>
 
-      <button onClick={onRun} disabled={loading} style={{ padding:'10px 16px' }}>
-        {loading ? 'Confirmando…' : 'Confirmar venta'}
-      </button>
+      
 
       {result && (
         <pre style={{ background:'#111', color:'#0f0', padding:12, marginTop:16, whiteSpace:'pre-wrap' }}>
@@ -59,3 +57,4 @@ export default function VentaTest() {
     </div>
   );
 }
+
