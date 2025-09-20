@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import TopProducts from '@/components/TopProducts';
+import TopProducts from './components/TopProducts';
 import { posConfirmarVenta } from '@/lib/posConfirm';
 import toast from 'react-hot-toast';
 import { createClient } from '@supabase/supabase-js';
@@ -43,3 +43,4 @@ export default function PageClient() {
     </main>
   );
 }
+
