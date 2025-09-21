@@ -218,21 +218,3 @@ button { pointer-events: auto !important; position: relative; z-index: 20; }
 
 /* Evitar opacidades fantasmas en oscuro */
 html[data-theme="dark"] * { opacity: 1 !important; }
-/* ==== FORZAR TEMA CLARO, PISAR TODO ==== */
-html { color-scheme: light !important; }
-:root{
-  --bg:#ffffff !important;
-  --card:#ffffff !important;
-  --fg:#111827 !important;
-  --muted:#6b7280 !important;
-  --border:#e5e7eb !important;
-}
-/* Si por algún motivo queda data-theme="dark", igual usamos claro */
-html[data-theme="dark"]{
-  --bg:#ffffff !important;
-  --card:#ffffff !important;
-  --fg:#111827 !important;
-  --muted:#6b7280 !important;
-  --border:#e5e7eb !important;
-  background: var(--bg) !important;
-}

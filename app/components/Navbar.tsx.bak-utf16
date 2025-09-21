@@ -1,4 +1,4 @@
-﻿// app/components/Navbar.tsx
+// app/components/Navbar.tsx
 "use client";
 
 import Link from "next/link";
@@ -63,7 +63,7 @@ export default function Navbar() {
         <button
           onClick={() => setOpen((v) => !v)}
           className="inline-flex items-center justify-center rounded-md p-2 hover:bg-neutral-100 md:hidden"
-          aria-label="Abrir menú"
+          aria-label="Abrir men�"
         >
           <svg
             className="h-5 w-5"

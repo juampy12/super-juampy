@@ -1,29 +1,23 @@
-﻿import './globals.css';
-import Navbar from './components/Navbar';
-import type { ReactNode } from 'react';
+﻿import "./globals.css";
+import type { Metadata } from "next";
+import ForceLight from "@/app/components/ForceLight";
+import Navbar from "@/app/components/Navbar";
 
-export const metadata = {
-  title: 'Super Juampy',
-  description:
-    'Super Juampy ofrece panificados frescos, fiambrería y productos de supermercado en Charata, Chaco. Consultá stock por sucursal y registrá ventas con nuestro POS.',
+export const metadata: Metadata = {
+  title: "Super Juampy",
+  description: "POS y stock por sucursal",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
+    <html lang="es" data-theme="light">
       <body>
+        <ForceLight />
         <Navbar />
         <main id="page" className="container">
           {children}
         </main>
-        <footer id="seo-footer" className="px-4 py-6 text-sm" style={{ color: 'var(--muted)' }}>
-          Super Juampy es tu supermercado en Charata, Chaco: panificados frescos, fiambrería y productos de almacén.
-          Consultá stock por sucursal y registrá ventas con nuestro POS.
-        </footer>
       </body>
     </html>
   );
 }
-
-
-
