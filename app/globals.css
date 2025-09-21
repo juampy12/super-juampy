@@ -236,3 +236,56 @@ html[data-theme="dark"]{
   --border:#e5e7eb !important;
   background: var(--bg) !important;
 }
+/* ===== Fix KPI móviles: números muy grandes en cards (reports) ===== */
+@media (max-width: 480px){
+  /* solo dentro de tarjetas */
+  .card .text-5xl, .card .text-4xl, .card .text-3xl,
+  .border.rounded-2xl .text-5xl, .border.rounded-2xl .text-4xl, .border.rounded-2xl .text-3xl{
+    font-size: clamp(20px, 6.3vw, 28px) !important;
+    line-height: 1.15 !important;
+    letter-spacing: -0.02em;
+  }
+  /* por si el número no entra, que pueda partirse sin romper */
+  .card .text-5xl, .card .text-4xl, .card .text-3xl{
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  /* el contenedor del KPI que no colapse: columna clara */
+  .card, .border.rounded-2xl{
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+}
+/* ===== KPIs en Reportes (móvil): forzar tamaño y legibilidad ===== */
+@media (max-width: 480px){
+  .reports .stat-value,
+  .reports .kpi-value,
+  .reports .value,
+  .reports [data-kpi="value"],
+  .reports .text-5xl,
+  .reports .text-4xl,
+  .reports .text-3xl{
+    font-size: clamp(18px, 5.8vw, 26px) !important;
+    line-height: 1.2 !important;
+    letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* El contenedor de cada KPI que no colapse y distribuya bien */
+  .reports .card,
+  .reports .stat,
+  .reports .kpi,
+  .reports .border.rounded-2xl{
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+}
+/* ===== Fallback global en móvil para textos muy grandes ===== */
+@media (max-width: 480px){
+  .text-5xl{ font-size: 2rem !important; line-height: 1.2 !important; }
+  .text-4xl{ font-size: 1.75rem !important; line-height: 1.22 !important; }
+  .text-3xl{ font-size: 1.5rem !important; line-height: 1.24 !important; }
+}
