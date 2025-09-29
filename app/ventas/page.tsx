@@ -1,7 +1,7 @@
-﻿import { useState, useEffect, useRef } from 'react';
-"use client";
+﻿"use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+"use client";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -386,4 +386,5 @@ export default function POSPage() {  // === POS mejoras (auto-inyectadas) ===
 </div>
   );
 }
+
 
