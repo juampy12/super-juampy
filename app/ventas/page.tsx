@@ -1,26 +1,12 @@
 ﻿"use client";
 
-export type HeldCart = {
-  items: Array<{ id: string; name: string; price: number; qty: number }>;
-  note?: string;
-  savedAt: string; // ISO
-};
+import React from "react";
 
-const KEY = "superjuampy.pos.heldCart";
-
-export function saveHeldCart(cart: HeldCart) {
-  try { localStorage.setItem(KEY, JSON.stringify(cart)); } catch {}
+export default function VentasPage() {
+  return (
+    <main className="p-6">
+      <h1 className="text-2xl font-semibold">POS temporal</h1>
+      <p>La ruta /ventas compila y renderiza ok. Luego reinsertamos el POS real.</p>
+    </main>
+  );
 }
-
-export function getHeldCart(): HeldCart | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as HeldCart;
-  } catch { return null; }
-}
-
-export function clearHeldCart() {
-  try { localStorage.removeItem(KEY); } catch {}
-}
-
