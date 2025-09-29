@@ -1,5 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
@@ -13,27 +12,7 @@ type Store = { id: string; name: string };
 type Row = { id: string; sku: string; name: string; price: number; stock: number };
 type CartLine = { product_id: string; sku: string; name: string; price: number; qty: number };
 
-export default function POSPage() {  // === POS mejoras (auto-inyectadas) ===
-  const [showPay, setShowPay] = useState(false);
-  // Heurística para calcular subtotal a partir de 'rows' (si existe)
-  // price/unit_price x qty/quantity
-  // Si tu variable tiene otro nombre, ajustalo a mano.
-  // @ts-ignore
-  const subtotal = Array.isArray(rows)
-    ? rows.reduce((a,r)=> a + ((r?.price ?? r?.unit_price ?? 0) * (r?.qty ?? r?.quantity ?? 1)), 0)
-    : 0;
-
-  const openPayment = () => setShowPay(true);
-  const closePayment = () => setShowPay(false);
-
-  // Intento heurístico: buscar el input de búsqueda
-  const searchRef = useRef<HTMLInputElement|null>(null);
-  useEffect(() => {
-    if (!searchRef.current) {
-      const el = document.querySelector<HTMLInputElement>("input[type='search'], input[placeholder*='buscar'], input[placeholder*='Buscar']");
-      if (el) searchRef.current = el;
-    }
-  }, []);
+export default function POSPage() {
   // Sucursal
   const [stores, setStores] = useState<Store[]>([]);
   const [storeId, setStoreId] = useState<string>("");
@@ -329,61 +308,6 @@ export default function POSPage() {  // === POS mejoras (auto-inyectadas) ===
           </div>
         )}
       </div>
-    {/* === POS – barra flotante: Hold/Resume + Panel Cobro === */}
-<div className="fixed right-4 bottom-4 flex flex-col gap-3 z-50 items-end">
-  <div className="flex gap-2">
-    <button
-      className="h-10 rounded-xl px-3 bg-slate-100 hover:bg-slate-200"
-      onClick={() => { try {
-        // @ts-ignore
-        saveHold({ rows }); 
-      } catch {} }}
-    >
-      Pausar venta
-    </button>
-    <button
-      className="h-10 rounded-xl px-3 bg-slate-100 hover:bg-slate-200"
-      onClick={() => { try {
-        const data = loadHold<{ rows:any[] }>();
-        // @ts-ignore: setRows puede llamarse distinto; si no existe, ajustalo a mano.
-        if (data?.rows && typeof setRows === 'function') setRows(data.rows);
-      } catch {} }}
-    >
-      Retomar
-    </button>
-    <button className="h-10 rounded-xl px-3 bg-slate-100 hover:bg-slate-200" onClick={() => clearHold()}>
-      Limpiar pausa
-    </button>
-    <button
-      className="h-10 rounded-xl px-3 bg-blue-600 text-white hover:bg-blue-700"
-      onClick={() => openPayment()}
-      disabled={subtotal <= 0}
-    >
-      Cobro (F4)
-    </button>
-  </div>
-
-  {showPay && (
-    <div className="rounded-2xl shadow-xl border bg-white p-3">
-      <PaymentPanel
-        subtotal={subtotal}
-        onCharge={(p) => {
-          // Enlazá tu confirmación si querés.
-          // Por defecto: solo cierra el panel.
-          closePayment();
-        }}
-      />
     </div>
-  )}
-</div>
-
-{/* Atajos: F2 buscar, F4 abrir cobro, Esc cerrar */}
-<PosShortcuts
-  onOpenPayment={openPayment}
-  onClosePayment={closePayment}
-  onFocusSearch={() => searchRef.current?.focus()}
-/>
-</div>
   );
 }
-
