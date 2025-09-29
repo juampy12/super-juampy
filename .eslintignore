@@ -1,0 +1,3 @@
+﻿.backup-*
+**/*.backup.tsx
+**/*.backup.ts
