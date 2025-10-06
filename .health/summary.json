@@ -1,0 +1,18 @@
+﻿{
+    "project_dir":  "C:\\Users\\jpuri\\Documents\\super-juampy",
+    "node_version":  "v20.9.0",
+    "npm_version":  "10.1.0",
+    "next_version":  "Next.js v15.5.3",
+    "deps_installed":  true,
+    "tsc_errors":  0,
+    "next_build_errors":  1,
+    "use_client_flags":  0,
+    "eslint_errors":  -1,
+    "eslint_warnings":  0,
+    "missing_env_keys":  [
+                             "NEXTAUTH_SECRET",
+                             "NEXTAUTH_URL",
+                             "NEXT_PUBLIC_SITE_URL"
+                         ],
+    "timestamp":  "2025-09-29 20:54:28"
+}

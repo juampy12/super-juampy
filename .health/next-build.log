@@ -1,0 +1,35 @@
+ ⚠ Linting is disabled.
+   ▲ Next.js 15.5.4
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+Failed to compile.
+
+./app/reports/page.tsx
+Module not found: C:\Users\jpuri\Documents\super-juampy\node_modules\react-day-picker\package.json (directory description file): SyntaxC:\Users\jpuri\Documents\super-juampy\node_modules\react-day-picker\package.json (directory description file): SyntaxError: C:\Users\jpuri\Documents\super-juampy\node_modules\react-day-picker\package.json (directory description file): SyntaxError: C:\Users\jpuri\Documents\super-juampy\node_modules\react-day-picker\package.json (directory description file): SyntaxError: C:\Users\jpuri\Documents\super-juampy\node_modules\react-day-picker\package.json (directory description file): SyntaxError: C:\Users\jpuri\Documents\super-juampy\node_modules\react-day-picker\package.json (directory description file): SyntaxError: Unexpected token '﻿', "﻿{
+  "name"... is not valid JSON
+
+https://nextjs.org/docs/messages/module-not-found
+
+./app/reports/page.tsx
+Module not found: Can't resolve 'xlsx'
+
+https://nextjs.org/docs/messages/module-not-found
+
+./app/reports/page.tsx
+Module not found: Can't resolve 'jspdf'
+
+https://nextjs.org/docs/messages/module-not-found
+
+./app/reports/page.tsx
+Module not found: Can't resolve 'jspdf-autotable'
+
+https://nextjs.org/docs/messages/module-not-found
+
+./app/reports/page.tsx
+Module not found: Can't resolve 'html2canvas'
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+> Build failed because of webpack errors

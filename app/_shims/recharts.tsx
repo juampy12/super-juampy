@@ -1,0 +1,15 @@
+﻿import React from "react";
+const passthrough = (Tag="div") => ({ children, ...props }) => React.createElement(Tag, { ...props }, children);
+export const ResponsiveContainer = passthrough("div");
+export const LineChart = passthrough("div");
+export const Line = passthrough("div");
+export const AreaChart = passthrough("div");
+export const Area = passthrough("div");
+export const BarChart = passthrough("div");
+export const Bar = passthrough("div");
+export const XAxis = passthrough("div");
+export const YAxis = passthrough("div");
+export const CartesianGrid = passthrough("div");
+export const Tooltip = passthrough("div");
+export const Legend = passthrough("div");
+export default {};
