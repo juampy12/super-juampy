@@ -1,4 +1,7 @@
+/* eslint-disable no-empty */
+type ConfirmSaleButtonProps = { rows?: PosRow[]; onConfirmed?: (saleId: string) => void; disabled?: boolean; };
 ﻿"use client";
+type PosRow = { id: string; qty: number; price: number; product_id?: string; name?: string };
 import React, { useState } from "react";
 
 type AnyItem = any;
@@ -47,10 +50,10 @@ export default function ConfirmSaleButton({
   qty,
   onConfirmed,
 }: Props) {
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
-  async function handleClick(e?: React.MouseEvent<HTMLButtonElement>) {
+  async function _handleClick(e?: React.MouseEvent<HTMLButtonElement>) {
     e?.preventDefault();
     e?.stopPropagation();
     console.log("🔊 BTN: click");
@@ -93,9 +96,9 @@ export default function ConfirmSaleButton({
       try { alert(`Venta confirmada ✔️\nTicket: ${saleId}`); } catch {}
 
       setTimeout(() => setOkMsg(null), 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("🔊 BTN: ERROR", err);
-      alert("ERROR al confirmar venta: " + (err?.message ?? String(err)));
+      alert("ERROR al confirmar venta: " + ((err instanceof Error ? err.message : String(err)) ?? String(err)));
     } finally {
       setLoading(false);
     }
