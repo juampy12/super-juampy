@@ -1,6 +1,5 @@
 ﻿"use client";
 import React, { useState } from "react";
-import { posConfirmarVenta, type PosRow } from "../lib/posConfirm";
 
 type AnyItem = any;
 

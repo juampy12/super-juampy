@@ -8,10 +8,10 @@ export default function VentaTest() {
   const [productId, setProductId] = useState('');
   const [qty, setQty] = useState<number>(1);
   const [price, setPrice] = useState<number>(0);
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
-  async function onRun() {
+  async function _onRun() {
     try {
       if (!storeId) throw new Error('Falta storeId');
       if (!productId) throw new Error('Falta productId');
