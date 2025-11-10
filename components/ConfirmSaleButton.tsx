@@ -1,6 +1,5 @@
 /* eslint-disable no-empty */
 type ConfirmSaleButtonProps = { rows?: PosRow[]; onConfirmed?: (saleId: string) => void; disabled?: boolean; };
-﻿"use client";
 type PosRow = { id: string; qty: number; price: number; product_id?: string; name?: string };
 import React, { useState } from "react";
 
