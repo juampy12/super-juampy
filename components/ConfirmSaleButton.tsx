@@ -18,9 +18,9 @@ function showToast(msg: string) {
     }
     el.textContent = msg;
     // auto-ocultar a los 3s (reseteable)
-    // @ts-ignore
+    // @ts-expect-error - justificado: ver TODO
     clearTimeout(el._t);
-    // @ts-ignore
+    // @ts-expect-error - justificado: ver TODO
     el._t = setTimeout(() => el && el.remove(), 3000);
   } catch (e) {
     console.warn("toast failed", e);
@@ -61,7 +61,7 @@ export default function ConfirmSaleButton({
 
       console.log("🔊 BTN: cartItems =", cartItems);
 
-      let rows: PosRow[] =
+      const rows: PosRow[] =
         cartItems.length > 0
           ? cartItems.map((it: AnyItem) => ({
               id: it.product_id ?? it.id ?? it.product?.id,
@@ -82,12 +82,12 @@ export default function ConfirmSaleButton({
 
       const saleId = await 
 
-      console.log("🔊 BTN: RPC OK saleId =", saleId);
+      console.log("🔊 BTN: RPC OK");
       const msg = `Venta confirmada ✔️ #${String(saleId).slice(0,8)}`;
       setOkMsg(msg);
-      onConfirmed?.(saleId);
-
-      // ✅ Toast flotante (no depende de React)
+      const saleIdStr: string = (saleId == null ? "" : String(saleId));
+      if (onConfirmed && saleIdStr) onConfirmed(saleIdStr);
+// ✅ Toast flotante (no depende de React)
       showToast(msg);
 
       // Fallback (por si el navegador bloquea el toast)

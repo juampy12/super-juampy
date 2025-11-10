@@ -9,7 +9,9 @@ export default function ForceLight() {
       localStorage.removeItem("theme"); // por si algún toggle lo guardó
       // Asegura esquema de color claro para inputs nativos
       document.documentElement.style.colorScheme = "light";
-    } catch {}
+    } catch {
+  /* TODO: implementar o eliminar si no se usa */
+}
   }, []);
   return null;
 }

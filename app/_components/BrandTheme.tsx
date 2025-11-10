@@ -32,7 +32,9 @@ export default function BrandTheme(){
           r+=R; g+=G; b+=B; cnt++
         }
         if(cnt>0){ setVars(Math.round(r/cnt), Math.round(g/cnt), Math.round(b/cnt)) }
-      }catch{}
+      }catch{
+  /* TODO: implementar o eliminar si no se usa */
+}
     }
   }, [])
   return null

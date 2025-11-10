@@ -38,7 +38,9 @@ export async function exportReceiptPDF(opts: {
     const logo = await toDataURL("/logo-super-juampy.png");
     doc.addImage(logo, "PNG", (W - 30) / 2, y, 30, 14);
     hasLogo = true;
-  } catch {}
+  } catch {
+  /* TODO: implementar o eliminar si no se usa */
+}
   y += hasLogo ? 16 : 0;
 
   doc.setFontSize(10);

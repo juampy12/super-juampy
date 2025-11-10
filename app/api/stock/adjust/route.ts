@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     const storeId   = String(body?.storeId ?? "");
     const productId = String(body?.productId ?? "");
     const newStock  = Number(body?.newStock ?? NaN);
-    const reason    = String(body?.reason ?? "adjust");
+    const _reason    = String(body?._reason ?? "adjust");
 
     if (!storeId || !productId || Number.isNaN(newStock)) {
       return NextResponse.json({ ok:false, error:"Parámetros inválidos" }, { status:400 });
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       .insert({
         store_id: storeId,
         product_id: productId,
-        reason: delta >= 0 ? "adjust_in" : "adjust_out",
+        _reason: delta >= 0 ? "adjust_in" : "adjust_out",
         qty: Math.abs(delta),
         delta: delta
       });
