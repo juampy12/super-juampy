@@ -1,118 +1,83 @@
-/* eslint-disable no-empty */
-type ConfirmSaleButtonProps = { rows?: PosRow[]; onConfirmed?: (saleId: string) => void; disabled?: boolean; };
-type PosRow = { id: string; qty: number; price: number; product_id?: string; name?: string };
-import React, { useState } from "react";
+"use client";
 
-type AnyItem = any;
-
-function showToast(msg: string) {
-  try {
-    let el = document.getElementById("sj-toast") as HTMLDivElement | null;
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "sj-toast";
-      el.setAttribute(
-        "style",
-        "position:fixed;right:16px;bottom:16px;background:#16a34a;color:#fff;padding:10px 14px;border-radius:8px;z-index:99999;box-shadow:0 6px 20px rgba(0,0,0,.2);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.2"
-      );
-      document.body.appendChild(el);
-    }
-    el.textContent = msg;
-    // auto-ocultar a los 3s (reseteable)
-    // @ts-expect-error - justificado: ver TODO
-    clearTimeout(el._t);
-    // @ts-expect-error - justificado: ver TODO
-    el._t = setTimeout(() => el && el.remove(), 3000);
-  } catch (e) {
-    console.warn("toast failed", e);
-  }
-}
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Props = {
-  /** UUID de la sucursal (stores.id) */
-  storeId: string;
-
-  /** Ítems del ticket (preferido). Cada item debe tener id/product_id y qty/price. */
-  cartItems?: AnyItem[];
-
-  /** Compatibilidad: un solo producto */
-  productId?: string;
-  qty?: number;
-
-  onConfirmed?: (saleId: string) => void;
+  saleId?: string;       // ya no lo usamos, pero lo dejamos por compatibilidad
+  productId: string;     // ID o SKU del producto
+  qty?: number;          // cantidad directa
+  defaultQty?: number;   // cantidad por defecto (viene desde la page vieja)
+  onConfirmed?: () => void;
 };
 
 export default function ConfirmSaleButton({
-  storeId,
-  cartItems = [],
+  saleId,        // no usado, pero lo dejamos para no romper props
   productId,
   qty,
+  defaultQty,
   onConfirmed,
 }: Props) {
-  const [_loading, setLoading] = useState(false);
-  const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
-  async function _handleClick(e?: React.MouseEvent<HTMLButtonElement>) {
-    e?.preventDefault();
-    e?.stopPropagation();
-    console.log("🔊 BTN: click");
-    setOkMsg(null);
+  // usamos qty si viene, si no defaultQty, si no 1
+  const finalQty = qty ?? defaultQty ?? 1;
+
+  async function handleClick() {
     try {
-      if (!storeId) throw new Error("Falta storeId (UUID de la sucursal).");
-
-      console.log("🔊 BTN: cartItems =", cartItems);
-
-      const rows: PosRow[] =
-        cartItems.length > 0
-          ? cartItems.map((it: AnyItem) => ({
-              id: it.product_id ?? it.id ?? it.product?.id,
-              qty: Number(it.cant ?? it.qty ?? it.quantity ?? it.count ?? 1),
-              price: Number(
-                it.precio ?? it.price ?? it.unit_price ?? it.unitPrice ?? 0
-              ),
-            }))
-          : productId
-          ? [{ id: productId, qty: Number(qty ?? 1), price: 0 }]
-          : [];
-
-      if (rows.length === 0)
-        throw new Error("No hay ítems en el ticket para confirmar.");
-
       setLoading(true);
-      console.log("🔊 BTN: llamando RPC con rows =", rows);
 
-      const saleId = await 
+      const body = {
+        // el route actual mira body.items (o body.detalle, body.cart, etc.)
+        items: [
+          {
+            product_id: productId,
+            qty: finalQty,
+          },
+        ],
+        // dejamos estos campos opcionales por si en el futuro los usamos
+        // total: 0,
+        // storeId: null,
+        // payment: {},
+      };
 
-      console.log("🔊 BTN: RPC OK");
-      const msg = `Venta confirmada ✔️ #${String(saleId).slice(0,8)}`;
-      setOkMsg(msg);
-      const saleIdStr: string = (saleId == null ? "" : String(saleId));
-      if (onConfirmed && saleIdStr) onConfirmed(saleIdStr);
-// ✅ Toast flotante (no depende de React)
-      showToast(msg);
+      const res = await fetch("/api/pos/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
 
-      // Fallback (por si el navegador bloquea el toast)
-      try { alert(`Venta confirmada ✔️\nTicket: ${saleId}`); } catch {}
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
 
-      setTimeout(() => setOkMsg(null), 3000);
-    } catch (err: unknown) {
-      console.error("🔊 BTN: ERROR", err);
-      alert("ERROR al confirmar venta: " + ((err instanceof Error ? err.message : String(err)) ?? String(err)));
+      const json = await res.json().catch(() => ({}));
+      if (json?.ok === false) {
+        throw new Error(json.error || "Error en confirm_sale");
+      }
+
+      alert("Venta confirmada");
+
+      router.refresh();
+      onConfirmed?.();
+    } catch (e: any) {
+      console.error(e);
+      alert("Error al confirmar: " + (e?.message ?? "desconocido"));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      
-
-      {okMsg && (
-        <div className="text-sm rounded-md bg-green-600/10 text-green-700 border border-green-600/30 px-3 py-2">
-          {okMsg}
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={loading}
+      className="rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {loading ? "Confirmando..." : `Confirmar venta (${finalQty})`}
+    </button>
   );
 }
-
