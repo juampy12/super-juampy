@@ -1,34 +1,31 @@
 "use client";
 
-import { useState } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
-import { startOfMonth, endOfMonth } from "date-fns";
 
 export default function TopProductsPage() {
-  const [month, setMonth] = useState<Date>(new Date());
-  const from = startOfMonth(month);
-  const to = endOfMonth(month);
-
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Top Products</h1>
-      <div className="max-w-sm">
-        <DayPicker
-          mode="single"
-          month={month}
-          onMonthChange={setMonth}
-          selected={month}
-          captionLayout="dropdown"
-        />
-      </div>
-      <p className="text-sm opacity-80">
-        Rango sugerido: {from.toISOString().slice(0,10)} → {to.toISOString().slice(0,10)}
-      </p>
-      <div className="rounded-xl border p-4">
-        {/* Placeholder no destructivo: acá iría la tabla/gráfico real */}
-        <p>Placeholder: aún sin consulta a Supabase para no tocar datos.</p>
-      </div>
-    </div>
+    <main className="p-6 space-y-6">
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Top de productos</h1>
+          <p className="text-sm text-muted-foreground">
+            Reporte de productos más vendidos en un rango de fechas.
+          </p>
+        </div>
+      </header>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Rango de fechas</h2>
+        <DayPicker />
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-lg font-semibold">Resultados</h2>
+        <p className="text-sm text-muted-foreground">
+          TODO: conectar este reporte con los datos reales de ventas (Supabase).
+        </p>
+      </section>
+    </main>
   );
 }
