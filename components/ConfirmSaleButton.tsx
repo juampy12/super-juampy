@@ -3,49 +3,82 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+type ConfirmItem = {
+  product_id: string;
+  qty: number;
+  unit_price: number;
+};
+
+type PaymentBreakdown = {
+  cash?: number;
+  debit?: number;
+  credit?: number;
+  mp?: number;
+  account?: number;
+};
+
+type PaymentInfo = {
+  method:
+    | "efectivo"
+    | "debito"
+    | "credito"
+    | "mp"
+    | "cuenta_corriente"
+    | "mixto";
+  total_paid: number;
+  change?: number;
+  breakdown?: PaymentBreakdown;
+  notes?: string;
+};
+
 type Props = {
-  saleId?: string;       // ya no lo usamos, pero lo dejamos por compatibilidad
-  productId: string;     // ID o SKU del producto
-  qty?: number;          // cantidad directa
-  defaultQty?: number;   // cantidad por defecto (viene desde la page vieja)
+  items: ConfirmItem[];
+  total: number;
+  payment?: PaymentInfo;
   onConfirmed?: () => void;
 };
 
 export default function ConfirmSaleButton({
-  saleId,        // no usado, pero lo dejamos para no romper props
-  productId,
-  qty,
-  defaultQty,
+  items,
+  total,
+  payment,
   onConfirmed,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  // usamos qty si viene, si no defaultQty, si no 1
-  const finalQty = qty ?? defaultQty ?? 1;
-
   async function handleClick() {
+    if (!items || items.length === 0) {
+      alert("No hay productos en el carrito.");
+      return;
+    }
+
+    if (!payment) {
+      alert("Falta información de pago.");
+      return;
+    }
+
+    // Validaciones básicas
+    if (payment.method === "efectivo" || payment.method === "mixto") {
+      if (payment.total_paid < total) {
+        alert(
+          `El monto pagado ($${payment.total_paid}) es menor que el total ($${total}).`
+        );
+        return;
+      }
+    }
+
     try {
       setLoading(true);
-
-      const body = {
-        // el route actual mira body.items (o body.detalle, body.cart, etc.)
-        items: [
-          {
-            product_id: productId,
-            qty: finalQty,
-          },
-        ],
-        // dejamos estos campos opcionales por si en el futuro los usamos
-        // total: 0,
-        // storeId: null,
-        // payment: {},
-      };
 
       const res = await fetch("/api/pos/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          items,
+          total,
+          payment,
+        }),
       });
 
       if (!res.ok) {
@@ -53,13 +86,7 @@ export default function ConfirmSaleButton({
         throw new Error(txt || `HTTP ${res.status}`);
       }
 
-      const json = await res.json().catch(() => ({}));
-      if (json?.ok === false) {
-        throw new Error(json.error || "Error en confirm_sale");
-      }
-
       alert("Venta confirmada");
-
       router.refresh();
       onConfirmed?.();
     } catch (e: any) {
@@ -73,11 +100,13 @@ export default function ConfirmSaleButton({
   return (
     <button
       type="button"
-      onClick={handleClick}
-      disabled={loading}
-      className="rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+      onClick={() => {
+        void handleClick();
+      }}
+      disabled={loading || items.length === 0}
+      className="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {loading ? "Confirmando..." : `Confirmar venta (${finalQty})`}
+      {loading ? "Confirmando..." : `Confirmar venta ($${total})`}
     </button>
   );
 }
