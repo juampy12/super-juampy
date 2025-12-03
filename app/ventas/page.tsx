@@ -85,26 +85,28 @@ const totalItems = items.reduce((sum, it) => sum + it.qty, 0);
   const [accountAmount, setAccountAmount] = useState(0);
 
   const [notes, setNotes] = useState("");
-
+const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   // Cargar sucursales
-  useEffect(() => {
-    supabase
-      .from("stores")
-      .select("id,name")
-      .order("name", { ascending: true })
-      .then(({ data, error }) => {
-        if (error) {
-          console.error(error);
-          alert("Error cargando sucursales: " + error.message);
-          return;
-        }
-        const list = data ?? [];
-        setStores(list);
-        if (list.length > 0 && !storeId) {
-          setStoreId(list[0].id);
-        }
-      });
-  }, []);
+useEffect(() => {
+  supabase
+    .from("stores")
+    .select("id,name")
+    .order("name", { ascending: true })
+    .then(({ data, error }) => {
+      if (error) {
+        console.error(error);
+        alert("Error cargando sucursales: " + error.message);
+        return;
+      }
+
+      const list = data ?? [];
+      setStores(list);
+
+      if (list.length > 0 && !selectedStoreId) {
+        setSelectedStoreId(list[0].id);
+      }
+    });
+}, []);
 
   async function handleSearch() {
     const term = search.trim();
@@ -112,7 +114,7 @@ const totalItems = items.reduce((sum, it) => sum + it.qty, 0);
       alert("Escribí nombre o SKU para buscar.");
       return;
     }
-    if (!storeId) {
+    if (!selectedStoreId) {
       alert("Elegí una sucursal antes de buscar.");
       return;
     }
@@ -122,7 +124,7 @@ const totalItems = items.reduce((sum, it) => sum + it.qty, 0);
       const q = term || null;
 
       const { data, error } = await supabase.rpc("products_with_stock", {
-        p_store: storeId,
+        p_store: selectedStoreId,
         p_query: q,
         p_limit: 100,
       });
@@ -250,11 +252,11 @@ const cashGivenNum = Number(cashGivenStr || "") || 0;
         <div className="space-y-3">
           <div className="space-y-1">
             <label className="block text-sm mb-1">Sucursal</label>
-            <select
-              className="border rounded px-3 py-2 w-full"
-              value={storeId}
-              onChange={(e) => setStoreId(e.target.value)}
-            >
+<select
+  className="border rounded px-3 py-2 w-full"
+  value={selectedStoreId ?? ""}
+  onChange={(e) => setSelectedStoreId(e.target.value)}
+>
               {stores.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -643,6 +645,7 @@ const cashGivenNum = Number(cashGivenStr || "") || 0;
                   setAccountAmount(0);
                   setNotes("");
                 }}
+storeId={selectedStoreId}
               />
             </div>
           )}

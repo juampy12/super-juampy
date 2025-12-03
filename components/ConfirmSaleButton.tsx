@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
+const FIXED_STORE_ID = "06ca13ff-d96d-4670-84d7-41057b3f6bc7";
 type ConfirmItem = {
   product_id: string;
   qty: number;
@@ -36,6 +36,7 @@ type Props = {
   total: number;
   payment?: PaymentInfo;
   onConfirmed?: () => void;
+  storeId?: string | null;
 };
 
 export default function ConfirmSaleButton({
@@ -43,6 +44,7 @@ export default function ConfirmSaleButton({
   total,
   payment,
   onConfirmed,
+storeId,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -52,7 +54,7 @@ export default function ConfirmSaleButton({
       alert("No hay productos en el carrito.");
       return;
     }
-
+const storeIdToUse = storeId ?? FIXED_STORE_ID;
     if (!payment) {
       alert("Falta información de pago.");
       return;
@@ -78,6 +80,7 @@ export default function ConfirmSaleButton({
           items,
           total,
           payment,
+store_id: storeIdToUse,
         }),
       });
 
