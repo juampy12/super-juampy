@@ -1,34 +1,47 @@
-'use client';
+"use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import type { DateRange as RDPDateRange } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 
-/** Tipos únicos (sin duplicados) */
+/** Tipos */
 export type Store = { id: string; name: string };
+
 export type Row = {
-  day: string;
+  day: string;           // '2025-12-05'
   store_id: string | null;
   tickets: number;
-  revenue: number;
+
+  revenue?: number | null;      // por si en algún momento lo llamaste así
+  total_amount?: number | null; // nombre actual en la vista
+  total?: number | null;        // fallback
 };
 
-/** Helpers bien tipados */
-type ByDay = Record<string, Record<string, number>>;
-const n = (v: unknown): number =>
-  typeof v === "number" && isFinite(v) ? v : Number(v) || 0;
-const s = (v: unknown): string => (v == null ? "" : String(v));
+// 👉 saca el valor correcto de ingresos sin importar el campo
+function getRevenue(row: Row): number {
+  return (
+    Number(row.revenue ?? row.total_amount ?? row.total ?? 0) || 0
+  );
+}
 
-/** Mock mínimo para no romper el build si aún no hay DB */
+// helper para enviar YYYY-MM-DD
+function formatDate(d: Date): string {
+  return d.toISOString().split("T")[0];
+}
+
+/** Helpers para la tabla */
+type ByDay = Record<string, Record<string, number>>;
+
+// IDs reales de tus sucursales
 const MOCK_STORES: Store[] = [
-  { id: "alberdi", name: "Alberdi" },
-  { id: "sanmartin", name: "Av. San Martín" },
-  { id: "tacuari", name: "Tacuari" },
+  { id: "06ca13ff-d96d-4670-84d7-41057b3f6bc7", name: "Alberdi" },
+  { id: "914dee4d-a78c-4f3f-8998-402c56fc88e9", name: "Av. San Martín" },
+  { id: "fb38a57d-78cc-4ccc-92d4-c2cc2cefd22f", name: "Tacuari" },
 ];
 
 export default function ReportsPage() {
-  // 📌 KPIs del reporte
+  // KPIs que mostramos
   const [kpis, setKpis] = useState({
     totalAmount: 0,
     tickets: 0,
@@ -38,52 +51,62 @@ export default function ReportsPage() {
 
   const today = new Date();
 
-  // Rango de fechas
+  // Rango de fechas (por defecto todo el mes actual)
   const [range, setRange] = useState<RDPDateRange | undefined>({
     from: new Date(today.getFullYear(), today.getMonth(), 1),
     to: new Date(today.getFullYear(), today.getMonth() + 1, 0),
   });
 
-  // Sucursales y tabla
+  // sucursales y filas
   const [stores] = useState<Store[]>(MOCK_STORES);
   const [rowsAll, setRowsAll] = useState<Row[]>([]);
   const [selectedStore, setSelectedStore] = useState<string | null>(null);
 
-  // 🔥 CARGAR KPI + TABLA DESDE LA API
+  // 🔥 Cargar KPIs + tabla desde la API
   async function loadSummary() {
     try {
       setLoadingKpis(true);
 
-      // preparar fechas en formato YYYY-MM-DD
-      const from = range?.from
-        ? range.from.toISOString().split("T")[0]
-        : "";
-      const to = range?.to ? range.to.toISOString().split("T")[0] : "";
-      const storeId = selectedStore ?? "";
+      const fromStr = range?.from ? formatDate(range.from) : null;
+      let toStr = range?.to ? formatDate(range.to) : null;
 
-      // llamar a /api/reports/summary
-      const res = await fetch(
-        `/api/reports/summary?from=${from}&to=${to}&store_id=${storeId}`,
-        { cache: "no-store" }
-      );
+      // ⚠️ Si el usuario selecciona solo un día, usamos el mismo para `to`
+      if (!toStr && fromStr) {
+        toStr = fromStr;
+      }
+
+      const params = new URLSearchParams();
+      if (fromStr) params.append("from", fromStr);
+      if (toStr) params.append("to", toStr);
+      if (selectedStore) params.append("store_id", selectedStore);
+
+      const res = await fetch(`/api/reports/summary?${params.toString()}`, {
+        cache: "no-store",
+      });
 
       if (!res.ok) {
-        throw new Error("Error en la respuesta del servidor");
+        throw new Error(`Error HTTP ${res.status}`);
       }
 
       const data = await res.json();
       console.log("SUMMARY RESPONSE:", data);
 
-      // actualizar KPIs (según lo que devuelva tu API)
-      setKpis({
-        totalAmount: n(data.totalAmount),
-        tickets: n(data.tickets),
-        avgTicket: n(data.avgTicket),
-      });
+      // KPIs desde la API (ya vienen filtrados por rango + sucursal)
+      if (data.kpis) {
+        setKpis({
+          totalAmount: Number(data.kpis.totalAmount ?? 0),
+          tickets: Number(data.kpis.tickets ?? 0),
+          avgTicket: Number(data.kpis.avgTicket ?? 0),
+        });
+      } else {
+        setKpis({ totalAmount: 0, tickets: 0, avgTicket: 0 });
+      }
 
-      // actualizar filas (tabla)
-      if (data.rows) {
+      // filas
+      if (Array.isArray(data.rows)) {
         setRowsAll(data.rows as Row[]);
+      } else {
+        setRowsAll([]);
       }
     } catch (err) {
       console.error("Error cargando reportes", err);
@@ -93,49 +116,17 @@ export default function ReportsPage() {
     }
   }
 
-  // Ejecutar carga del reporte cuando cambia fecha o sucursal
+  // Ejecutar cuando cambia el rango O la sucursal
   useEffect(() => {
     loadSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, selectedStore]);
 
-  // Filas filtradas por fecha + sucursal
-  const rows = useMemo<Row[]>(() => {
-    if (!rowsAll || rowsAll.length === 0) return [];
+  // Las filas que usamos en tabla (ya vienen filtradas en la API por sucursal,
+  // pero si quisieras podrías volver a filtrar acá)
+  const rows = rowsAll;
 
-    // si no hay rango, devolvemos todo pero filtrando por sucursal
-    if (!range?.from || !range?.to) {
-      return rowsAll.filter((row) => {
-        const matchesStore =
-          !selectedStore || row.store_id === selectedStore;
-        return matchesStore;
-      });
-    }
-
-    // Filtrar por rango de fechas + sucursal
-    return rowsAll.filter((row) => {
-      const d = new Date(row.day); // usamos day, no date
-      const inRange = d >= range.from! && d <= range.to!;
-      const matchesStore =
-        !selectedStore || row.store_id === selectedStore;
-      return inRange && matchesStore;
-    });
-  }, [rowsAll, range, selectedStore]);
-
-  // KPI agregados desde rows (por si los querés usar también)
-  const totalRevenue = useMemo(
-    () => rows.reduce((a, b) => a + n(b.revenue), 0),
-    [rows]
-  );
-
-  const totalTickets = useMemo(
-    () => rows.reduce((a, b) => a + n(b.tickets), 0),
-    [rows]
-  );
-
-  const avgTicket = totalTickets ? totalRevenue / totalTickets : 0;
-
-  // Tabla por día y sucursal
+  // Agrupado por día y sucursal
   const byDay: ByDay = useMemo(() => {
     const map: ByDay = {};
     for (const r of rows) {
@@ -143,11 +134,10 @@ export default function ReportsPage() {
       const storeName =
         stores.find((st) => st.id === r.store_id)?.name ||
         r.store_id ||
-        "Todas";
+        "Sin sucursal";
 
-      map[day] = map[day] || {};
-      map[day][storeName] =
-        (map[day][storeName] || 0) + n(r.revenue);
+      if (!map[day]) map[day] = {};
+      map[day][storeName] = (map[day][storeName] || 0) + getRevenue(r);
     }
     return map;
   }, [rows, stores]);
@@ -172,9 +162,31 @@ export default function ReportsPage() {
           />
         </div>
 
-        {/* KPIs del reporte */}
+        {/* KPIs + selector de sucursal */}
         <div className="rounded-xl border p-4">
-          <h2 className="font-medium mb-4">KPIs</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-medium">KPIs</h2>
+
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-neutral-500">Sucursal:</span>
+              <select
+                className="rounded border px-2 py-1 text-sm"
+                value={selectedStore ?? ""}
+                onChange={(e) =>
+                  setSelectedStore(
+                    e.target.value === "" ? null : e.target.value
+                  )
+                }
+              >
+                <option value="">Todas</option>
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
           <div className="grid grid-cols-3 gap-4">
             {/* Ingresos */}
@@ -227,7 +239,11 @@ export default function ReportsPage() {
                   <td className="py-2 pr-4">{i === 0 ? d : ""}</td>
                   <td className="py-2 pr-4">{sn}</td>
                   <td className="py-2 pr-4">
-                    ${Number(byDay[d][sn] || 0).toFixed(2)}
+                    $
+                    {Number(byDay[d][sn] ?? 0).toLocaleString("es-AR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </td>
                 </tr>
               ));

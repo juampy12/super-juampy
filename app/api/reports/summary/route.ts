@@ -1,30 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+// Detecta el campo de fecha que exista y lo devuelve como "YYYY-MM-DD"
+function getRowDay(row: any): string {
+  const raw =
+    row.day ??
+    row.date ??
+    row.sale_date ??
+    row.fecha ??
+    row.created_at ??
+    row.createdAt ??
+    null;
+
+  if (!raw) return "";
+
+  // Si viene como Date o timestamp, lo convertimos a string
+  const str = typeof raw === "string" ? raw : new Date(raw).toISOString();
+  return str.slice(0, 10); // "YYYY-MM-DD"
+}
+
+// Devuelve el valor correcto de ingresos sin importar el nombre de la columna
+function getRevenue(row: any): number {
+  const v =
+    row.revenue ??
+    row.total_amount ??
+    row.total ??
+    row.amount ??
+    row.total_sales ??
+    0;
+
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
 
-    const from = searchParams.get("from");      // ej: 2025-12-01
-    const to = searchParams.get("to");          // ej: 2025-12-01
-    const storeId = searchParams.get("store_id"); // opcional
+    const fromParam = searchParams.get("from");
+    const toParam = searchParams.get("to");
+    const storeId = searchParams.get("store_id");
 
-    // Validaciones básicas
-    if (!from || !to) {
-      return NextResponse.json(
-        { error: "Parámetros 'from' y 'to' son obligatorios (YYYY-MM-DD)." },
-        { status: 400 }
-      );
-    }
+    // 🔧 Si viene solo `from` o solo `to`, usamos el mismo valor para ambos
+    const from = fromParam || toParam;
+    const to = toParam || fromParam;
 
-    // Armamos query sobre la vista v_pos_sales_kpis
-    let query = supabaseAdmin
-      .from("v_pos_sales_kpis")
-      .select("*")
-      .gte("day", from)
-      .lte("day", to)
-      .order("day", { ascending: true });
+    // 1) Traemos TODOS los campos de la vista y filtramos fechas en JS
+    let query = supabaseAdmin.from("v_sales_daily").select("*");
 
+    // El filtro por sucursal sí lo podemos hacer en la DB
     if (storeId) {
       query = query.eq("store_id", storeId);
     }
@@ -32,40 +56,52 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query;
 
     if (error) {
-      console.error("Error consultando v_pos_sales_kpis:", error);
-      return NextResponse.json(
-        { error: "Error consultando reportes", details: error.message },
-        { status: 500 }
-      );
+      console.error("Supabase error /api/reports/summary:", error);
+      throw error;
     }
 
-    const rows = data ?? [];
+    let rows = (data ?? []).map((row: any) => ({
+      ...row,
+      day: getRowDay(row),
+    }));
 
-    // Calculamos KPIs
-    let totalAmount = 0;
-    let totalTickets = 0;
-
-    for (const row of rows as any[]) {
-      const rowTotal = parseFloat(row.total_amount ?? "0");
-      const rowTickets = Number(row.tickets ?? 0);
-      totalAmount += rowTotal;
-      totalTickets += rowTickets;
+    // 2) Filtro de fechas en JavaScript usando el campo "day" calculado
+    if (from) {
+      rows = rows.filter((r) => r.day && r.day >= from);
+    }
+    if (to) {
+      rows = rows.filter((r) => r.day && r.day <= to);
     }
 
-    const avgTicket = totalTickets > 0 ? totalAmount / totalTickets : 0;
+    // 3) Ordenar por día ascendente (y por store_id para que quede prolijo)
+    rows.sort((a, b) => {
+      if (a.day === b.day) {
+        return String(a.store_id ?? "").localeCompare(String(b.store_id ?? ""));
+      }
+      return String(a.day).localeCompare(String(b.day));
+    });
+
+    // 4) KPIs
+    const totalAmount = rows.reduce(
+      (acc, row) => acc + getRevenue(row),
+      0
+    );
+
+    const tickets = rows.reduce(
+      (acc, row) => acc + Number(row.tickets ?? 0),
+      0
+    );
+
+    const avgTicket = tickets ? totalAmount / tickets : 0;
 
     return NextResponse.json({
-      kpis: {
-        totalAmount,
-        tickets: totalTickets,
-        avgTicket,
-      },
+      kpis: { totalAmount, tickets, avgTicket },
       rows,
     });
-  } catch (e: any) {
-    console.error("Error en /api/reports/summary:", e);
+  } catch (err) {
+    console.error("Error en /api/reports/summary:", err);
     return NextResponse.json(
-      { error: "Error inesperado", details: e?.message ?? String(e) },
+      { error: "Error generando el reporte" },
       { status: 500 }
     );
   }
