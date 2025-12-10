@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       .insert({
         store_id: storeId,
         product_id: productId,
-        _reason: delta >= 0 ? "adjust_in" : "adjust_out",
+reason: delta >= 0 ? "adjust_in" : "adjust_out",
         qty: Math.abs(delta),
         delta: delta
       });
