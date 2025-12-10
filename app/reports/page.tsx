@@ -35,8 +35,8 @@ type ByDay = Record<string, Record<string, number>>;
 
 // IDs reales de tus sucursales
 const MOCK_STORES: Store[] = [
-  { id: "06ca13ff-d96d-4670-84d7-41057b3f6bc7", name: "Alberdi" },
-  { id: "914dee4d-a78c-4f3f-8998-402c56fc88e9", name: "Av. San Martín" },
+  { id: "914dee4d-a78c-4f3f-8998-402c56fc88e9", name: "Alberdi" },
+  { id: "06ca13ff-d96d-4670-84d7-41057b3f6bc7", name: "Av. San Martín" },
   { id: "fb38a57d-78cc-4ccc-92d4-c2cc2cefd22f", name: "Tacuari" },
 ];
 
