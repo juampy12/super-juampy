@@ -181,6 +181,28 @@ useEffect(() => {
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<ProductRow[]>([]);
   const [items, setItems] = useState<CartItem[]>([]);
+function addItem(p: ProductRow) {
+  const unitPrice = Number(p.price ?? 0);
+
+  setItems((prev) => {
+    const idx = prev.findIndex((it) => it.product_id === p.id);
+    if (idx >= 0) {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], qty: copy[idx].qty + 1 };
+      return copy;
+    }
+    return [
+      ...prev,
+      {
+        product_id: p.id,
+        name: p.name,
+        sku: p.sku ?? null,
+        qty: 1,
+        unit_price: unitPrice,
+      },
+    ];
+  });
+}
 const totalItems = items.reduce((sum, it) => sum + it.qty, 0);
   // Pago
   const [paymentMethod, setPaymentMethod] =
