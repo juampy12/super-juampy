@@ -16,6 +16,7 @@ const navLinks = [
   { href: '/products', label: 'Productos', icon: Package },
   { href: '/reports', label: 'Reportes', icon: BarChart3 },
   { href: '/cierres', label: 'Cierre de caja', icon: Wallet },
+  { href: '/cierres/historial', label: 'Historial cierres', icon: Wallet },
   { href: '/reports/top-products', label: 'Top productos', icon: BarChart3 },
 ];
 
