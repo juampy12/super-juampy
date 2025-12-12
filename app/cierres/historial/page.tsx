@@ -29,6 +29,16 @@ function formatMoney(n: number) {
 
 function formatDate(dateStr: string) {
   if (!dateStr) return "-";
+
+  // Si viene como YYYY-MM-DD (fecha de cierre), no usar Date()
+  // porque UTC la corre un día para atrás
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (m) {
+    const [, y, mo, d] = m;
+    return `${d}/${mo}/${y}`;
+  }
+
+  // Fallback si alguna vez viene con hora
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString("es-AR");

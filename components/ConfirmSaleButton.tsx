@@ -1,10 +1,9 @@
 "use client";
-
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-const FIXED_STORE_ID = "06ca13ff-d96d-4670-84d7-41057b3f6bc7";
 type ConfirmItem = {
   product_id: string;
+  name: string;
   qty: number;
   unit_price: number;
 };
@@ -47,14 +46,20 @@ export default function ConfirmSaleButton({
 storeId,
 }: Props) {
   const [loading, setLoading] = useState(false);
+const inFlightRef = useRef(false);
   const router = useRouter();
 
   async function handleClick() {
+if (inFlightRef.current) return;
     if (!items || items.length === 0) {
       alert("No hay productos en el carrito.");
       return;
     }
-const storeIdToUse = storeId ?? FIXED_STORE_ID;
+if (!storeId) {
+  alert("Falta sucursal (storeId). Elegí una sucursal antes de confirmar.");
+  return;
+}
+const storeIdToUse = storeId;
     if (!payment) {
       alert("Falta información de pago.");
       return;
@@ -69,40 +74,56 @@ const storeIdToUse = storeId ?? FIXED_STORE_ID;
         return;
       }
     }
+try {
+  // ✅ Confirmación antes de registrar la venta
+// 🔒 Paso 5: bloqueo anti doble confirmación
+if (inFlightRef.current) return;
+inFlightRef.current = true;
 
-    try {
-      setLoading(true);
+// Confirmación antes de registrar la venta
+const ok = window.confirm(
+  `¿Confirmar venta?\n\nTotal: $${total}\nMétodo: ${payment.method}\nPagado: $${payment.total_paid}`
+);
+if (!ok) {
+  inFlightRef.current = false;
+  return;
+}
 
-      const res = await fetch("/api/pos/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items,
-          total,
-          payment,
-store_id: storeIdToUse,
-        }),
-      });
+setLoading(true);
 
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(txt || `HTTP ${res.status}`);
-      }
+  const res = await fetch("/api/pos/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      items,
+      total,
+      payment,
+      store_id: storeIdToUse,
+    }),
+  });
 
-      alert("Venta confirmada");
-      router.refresh();
-      onConfirmed?.();
-    } catch (e: any) {
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || `HTTP ${res.status}`);
+  }
+
+  alert("Venta confirmada");
+  router.refresh();
+  onConfirmed?.();
+} catch (e: any) {
+
       console.error(e);
       alert("Error al confirmar: " + (e?.message ?? "desconocido"));
     } finally {
       setLoading(false);
+inFlightRef.current = false;
     }
   }
 
   return (
     <button
       type="button"
+data-pos-confirm="1"
       onClick={() => {
         void handleClick();
       }}

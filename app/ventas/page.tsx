@@ -65,9 +65,118 @@ export default function VentasPage() {
 
   const [search, setSearch] = useState("");
 const searchInputRef = useRef<HTMLInputElement | null>(null);
+const cashInputRef = useRef<HTMLInputElement | null>(null);
+// ================= ROLES POS =================
+// =============================================
+type Role = "cajero" | "supervisor";
+
+const SUPERVISOR_PIN =
+  process.env.NEXT_PUBLIC_SUPERJUAMPY_SUPERVISOR_PIN ?? "2580";
+
+const [role, setRole] = useState<Role>(() => {
+  if (typeof window === "undefined") return "cajero";
+  return (localStorage.getItem("pos_role") as Role) || "cajero";
+});
+
+useEffect(() => {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("pos_role", role);
+  }
+}, [role]);
+
+const [showPin, setShowPin] = useState(false);
+const [pinInput, setPinInput] = useState("");
+const pendingActionRef = useRef<null | (() => void)>(null);
+
+function requireSupervisor(action: () => void) {
+  if (role === "supervisor") return action();
+  pendingActionRef.current = action;
+  setPinInput("");
+  setShowPin(true);
+}
+
+function submitPin() {
+  if (pinInput === SUPERVISOR_PIN) {
+    setRole("supervisor");
+    setShowPin(false);
+    const fn = pendingActionRef.current;
+    pendingActionRef.current = null;
+    if (fn) fn();
+  } else {
+    alert("PIN incorrecto");
+    setPinInput("");
+  }
+}
+
+function lockSupervisor() {
+  setRole("cajero");
+  if (typeof window !== "undefined") localStorage.removeItem("pos_role");
+}
+// --- Scanner de código de barras ---
+const scannerBufferRef = useRef("");
+const scannerTimerRef = useRef<NodeJS.Timeout | null>(null);
+// --- Beep (sonido de scanner / POS) ---
+const audioCtxRef = useRef<AudioContext | null>(null);
+
+function playBeep(freq = 880, ms = 80, volume = 0.12) {
+  try {
+    const AudioCtx =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioCtx();
+    }
+
+    const ctx = audioCtxRef.current;
+
+    if (ctx.state === "suspended") {
+      void ctx.resume();
+    }
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "square"; // sonido tipo POS
+    osc.frequency.value = freq;
+
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(volume, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      ctx.currentTime + ms / 1000
+    );
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + ms / 1000 + 0.02);
+  } catch (e) {
+    console.error("beep error", e);
+  }
+}
 
 useEffect(() => {
   searchInputRef.current?.focus();
+}, []);
+useEffect(() => {
+  const unlock = () => {
+    playBeep(440, 20, 0.001); // “beep” casi mudo para habilitar audio
+    window.removeEventListener("keydown", unlock);
+    window.removeEventListener("mousedown", unlock);
+    window.removeEventListener("touchstart", unlock);
+  };
+
+  window.addEventListener("keydown", unlock);
+  window.addEventListener("mousedown", unlock);
+  window.addEventListener("touchstart", unlock);
+
+  return () => {
+    window.removeEventListener("keydown", unlock);
+    window.removeEventListener("mousedown", unlock);
+    window.removeEventListener("touchstart", unlock);
+  };
 }, []);
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<ProductRow[]>([]);
@@ -136,13 +245,14 @@ useEffect(() => {
       }
 
           // el RPC devuelve id, name, sku, price, stock; usamos los campos necesarios
-    const list = (data ?? []) as ProductRow[];
-    setResults(list);
+const list = (data ?? []) as ProductRow[];
+setResults(list);
 
-    // 🔥 Si solo hay un resultado, lo agregamos directo al carrito
-    if (list.length === 1) {
-      addToCart(list[0]);
-    }
+// 🔥 MODO ESCÁNER
+// si hay al menos 1 resultado, agregamos el primero automáticamente
+if (list.length >= 1) {
+  addToCart(list[0]);
+}
 
     } finally {
       setSearching(false);
@@ -242,7 +352,186 @@ const cashGivenNum = Number(cashGivenStr || "") || 0;
   function handlePadClear() {
     setCashGivenStr("0");
   }
+  // =========================
+  // ATAJOS DE TECLADO (modo caja)
+  // =========================
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      // No romper escritura en inputs/textarea/select
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName?.toLowerCase();
+      const isTyping =
+        tag === "input" || tag === "textarea" || tag === "select";
 
+      // Si estás escribiendo en el buscador, dejamos Enter para buscar (ya lo tenés)
+      // y no interceptamos teclas ahí.
+      if (isTyping) return;
+// F8: test de sonido
+if (e.key === "F8") {
+  e.preventDefault();
+  playBeep(880, 90, 0.15);
+  return;
+}
+    // --- Scanner: acumula teclas rápido y dispara búsqueda por "código" ---
+    // (funciona con la mayoría de scanners USB que actúan como teclado)
+    if (scannerTimerRef.current) clearTimeout(scannerTimerRef.current);
+
+    // Si el scanner manda Enter, procesamos el buffer
+    if (e.key === "Enter") {
+      const code = scannerBufferRef.current.trim();
+      scannerBufferRef.current = "";
+
+      if (code.length >= 3) {
+        e.preventDefault();
+        setSearch(code);
+        playBeep();              // 🔊 beep al leer
+        void handleSearch();      // usa tu RPC y trae resultados
+      }
+      return;
+    }
+
+    // Solo guardamos teclas “imprimibles” (evita Shift, Ctrl, etc.)
+    if (e.key.length === 1) {
+      scannerBufferRef.current += e.key;
+
+      // timeout corto: si no llega Enter, igual lo procesa (por si el scanner no manda Enter)
+      scannerTimerRef.current = setTimeout(() => {
+        const code = scannerBufferRef.current.trim();
+        scannerBufferRef.current = "";
+        if (code.length >= 6) {
+          setSearch(code);
+          playBeep();
+          void handleSearch();
+        }
+      }, 80);
+    }
+// ===============================
+// SCANNER DE CÓDIGO DE BARRAS
+// ===============================
+if (/^[0-9]$/.test(e.key)) {
+  scannerBufferRef.current += e.key;
+
+  if (scannerTimerRef.current) {
+    clearTimeout(scannerTimerRef.current);
+  }
+
+  scannerTimerRef.current = setTimeout(() => {
+    scannerBufferRef.current = "";
+  }, 80);
+
+  return;
+}
+
+if (e.key === "Enter" && scannerBufferRef.current.length >= 6) {
+  e.preventDefault();
+
+  const code = scannerBufferRef.current;
+  scannerBufferRef.current = "";
+
+  setSearch(code);
+
+  setTimeout(() => {
+    const first = results[0];
+    if (first) {
+      addItem(first);
+      setSearch("");
+    }
+  }, 0);
+
+  return;
+}
+// F3: enfocar buscador de productos
+if (e.key === "F3" || e.code === "F3") {
+  e.preventDefault();
+  setTimeout(() => {
+    searchInputRef.current?.focus();
+  }, 0);
+  return;
+}
+// F5: cobrar en efectivo (cambiar método y enfocar campo "Con cuánto paga")
+if (e.key === "F5") {
+  e.preventDefault();
+  setPaymentMethod("efectivo");
+  setTimeout(() => {
+    cashInputRef.current?.focus();
+  }, 0);
+  return;
+}
+// F6: cancelar / limpiar venta (vacía carrito y resetea pago)
+if (e.key === "F6") {
+  e.preventDefault();
+
+  const ok = window.confirm("¿Cancelar venta y limpiar todo?");
+  if (!ok) return;
+
+  setItems([]);
+  setSearch("");
+  setResults([]);
+
+  setPaymentMethod("efectivo");
+  setCashGivenStr("0");
+  setDebitAmount(0);
+  setCreditAmount(0);
+  setMpAmount(0);
+  setAccountAmount(0);
+  setNotes("");
+
+  setTimeout(() => {
+    searchInputRef.current?.focus();
+  }, 0);
+
+  return;
+}
+      // Si no hay items, la mayoría de atajos no aplican
+      if (items.length === 0) return;
+
+      // Delete / Backspace: quitar último item del carrito
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        const last = items[items.length - 1];
+        if (last) removeItem(last.product_id);
+        return;
+      }
+
+      // + : sumar 1 al último item
+      if (e.key === "+" || e.key === "=") {
+        e.preventDefault();
+        const last = items[items.length - 1];
+        if (last) updateQty(last.product_id, last.qty + 1);
+        return;
+      }
+// F9: confirmar venta
+if (e.key === "F9") {
+  e.preventDefault();
+  const btn = document.querySelector(
+    'button[data-pos-confirm="1"]'
+  ) as HTMLButtonElement | null;
+
+  if (btn && !btn.disabled) btn.click();
+  return;
+}
+
+      // - : restar 1 al último item
+      if (e.key === "-") {
+        e.preventDefault();
+        const last = items[items.length - 1];
+        if (last) updateQty(last.product_id, last.qty - 1);
+        return;
+      }
+
+      // Escape: limpiar resultados y volver foco al buscador
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setResults([]);
+        setSearch("");
+        setTimeout(() => searchInputRef.current?.focus(), 0);
+        return;
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+}, [items]);
   return (
     <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6 p-4">
       {/* COLUMNA IZQUIERDA: sucursal + búsqueda y resultados */}
@@ -437,7 +726,8 @@ const cashGivenNum = Number(cashGivenStr || "") || 0;
                   <label className="text-sm font-medium">
                     Con cuánto paga (efectivo)
                   </label>
-                  <input
+<input
+  ref={cashInputRef}
   type="number"
   className="w-full rounded-md border px-3 py-3 text-right text-xl"
   value={cashGivenStr}
@@ -617,11 +907,12 @@ const cashGivenNum = Number(cashGivenStr || "") || 0;
           {items.length > 0 && (
             <div className="flex justify-end">
               <ConfirmSaleButton
-                items={items.map((it) => ({
-                  product_id: it.product_id,
-                  qty: it.qty,
-                  unit_price: it.unit_price,
-                }))}
+items={items.map((it) => ({
+  product_id: it.product_id,
+  name: it.name,
+  qty: it.qty,
+  unit_price: it.unit_price,
+}))}
                 total={total}
                 payment={{
                   method: paymentMethod,
@@ -636,15 +927,27 @@ const cashGivenNum = Number(cashGivenStr || "") || 0;
                   },
                   notes: notes || undefined,
                 }}
-                onConfirmed={() => {
-                  setItems([]);
-                  setCashGivenStr("0");
-                  setDebitAmount(0);
-                  setCreditAmount(0);
-                  setMpAmount(0);
-                  setAccountAmount(0);
-                  setNotes("");
-                }}
+onConfirmed={() => {
+  // limpiar carrito y búsqueda
+  setItems([]);
+  setResults([]);
+  setSearch("");
+
+  // reset de pagos
+  setPaymentMethod("efectivo");
+  setCashGivenStr("0");
+  setDebitAmount(0);
+  setCreditAmount(0);
+  setMpAmount(0);
+  setAccountAmount(0);
+  setNotes("");
+
+  // volver foco al buscador (modo caja)
+  setTimeout(() => {
+    searchInputRef.current?.focus();
+  }, 0);
+}}
+
 storeId={selectedStoreId}
               />
             </div>
