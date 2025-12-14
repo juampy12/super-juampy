@@ -8,6 +8,7 @@ import {
   Package,
   BarChart3,
   Wallet,
+ AlertTriangle,
 } from 'lucide-react';
 
 const navLinks = [
@@ -18,6 +19,8 @@ const navLinks = [
   { href: '/cierres', label: 'Cierre de caja', icon: Wallet },
   { href: '/cierres/historial', label: 'Historial cierres', icon: Wallet },
   { href: '/reports/top-products', label: 'Top productos', icon: BarChart3 },
+  { href: '/stock-bajo', label: 'Stock bajo', icon: AlertTriangle },
+{ href: "/minimos", label: "Mínimos", icon: AlertTriangle },
 ];
 
 export default function HeaderNav() {

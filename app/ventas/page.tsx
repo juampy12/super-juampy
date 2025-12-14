@@ -203,7 +203,10 @@ function addItem(p: ProductRow) {
     ];
   });
 }
-const totalItems = items.reduce((sum, it) => sum + it.qty, 0);
+const totalItems = items.reduce((sum, it: any) => {
+  if (it.is_weighted) return sum + 1; // fiambre cuenta 1
+  return sum + it.qty;               // producto normal
+}, 0);
   // Pago
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>("efectivo");
@@ -273,14 +276,72 @@ setResults(list);
 // 🔥 MODO ESCÁNER
 // si hay al menos 1 resultado, agregamos el primero automáticamente
 if (list.length >= 1) {
-  addToCart(list[0]);
+addToCartMaybeWeighted(list[0]);
 }
 
     } finally {
       setSearching(false);
     }
   }
+function calcLineTotal(it: { qty: number; unit_price: number; is_weighted?: boolean }) {
+  if (it.is_weighted) {
+    // qty = gramos, unit_price = precio por kg
+    return (it.unit_price * it.qty) / 1000;
+  }
+  // qty = unidades, unit_price = precio unitario
+  return it.qty * it.unit_price;
+}
 
+function addToCartMaybeWeighted(p: ProductRow) {
+  const isWeighted = Boolean((p as any).is_weighted);
+
+  if (isWeighted) {
+    const gramsStr = window.prompt(`Ingresar gramos para: ${p.name}`, "100");
+    if (!gramsStr) return;
+
+    const grams = Number(String(gramsStr).replace(",", "."));
+    if (!Number.isFinite(grams) || grams <= 0) {
+      alert("Gramos inválidos");
+      return;
+    }
+
+    setItems((prev) => {
+      // Para fiambre, si ya existe, sumamos gramos
+      const existing = prev.find((it) => it.product_id === p.id);
+      if (existing) {
+        return prev.map((it) =>
+          it.product_id === p.id
+            ? { ...it, qty: it.qty + grams }
+            : it
+        );
+      }
+
+      return [
+        ...prev,
+        {
+          product_id: p.id,
+          name: p.name,
+          sku: p.sku,
+          qty: grams,                 // gramos
+          unit_price: p.price ?? 0,   // precio por kg
+          is_weighted: true,
+        } as any,
+      ];
+    });
+
+    // flujo rápido
+    setSearch("");
+    setResults([]);
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 0);
+
+    return;
+  }
+
+  // Producto normal
+  addToCart(p);
+}
   function addToCart(p: ProductRow) {
   setItems((prev) => {
     const existing = prev.find((it) => it.product_id === p.id);
@@ -331,8 +392,8 @@ if (list.length >= 1) {
     setItems((prev) => prev.filter((it) => it.product_id !== product_id));
   }
 
-  const total = items.reduce(
-  (sum, it) => sum + it.qty * it.unit_price,
+const total = items.reduce(
+  (sum, it) => sum + calcLineTotal(it as any),
   0
 );
 
@@ -427,41 +488,6 @@ if (e.key === "F8") {
         }
       }, 80);
     }
-// ===============================
-// SCANNER DE CÓDIGO DE BARRAS
-// ===============================
-if (/^[0-9]$/.test(e.key)) {
-  scannerBufferRef.current += e.key;
-
-  if (scannerTimerRef.current) {
-    clearTimeout(scannerTimerRef.current);
-  }
-
-  scannerTimerRef.current = setTimeout(() => {
-    scannerBufferRef.current = "";
-  }, 80);
-
-  return;
-}
-
-if (e.key === "Enter" && scannerBufferRef.current.length >= 6) {
-  e.preventDefault();
-
-  const code = scannerBufferRef.current;
-  scannerBufferRef.current = "";
-
-  setSearch(code);
-
-  setTimeout(() => {
-    const first = results[0];
-    if (first) {
-      addItem(first);
-      setSearch("");
-    }
-  }, 0);
-
-  return;
-}
 // F3: enfocar buscador de productos
 if (e.key === "F3" || e.code === "F3") {
   e.preventDefault();
@@ -672,25 +698,49 @@ if (e.key === "F9") {
     <button
       type="button"
       className="px-2 py-1 rounded border text-xs"
-      onClick={() => updateQty(it.product_id, it.qty - 1)}
+onClick={() => {
+  if ((it as any).is_weighted) {
+    const gramsStr = window.prompt(`Restar gramos a: ${it.name}`, "50");
+    if (!gramsStr) return;
+    const grams = Number(String(gramsStr).replace(",", "."));
+    if (!Number.isFinite(grams) || grams <= 0) return;
+    updateQty(it.product_id, it.qty - grams);
+    return;
+  }
+  updateQty(it.product_id, it.qty - 1);
+}}
     >
       -
     </button>
-    <span className="w-6 text-center">{it.qty}</span>
+<span className="w-16 text-center">
+  {(it as any).is_weighted ? `${it.qty} g` : it.qty}
+</span>
     <button
       type="button"
       className="px-2 py-1 rounded border text-xs"
-      onClick={() => updateQty(it.product_id, it.qty + 1)}
+onClick={() => {
+  if ((it as any).is_weighted) {
+    const gramsStr = window.prompt(`Sumar gramos a: ${it.name}`, "50");
+    if (!gramsStr) return;
+    const grams = Number(String(gramsStr).replace(",", "."));
+    if (!Number.isFinite(grams) || grams <= 0) return;
+    updateQty(it.product_id, it.qty + grams);
+    return;
+  }
+  updateQty(it.product_id, it.qty + 1);
+}}
     >
       +
     </button>
   </div>
 </td>
         <td className="py-1 pr-2 text-right">
-          ${it.unit_price.toFixed(2)}
+{(it as any).is_weighted
+  ? `$${it.unit_price.toFixed(2)}/kg`
+  : `$${it.unit_price.toFixed(2)}`}
         </td>
         <td className="py-1 pr-2 text-right">
-          ${(it.qty * it.unit_price).toFixed(2)}
+${calcLineTotal(it as any).toFixed(2)}
         </td>
 <td className="py-1 pr-2 text-right">
   <button

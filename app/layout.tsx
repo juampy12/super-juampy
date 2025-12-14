@@ -1,4 +1,3 @@
-import Navbar from "./components/Navbar";
 import JsonLd from "./seo-jsonld";
 import "./globals.css";
 import type { Metadata } from "next";
@@ -27,7 +26,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta charSet="utf-8" />
       </head>
       <body className={`${inter.className} min-h-dvh bg-[#f8fafc] text-[#111]`}>
-        <Navbar />
 
         <div className="mx-auto max-w-6xl px-4 py-6">
           <BrandTheme />
