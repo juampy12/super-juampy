@@ -82,6 +82,7 @@ export async function POST(req: Request) {
     );
 
     const storeId = resolveStoreId(body);
+const register_id = body.register_id ?? body.registerId ?? null;
 
     if (!storeId) {
       return NextResponse.json(
@@ -116,6 +117,7 @@ export async function POST(req: Request) {
         p_items: items,
         p_total: total,
         p_payment: payment,
+p_register_id: register_id,
       }
     );
 
@@ -130,7 +132,16 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, data });
+const saleId = data as string | null;
+
+if (saleId && register_id) {
+  await supabaseAdmin
+    .from("sales")
+    .update({ register_id })
+    .eq("id", saleId);
+}
+
+return NextResponse.json({ ok: true, saleId });
   } catch (e: any) {
     console.error("Error inesperado en /api/pos/confirm:", e);
     return NextResponse.json(

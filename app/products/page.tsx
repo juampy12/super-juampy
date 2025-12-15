@@ -9,7 +9,14 @@ const supabase = createClient(
 );
 
 type Store = { id: string; name: string };
-type Row = { id: string; sku: string; name: string; price: number; stock: number };
+type Row = {
+  id: string;
+  sku: string;
+  name: string;
+  price: number;
+  stock: number;
+  is_weighted?: boolean | null;
+};
 
 export default function ProductsByStorePage() {
   const [stores, setStores] = useState<Store[]>([]);
@@ -131,14 +138,17 @@ function RowLine({ row, onSave }:{ row:Row; onSave:(value:number)=>void }) {
       <td className="p-2">{row.name}</td>
       <td className="p-2">{row.sku}</td>
       <td className="p-2">${Number(row.price ?? 0).toFixed(2)}</td>
-      <td className="p-2">{Number(row.stock ?? 0)}</td>
+<td className="p-2">
+  {Number(row.stock ?? 0)} {row.is_weighted ? "kg" : "u"}
+</td>
       <td className="p-2">
-        <input
-          type="number"
-          className="border rounded px-2 py-1 w-24"
-          value={String(value)}
-          onChange={e => setValue(Number(e.target.value))}
-        />
+<input
+  type="number"
+  step={row.is_weighted ? "0.001" : "1"}
+  className="border rounded px-2 py-1 w-24"
+  value={String(value)}
+  onChange={e => setValue(Number(e.target.value))}
+/>
       </td>
       <td className="p-2">
         <button

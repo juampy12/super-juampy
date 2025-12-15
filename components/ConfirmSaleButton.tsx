@@ -29,21 +29,21 @@ type PaymentInfo = {
   breakdown?: PaymentBreakdown;
   notes?: string;
 };
-
 type Props = {
   items: ConfirmItem[];
   total: number;
   payment?: PaymentInfo;
   onConfirmed?: () => void;
   storeId?: string | null;
+  registerId?: string | null;
 };
-
 export default function ConfirmSaleButton({
   items,
   total,
   payment,
   onConfirmed,
-storeId,
+  storeId,
+  registerId,
 }: Props) {
   const [loading, setLoading] = useState(false);
 const inFlightRef = useRef(false);
@@ -99,6 +99,7 @@ setLoading(true);
       total,
       payment,
       store_id: storeIdToUse,
+register_id: registerId ?? null,
     }),
   });
 

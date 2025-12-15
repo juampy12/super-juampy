@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const dateParam = searchParams.get("date"); // YYYY-MM-DD
     const storeId = searchParams.get("store_id");
+const registerId = searchParams.get("register_id");
 
     if (!dateParam || !storeId) {
       return NextResponse.json(
@@ -53,13 +54,20 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 1) Traemos TODAS las ventas confirmed de esa sucursal
-    const { data, error } = await supabaseAdmin
-      .from("sales")
-      .select("id, created_at, total, store_id, status, payment")
-      .eq("status", "confirmed")
-      .eq("store_id", storeId)
-      .order("created_at", { ascending: true });
+// 1) Traemos ventas confirmadas (por sucursal y opcionalmente por caja)
+let q = supabaseAdmin
+  .from("sales")
+  .select("id, created_at, total, store_id, status, payment, register_id")
+  .eq("status", "confirmed")
+  .eq("store_id", storeId);
+
+if (registerId) {
+  q = q.eq("register_id", registerId);
+}
+
+q = q.order("created_at", { ascending: true });
+
+const { data, error } = await q;
 
     if (error) {
       console.error("Supabase error /api/cash-closure:", error);

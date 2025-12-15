@@ -220,6 +220,8 @@ const totalItems = items.reduce((sum, it: any) => {
 
   const [notes, setNotes] = useState("");
 const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+const [registers, setRegisters] = useState<{ id: string; name: string }[]>([]);
+const [selectedRegisterId, setSelectedRegisterId] = useState<string | null>(null);
   // Cargar sucursales
 useEffect(() => {
   supabase
@@ -241,6 +243,37 @@ useEffect(() => {
       }
     });
 }, []);
+// Cargar cajas (registers) cuando cambia la sucursal
+useEffect(() => {
+  if (!selectedStoreId) {
+    setRegisters([]);
+    setSelectedRegisterId(null);
+    return;
+  }
+
+  supabase
+    .from("registers")
+    .select("id, name")
+    .eq("store_id", selectedStoreId)
+    .eq("active", true)
+    .order("name", { ascending: true })
+    .then(({ data, error }) => {
+      if (error) {
+        console.error(error);
+        alert("Error cargando cajas: " + error.message);
+        return;
+      }
+
+      const list = data ?? [];
+      setRegisters(list);
+
+      if (list.length > 0) {
+        setSelectedRegisterId(list[0].id);
+      } else {
+        setSelectedRegisterId(null);
+      }
+    });
+}, [selectedStoreId]);
 
   async function handleSearch() {
     const term = search.trim();
@@ -600,6 +633,22 @@ if (e.key === "F9") {
                 </option>
               ))}
             </select>
+{registers.length > 0 && (
+  <div className="space-y-1">
+    <label className="block text-sm mb-1">Caja</label>
+    <select
+      className="border rounded px-3 py-2 w-full"
+      value={selectedRegisterId ?? ""}
+      onChange={(e) => setSelectedRegisterId(e.target.value)}
+    >
+      {registers.map((r) => (
+        <option key={r.id} value={r.id}>
+          {r.name}
+        </option>
+      ))}
+    </select>
+  </div>
+)}
           </div>
 
           <h2 className="font-medium">Buscar producto</h2>
@@ -1021,6 +1070,7 @@ onConfirmed={() => {
 }}
 
 storeId={selectedStoreId}
+registerId={selectedRegisterId}
               />
             </div>
           )}
