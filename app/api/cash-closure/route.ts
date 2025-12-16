@@ -25,6 +25,7 @@ type SaleRow = {
   store_id: string | null;
   status: string | null;
   payment: Payment | null;
+register_id: string | null;
 };
 
 function safeNumber(v: any): number {
@@ -39,7 +40,9 @@ function getArgentinaDay(ts: string | Date): string {
   const arg = new Date(d.getTime() - 3 * 60 * 60 * 1000);
   return arg.toISOString().slice(0, 10);
 }
-
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -53,7 +56,12 @@ const registerId = searchParams.get("register_id");
         { status: 400 }
       );
     }
-
+if (registerId && !isUuid(registerId)) {
+  return NextResponse.json(
+    { error: "register_id inválido (debe ser UUID)" },
+    { status: 400 }
+  );
+}
 // 1) Traemos ventas confirmadas (por sucursal y opcionalmente por caja)
 let q = supabaseAdmin
   .from("sales")

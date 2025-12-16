@@ -90,7 +90,12 @@ const register_id = body.register_id ?? body.registerId ?? null;
         { status: 400 }
       );
     }
-
+if (!register_id) {
+  return NextResponse.json(
+    { error: "register_id es obligatorio (falta caja)" },
+    { status: 400 }
+  );
+}
     const rawItems: InItem[] = Array.isArray(body.items) ? body.items : [];
     const items = rawItems
       .map((it) => ({

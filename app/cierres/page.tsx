@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 
 type Store = { id: string; name: string };
+type Register = { id: string; name: string };
 
 type Kpis = {
   totalAmount: number;
@@ -68,6 +69,10 @@ export default function CashClosurePage() {
   const [selectedDate, setSelectedDate] = useState<string>(todayStr());
   const [selectedStore, setSelectedStore] = useState<string>(STORES[0]?.id ?? "");
 
+const [registers, setRegisters] = useState<Register[]>([]);
+const [selectedRegister, setSelectedRegister] = useState<string>("");
+
+
   const [kpis, setKpis] = useState<Kpis>({
     totalAmount: 0,
     tickets: 0,
@@ -90,17 +95,57 @@ export default function CashClosurePage() {
   function formatMoney(n: number) {
     return `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
+useEffect(() => {
+  let alive = true;
+
+  async function loadRegisters() {
+    if (!selectedStore) {
+      setRegisters([]);
+      setSelectedRegister("");
+      return;
+    }
+
+    try {
+      const { supabase } = await import("@/lib/supabase");
+
+      const { data, error } = await supabase
+        .from("registers")
+        .select("id,name")
+        .eq("store_id", selectedStore)
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+      if (!alive) return;
+
+      const rows = (data ?? []) as Register[];
+      setRegisters(rows);
+      setSelectedRegister((prev) => prev || rows[0]?.id || "");
+    } catch (e) {
+      console.error("Error cargando cajas", e);
+      if (!alive) return;
+      setRegisters([]);
+      setSelectedRegister("");
+    }
+  }
+
+  loadRegisters();
+
+  return () => {
+    alive = false;
+  };
+}, [selectedStore]);
 
   async function loadClosure() {
     try {
-      if (!selectedDate || !selectedStore) {
+if (!selectedDate || !selectedStore || !selectedRegister) {
         setExistingClosure(null);
         return;
       }
 
-      const params = new URLSearchParams();
-      params.append("date", selectedDate);
-      params.append("store_id", selectedStore);
+const params = new URLSearchParams();
+params.append("date", selectedDate);
+params.append("store_id", selectedStore);
+params.append("register_id", selectedRegister);
 
       const res = await fetch(`/api/cash-closures?${params.toString()}`, { cache: "no-store" });
       if (!res.ok) {
@@ -139,7 +184,7 @@ export default function CashClosurePage() {
 
   async function loadData() {
     try {
-      if (!selectedDate || !selectedStore) {
+if (!selectedDate || !selectedStore || !selectedRegister) {
         setKpis({ totalAmount: 0, tickets: 0, avgTicket: 0, cashIn: 0, change: 0, netCash: 0 });
         setMethods([]);
         setHourly([]);
@@ -153,6 +198,7 @@ export default function CashClosurePage() {
       const params = new URLSearchParams();
       params.append("date", selectedDate);
       params.append("store_id", selectedStore);
+params.append("register_id", selectedRegister);
 
       const res = await fetch(`/api/cash-closure?${params.toString()}`, { cache: "no-store" });
 
@@ -370,7 +416,7 @@ export default function CashClosurePage() {
     void loadData();
     void loadClosure();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, selectedStore]);
+}, [selectedDate, selectedStore, selectedRegister]);
 
   const storeName = STORES.find((s) => s.id === selectedStore)?.name ?? "Sucursal";
 
@@ -409,6 +455,26 @@ export default function CashClosurePage() {
               ))}
             </select>
           </div>
+
+<div className="flex flex-col text-sm">
+  <label className="text-neutral-500 mb-1">Caja</label>
+  <select
+    className="rounded border px-2 py-1 text-sm"
+    value={selectedRegister}
+    onChange={(e) => setSelectedRegister(e.target.value)}
+    disabled={registers.length === 0}
+  >
+    {registers.length === 0 ? (
+      <option value="">Sin cajas</option>
+    ) : (
+      registers.map((r) => (
+        <option key={r.id} value={r.id}>
+          {r.name}
+        </option>
+      ))
+    )}
+  </select>
+</div>
 
           <button
             type="button"

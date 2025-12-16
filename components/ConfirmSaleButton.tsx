@@ -59,6 +59,10 @@ if (!storeId) {
   alert("Falta sucursal (storeId). Elegí una sucursal antes de confirmar.");
   return;
 }
+if (!registerId) {
+  alert("Falta caja. Elegí Caja 1 / Caja 2 antes de confirmar.");
+  return;
+}
 const storeIdToUse = storeId;
     if (!payment) {
       alert("Falta información de pago.");
