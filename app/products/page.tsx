@@ -1,105 +1,152 @@
-﻿"use client";
+"use client";
 
-import React, { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 type Store = { id: string; name: string };
+
 type Row = {
   id: string;
-  sku: string;
+  sku: string | null;
   name: string;
-  price: number;
-  stock: number;
-  is_weighted?: boolean | null;
+  price: number | null;
+
+  stock: number | null;
+  unit_label: string | null;
+
+  units_per_case: number | null;
+  vat_rate: number | null;
+  cost_net: number | null;
+  markup_rate: number | null;
 };
 
-export default function ProductsByStorePage() {
+function n(v: any, d = 0) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : d;
+}
+
+function money(v: number) {
+  return `$${(Math.round(v * 100) / 100).toFixed(2)}`;
+}
+
+function calcFinalPrice(costNet: number, vatRate: number, markupRate: number) {
+  const withVat = costNet * (1 + vatRate / 100);
+  const withMarkup = withVat * (1 + markupRate / 100);
+  return Math.round(withMarkup * 100) / 100;
+}
+
+export default function ProductsPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [storeId, setStoreId] = useState<string>("");
+  const [query, setQuery] = useState<string>("");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
-  const [nameFilter, setNameFilter] = useState("");
-  const [refreshTick, setRefreshTick] = useState(0); // 👈 FIX refrescar
 
-  // carga sucursales
-  useEffect(() => {
-    supabase.from("stores").select("id,name").order("name", { ascending: true })
-      .then(({ data }) => {
-        setStores(data ?? []);
-        if ((data?.length ?? 0) > 0 && !storeId) setStoreId(data![0].id);
+  async function reload(pStore?: string) {
+    const sid = pStore ?? storeId;
+    if (!sid) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.rpc("products_with_stock", {
+        p_store: sid,
+        p_query: query || null,
+        p_limit: 500,
       });
+      if (error) throw error;
+      setRows((data ?? []) as Row[]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("stores").select("id,name").order("name");
+      const list = (data ?? []) as Store[];
+      setStores(list);
+      if (!storeId && list[0]?.id) setStoreId(list[0].id);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // carga productos con stock por sucursal (RPC)
   useEffect(() => {
-    const load = async () => {
-      if (!storeId) return;
-      setLoading(true);
-      const q = nameFilter?.trim() || null;
-      const { data, error } = await supabase.rpc("products_with_stock", {
-        p_store: storeId,
-        p_query: q,
-        p_limit: 500
-      });
-      if (!error) setRows((data ?? []) as Row[]);
-      setLoading(false);
-    };
-    load();
-  }, [storeId, nameFilter, refreshTick]); // 👈 ahora escucha refreshTick
-
-  const onSave = async (productId: string, newValue: number) => {
     if (!storeId) return;
-    const body = { storeId, productId, newStock: Number(newValue) };
-    const res = await fetch("/api/stock/adjust", {
+    reload(storeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId]);
+
+  const title = useMemo(() => "Productos – Precio, IVA, Ganancia y Caja", []);
+
+  const onSave = async (productId: string, payload: {
+    newStock: number;
+    cost_net: number;
+    vat_rate: number;
+    markup_rate: number;
+    units_per_case: number;
+  }) => {
+    if (!storeId) return;
+
+    // 1) Guardar precio/iva/margen/unidades por caja (y recalcula price)
+    const resPrice = await fetch("/api/products/update", {
       method: "POST",
-      headers: { "Content-Type":"application/json" },
-      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId, ...payload }),
     });
-    const json = await res.json();
-    if (!json?.ok) {
-      alert("Error: " + (json?.error ?? "desconocido"));
+    const jsonPrice = await resPrice.json().catch(() => ({}));
+    if (!jsonPrice?.ok) {
+      alert("Error guardando precio: " + (jsonPrice?.error ?? "desconocido"));
       return;
     }
-    // recargar
-    const { data } = await supabase.rpc("products_with_stock", { p_store: storeId, p_query: null, p_limit: 500 });
-    setRows((data ?? []) as Row[]);
+
+    // 2) Guardar stock por sucursal (lo que ya tenías)
+    const resStock = await fetch("/api/stock/adjust", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storeId, productId, newStock: Number(payload.newStock) }),
+    });
+    const jsonStock = await resStock.json().catch(() => ({}));
+    if (!jsonStock?.ok) {
+      alert("Error guardando stock: " + (jsonStock?.error ?? "desconocido"));
+      return;
+    }
+
+    // recargar tabla
+    await reload(storeId);
   };
 
   return (
     <div className="mx-auto max-w-6xl p-4">
-      <h1 className="text-2xl font-semibold mb-4">Productos & Stock por sucursal</h1>
+      <h1 className="text-2xl font-semibold mb-4">{title}</h1>
 
       <div className="flex flex-wrap gap-3 items-end mb-4">
-        <div>
-          <label className="block text-sm mb-1">Sucursal</label>
+        <div className="flex flex-col">
+          <label className="text-sm mb-1">Sucursal</label>
           <select
             className="border rounded px-3 py-2"
             value={storeId}
-            onChange={e => setStoreId(e.target.value)}
+            onChange={(e) => setStoreId(e.target.value)}
           >
-            {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
           </select>
         </div>
 
-        <div>
-          <label className="block text-sm mb-1">Nombre</label>
+        <div className="flex flex-col">
+          <label className="text-sm mb-1">Buscar</label>
           <input
-            value={nameFilter}
-            onChange={e => setNameFilter(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") setRefreshTick(t => t + 1); }} // 👈 enter también refresca
-            className="border rounded px-3 py-2"
-            placeholder="Filtrar por nombre o SKU"
+            className="border rounded px-3 py-2 w-72"
+            placeholder="Buscar nombre o SKU"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
           />
         </div>
 
         <button
-          className="px-4 py-2 rounded bg-black text-white"
-          onClick={() => setRefreshTick(t => t + 1)} // 👈 ahora sí refresca
+          className="bg-black text-white rounded px-4 py-2"
+          onClick={() => reload(storeId)}
           disabled={loading}
         >
           {loading ? "Cargando..." : "Refrescar"}
@@ -112,14 +159,19 @@ export default function ProductsByStorePage() {
             <tr>
               <th className="text-left p-2">Nombre</th>
               <th className="text-left p-2">SKU</th>
-              <th className="text-left p-2">Precio</th>
-              <th className="text-left p-2">Actual (DB)</th>
-              <th className="text-left p-2">Nuevo</th>
+              <th className="text-right p-2">Costo</th>
+              <th className="text-right p-2">IVA %</th>
+              <th className="text-right p-2">Margen %</th>
+              <th className="text-right p-2">Precio Final (u)</th>
+              <th className="text-right p-2">Unid/caja</th>
+              <th className="text-right p-2">Precio Caja</th>
+              <th className="text-right p-2">Stock</th>
+              <th className="text-right p-2">Nuevo</th>
               <th className="p-2"></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(r => (
+            {rows.map((r) => (
               <RowLine key={r.id} row={r} onSave={(v) => onSave(r.id, v)} />
             ))}
           </tbody>
@@ -129,31 +181,100 @@ export default function ProductsByStorePage() {
   );
 }
 
-function RowLine({ row, onSave }:{ row:Row; onSave:(value:number)=>void }) {
-  const [value, setValue] = useState<number>(row.stock ?? 0);
-  useEffect(() => setValue(row.stock ?? 0), [row.stock]);
+function RowLine({
+  row,
+  onSave,
+}: {
+  row: Row;
+  onSave: (payload: {
+    newStock: number;
+    cost_net: number;
+    vat_rate: number;
+    markup_rate: number;
+    units_per_case: number;
+  }) => void;
+}) {
+  const [newStock, setNewStock] = useState<number>(n(row.stock, 0));
+
+  const [cost, setCost] = useState<number>(n(row.cost_net, 0));
+  const [vat, setVat] = useState<number>(n(row.vat_rate, 21));
+  const [margin, setMargin] = useState<number>(n(row.markup_rate, 0));
+  const [unitsCase, setUnitsCase] = useState<number>(Math.max(1, n(row.units_per_case, 1)));
+
+  useEffect(() => setNewStock(n(row.stock, 0)), [row.stock]);
+  useEffect(() => setCost(n(row.cost_net, 0)), [row.cost_net]);
+  useEffect(() => setVat(n(row.vat_rate, 21)), [row.vat_rate]);
+  useEffect(() => setMargin(n(row.markup_rate, 0)), [row.markup_rate]);
+  useEffect(() => setUnitsCase(Math.max(1, n(row.units_per_case, 1))), [row.units_per_case]);
+
+  const priceFinal = useMemo(() => calcFinalPrice(cost, vat, margin), [cost, vat, margin]);
+  const priceCase = useMemo(() => Math.round(priceFinal * Math.max(1, unitsCase) * 100) / 100, [priceFinal, unitsCase]);
 
   return (
     <tr className="border-t">
       <td className="p-2">{row.name}</td>
-      <td className="p-2">{row.sku}</td>
-      <td className="p-2">${Number(row.price ?? 0).toFixed(2)}</td>
-<td className="p-2">
-  {Number(row.stock ?? 0)} {row.is_weighted ? "kg" : "u"}
-</td>
-      <td className="p-2">
-<input
-  type="number"
-  step={row.is_weighted ? "0.001" : "1"}
-  className="border rounded px-2 py-1 w-24"
-  value={String(value)}
-  onChange={e => setValue(Number(e.target.value))}
-/>
+      <td className="p-2">{row.sku ?? "-"}</td>
+
+      <td className="p-2 text-right">
+        <input
+          className="border rounded px-2 py-1 w-24 text-right"
+          value={String(cost)}
+          onChange={(e) => setCost(n(e.target.value, 0))}
+        />
       </td>
-      <td className="p-2">
+
+      <td className="p-2 text-right">
+        <input
+          className="border rounded px-2 py-1 w-16 text-right"
+          value={String(vat)}
+          onChange={(e) => setVat(n(e.target.value, 0))}
+        />
+      </td>
+
+      <td className="p-2 text-right">
+        <input
+          className="border rounded px-2 py-1 w-16 text-right"
+          value={String(margin)}
+          onChange={(e) => setMargin(n(e.target.value, 0))}
+        />
+      </td>
+
+      <td className="p-2 text-right font-semibold">{money(priceFinal)}</td>
+
+      <td className="p-2 text-right">
+        <input
+          className="border rounded px-2 py-1 w-20 text-right"
+          value={String(unitsCase)}
+          onChange={(e) => setUnitsCase(Math.max(1, n(e.target.value, 1)))}
+        />
+      </td>
+
+      <td className="p-2 text-right">{money(priceCase)}</td>
+
+      <td className="p-2 text-right">
+        {n(row.stock, 0)} {row.unit_label ?? "u"}
+      </td>
+
+      <td className="p-2 text-right">
+        <input
+          className="border rounded px-2 py-1 w-20 text-right"
+          value={String(newStock)}
+          onChange={(e) => setNewStock(n(e.target.value, 0))}
+        />
+      </td>
+
+      <td className="p-2 text-right">
         <button
-          className="px-3 py-1 rounded bg-black text-white"
-          onClick={() => onSave(value)}
+          className="bg-black text-white rounded px-4 py-2"
+          onClick={() =>
+            onSave({
+              newStock,
+              cost_net: cost,
+              vat_rate: vat,
+              markup_rate: margin,
+              units_per_case: unitsCase,
+            })
+          }
         >
           Guardar
         </button>
