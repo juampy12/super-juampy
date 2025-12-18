@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import ConfirmSaleButton from "@/components/ConfirmSaleButton";
 import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
+import { getPosEmployee } from "@/lib/posSession";
 
 type Store = { id: string; name: string };
 
@@ -60,6 +62,15 @@ function NumberPad({
 }
 
 export default function VentasPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const emp = getPosEmployee();
+    if (!emp) {
+      router.replace("/pos-login");
+    }
+  }, [router]);
+
   const [stores, setStores] = useState<Store[]>([]);
   const [storeId, setStoreId] = useState<string>("");
 
