@@ -1,0 +1,191 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+type Store = { id: string; name: string };
+
+type Row = {
+  id: string;
+  sku: string;
+  name: string;
+  price: number | null;
+  stock: number | null;
+
+  cost_net: number | null;
+  vat_rate: number | null;
+  markup_rate: number | null;
+  units_per_case: number | null;
+  is_weighted: boolean | null;
+};
+
+function calcFinalPrice(cost: number, vat: number, markup: number) {
+  const withVat = cost * (1 + vat / 100);
+  const withMarkup = withVat * (1 + markup / 100);
+  return Math.round(withMarkup * 100) / 100;
+}
+
+export default function ProductsByStorePage() {
+  const [stores, setStores] = useState<Store[]>([]);
+  const [storeId, setStoreId] = useState("");
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    supabase.from("stores").select("id,name").order("name")
+      .then(({ data }) => {
+        setStores(data ?? []);
+        if (data?.length && !storeId) setStoreId(data[0].id);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!storeId) return;
+    setLoading(true);
+    supabase
+      .rpc("products_with_stock", {
+        p_store: storeId,
+        p_query: filter || null,
+        p_limit: 500
+      })
+      .then(({ data }) => {
+        setRows((data ?? []) as Row[]);
+        setLoading(false);
+      });
+  }, [storeId, filter, refreshTick]);
+
+  const onSaveStock = async (productId: string, newValue: number) => {
+    await fetch("/api/stock/adjust", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storeId, productId, newStock: newValue }),
+    });
+    setRefreshTick(t => t + 1);
+  };
+
+  return (
+    <div className="mx-auto max-w-7xl p-4">
+      <h1 className="text-2xl font-semibold mb-4">
+        Productos – Precio, IVA y Ganancia
+      </h1>
+
+      <div className="flex gap-3 mb-4">
+        <select
+          className="border rounded px-3 py-2"
+          value={storeId}
+          onChange={e => setStoreId(e.target.value)}
+        >
+          {stores.map(s => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+
+        <input
+          className="border rounded px-3 py-2"
+          placeholder="Buscar nombre o SKU"
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+        />
+
+        <button
+          className="bg-black text-white px-4 rounded"
+          onClick={() => setRefreshTick(t => t + 1)}
+        >
+          Refrescar
+        </button>
+      </div>
+
+      <div className="border rounded overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="p-2">Nombre</th>
+              <th className="p-2">SKU</th>
+              <th className="p-2">Costo</th>
+              <th className="p-2">IVA %</th>
+              <th className="p-2">Margen %</th>
+              <th className="p-2">Precio Final</th>
+              <th className="p-2">Stock</th>
+              <th className="p-2">Nuevo</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => {
+              const finalPrice =
+                r.cost_net != null
+                  ? calcFinalPrice(
+                      r.cost_net,
+                      r.vat_rate ?? 0,
+                      r.markup_rate ?? 0
+                    )
+                  : r.price ?? 0;
+
+              return (
+                <RowLine
+                  key={r.id}
+                  row={r}
+                  finalPrice={finalPrice}
+                  onSave={onSaveStock}
+                />
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RowLine({
+  row,
+  finalPrice,
+  onSave
+}:{
+  row: Row;
+  finalPrice: number;
+  onSave:(id:string,v:number)=>void
+}) {
+  const [value, setValue] = useState(row.stock ?? 0);
+
+  useEffect(() => {
+    setValue(row.stock ?? 0);
+  }, [row.stock]);
+
+  return (
+    <tr className="border-t">
+      <td className="p-2">{row.name}</td>
+      <td className="p-2">{row.sku}</td>
+      <td className="p-2">${row.cost_net ?? "-"}</td>
+      <td className="p-2">{row.vat_rate ?? 0}%</td>
+      <td className="p-2">{row.markup_rate ?? 0}%</td>
+      <td className="p-2 font-semibold">${finalPrice.toFixed(2)}</td>
+      <td className="p-2">
+        {row.stock ?? 0} {row.is_weighted ? "kg" : "u"}
+      </td>
+      <td className="p-2">
+        <input
+          type="number"
+          className="border rounded px-2 py-1 w-20"
+          value={value}
+          onChange={e => setValue(Number(e.target.value))}
+        />
+      </td>
+      <td className="p-2">
+        <button
+          className="bg-black text-white px-3 py-1 rounded"
+          onClick={() => onSave(row.id, value)}
+        >
+          Guardar
+        </button>
+      </td>
+    </tr>
+  );
+}

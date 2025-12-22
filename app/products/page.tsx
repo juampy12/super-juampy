@@ -239,7 +239,9 @@ function RowLine({
         />
       </td>
 
-      <td className="p-2 text-right font-semibold">{money(priceFinal)}</td>
+<td className="p-2 text-right font-semibold">
+  {money(n((row as any).price, priceFinal))}
+</td>
 
       <td className="p-2 text-right">
         <input

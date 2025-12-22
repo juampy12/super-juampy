@@ -165,14 +165,13 @@ const { data, error } = await q;
       let ticketCredit = 0;
       let ticketMp = 0;
       let ticketAccount = 0;
-
-      if (method === "efectivo") {
-        const paid = safeNumber(p?.total_paid ?? saleTotal);
-        methodTotals.efectivo += paid;
-        cashIn += paid;
-        totalChange += change;
-        ticketCash = paid;
-      } else if (method === "debito") {
+if (method === "efectivo") {
+  const cash = safeNumber(breakdown?.cash ?? p?.total_paid ?? saleTotal);
+  methodTotals.efectivo += cash;
+  cashIn += cash;
+  totalChange += change;
+  ticketCash = cash;
+} else if (method === "debito") {
         const paid = safeNumber(p?.total_paid ?? saleTotal);
         methodTotals.debito += paid;
         ticketDebit = paid;

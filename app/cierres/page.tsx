@@ -72,6 +72,9 @@ export default function CashClosurePage() {
 const [registers, setRegisters] = useState<Register[]>([]);
 const [selectedRegister, setSelectedRegister] = useState<string>("");
 
+useEffect(() => {
+  setSelectedRegister(""); // resetea la caja al cambiar sucursal
+}, [selectedStore]);
 
   const [kpis, setKpis] = useState<Kpis>({
     totalAmount: 0,
@@ -119,7 +122,7 @@ useEffect(() => {
 
       const rows = (data ?? []) as Register[];
       setRegisters(rows);
-      setSelectedRegister((prev) => prev || rows[0]?.id || "");
+setSelectedRegister(rows[0]?.id || "");
     } catch (e) {
       console.error("Error cargando cajas", e);
       if (!alive) return;
