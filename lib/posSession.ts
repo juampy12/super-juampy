@@ -31,3 +31,9 @@ export function clearPosEmployee() {
   localStorage.removeItem(KEY);
   localStorage.removeItem(KEY_ROLE);
 }
+export function logoutPos() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("sj_pos_employee");
+  localStorage.removeItem("pos_role");
+  window.location.href = "/pos-login";
+}

@@ -305,21 +305,36 @@ params.append("register_id", selectedRegister);
 
       setSaving(true);
 
-      const methodMap: Record<string, number> = {};
-      for (const m of methods) methodMap[m.key] = m.total;
+const findMethodTotal = (...candidates: string[]) => {
+  const lowers = candidates.map((c) => c.toLowerCase());
+  const m = methods.find((m) => {
+    const key = (m.key || "").toLowerCase();
+    const label = (m.label || "").toLowerCase();
+    return lowers.includes(key) || lowers.some((c) => label.includes(c));
+  });
+  return m?.total ?? 0;
+};
 
-      const payload = {
-        store_id: selectedStore,
-        date: selectedDate,
-        total_sales: kpis.totalAmount,
-        total_tickets: kpis.tickets,
-        total_cash: methodMap["cash"] ?? 0,
-        total_debit: methodMap["debit"] ?? 0,
-        total_credit: methodMap["credit"] ?? 0,
-        total_mp: methodMap["mp"] ?? 0,
-        total_cuenta_corriente: methodMap["account"] ?? 0,
-        total_mixto: methodMap["mixto"] ?? 0,
-      };
+const payload = {
+  store_id: selectedStore,
+  date: selectedDate,
+  total_sales: kpis.totalAmount,
+  total_tickets: kpis.tickets,
+
+  // 🔴 ACÁ ESTÁ EL ARREGLO
+  total_cash: findMethodTotal("cash", "efectivo"),
+  total_debit: findMethodTotal("debit", "debito", "débito"),
+  total_credit: findMethodTotal("credit", "credito", "crédito"),
+  total_mp: findMethodTotal("mp", "mercado pago"),
+  total_cuenta_corriente: findMethodTotal(
+    "account",
+    "cuenta_corriente",
+    "cta cte"
+  ),
+  total_mixto: findMethodTotal("mixto"),
+};
+
+console.log("CIERRE PAYLOAD 👉", payload);
 
       const res = await fetch("/api/cash-closures", {
         method: "POST",
