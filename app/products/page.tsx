@@ -61,7 +61,10 @@ export default function ProductsPage() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from("stores").select("id,name").order("name");
+      const { data } = await supabase
+        .from("stores")
+        .select("id,name")
+        .order("name");
       const list = (data ?? []) as Store[];
       setStores(list);
       if (!storeId && list[0]?.id) setStoreId(list[0].id);
@@ -77,13 +80,16 @@ export default function ProductsPage() {
 
   const title = useMemo(() => "Productos – Precio, IVA, Ganancia y Caja", []);
 
-  const onSave = async (productId: string, payload: {
-    newStock: number;
-    cost_net: number;
-    vat_rate: number;
-    markup_rate: number;
-    units_per_case: number;
-  }) => {
+  const onSave = async (
+    productId: string,
+    payload: {
+      newStock: number;
+      cost_net: number;
+      vat_rate: number;
+      markup_rate: number;
+      units_per_case: number;
+    }
+  ) => {
     if (!storeId) return;
 
     // 1) Guardar precio/iva/margen/unidades por caja (y recalcula price)
@@ -102,7 +108,11 @@ export default function ProductsPage() {
     const resStock = await fetch("/api/stock/adjust", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storeId, productId, newStock: Number(payload.newStock) }),
+      body: JSON.stringify({
+        storeId,
+        productId,
+        newStock: Number(payload.newStock),
+      }),
     });
     const jsonStock = await resStock.json().catch(() => ({}));
     if (!jsonStock?.ok) {
@@ -153,29 +163,31 @@ export default function ProductsPage() {
         </button>
       </div>
 
-      <div className="border rounded overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="text-left p-2">Nombre</th>
-              <th className="text-left p-2">SKU</th>
-              <th className="text-right p-2">Costo</th>
-              <th className="text-right p-2">IVA %</th>
-              <th className="text-right p-2">Margen %</th>
-              <th className="text-right p-2">Precio Final (u)</th>
-              <th className="text-right p-2">Unid/caja</th>
-              <th className="text-right p-2">Precio Caja</th>
-              <th className="text-right p-2">Stock</th>
-              <th className="text-right p-2">Nuevo</th>
-              <th className="p-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <RowLine key={r.id} row={r} onSave={(v) => onSave(r.id, v)} />
-            ))}
-          </tbody>
-        </table>
+      <div className="border rounded bg-white shadow-sm">
+        <div className="overflow-auto" style={{ height: "calc(100vh - 260px)" }}>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 sticky top-0 z-20">
+              <tr>
+                <th className="text-left p-2">Nombre</th>
+                <th className="text-left p-2">SKU</th>
+                <th className="text-right p-2">Costo</th>
+                <th className="text-right p-2">IVA %</th>
+                <th className="text-right p-2">Margen %</th>
+                <th className="text-right p-2">Precio Final (u)</th>
+                <th className="text-right p-2">Unid/caja</th>
+                <th className="text-right p-2">Precio Caja</th>
+                <th className="text-right p-2">Stock</th>
+                <th className="text-right p-2">Nuevo</th>
+                <th className="p-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <RowLine key={r.id} row={r} onSave={(v) => onSave(r.id, v)} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -199,20 +211,36 @@ function RowLine({
   const [cost, setCost] = useState<number>(n(row.cost_net, 0));
   const [vat, setVat] = useState<number>(n(row.vat_rate, 21));
   const [margin, setMargin] = useState<number>(n(row.markup_rate, 0));
-  const [unitsCase, setUnitsCase] = useState<number>(Math.max(1, n(row.units_per_case, 1)));
+  const [unitsCase, setUnitsCase] = useState<number>(
+    Math.max(1, n(row.units_per_case, 1))
+  );
 
   useEffect(() => setNewStock(n(row.stock, 0)), [row.stock]);
   useEffect(() => setCost(n(row.cost_net, 0)), [row.cost_net]);
   useEffect(() => setVat(n(row.vat_rate, 21)), [row.vat_rate]);
   useEffect(() => setMargin(n(row.markup_rate, 0)), [row.markup_rate]);
-  useEffect(() => setUnitsCase(Math.max(1, n(row.units_per_case, 1))), [row.units_per_case]);
+  useEffect(
+    () => setUnitsCase(Math.max(1, n(row.units_per_case, 1))),
+    [row.units_per_case]
+  );
 
-  const priceFinal = useMemo(() => calcFinalPrice(cost, vat, margin), [cost, vat, margin]);
-  const priceCase = useMemo(() => Math.round(priceFinal * Math.max(1, unitsCase) * 100) / 100, [priceFinal, unitsCase]);
+  const priceFinal = useMemo(
+    () => calcFinalPrice(cost, vat, margin),
+    [cost, vat, margin]
+  );
+  const priceCase = useMemo(
+    () => Math.round(priceFinal * Math.max(1, unitsCase) * 100) / 100,
+    [priceFinal, unitsCase]
+  );
 
   return (
     <tr className="border-t">
-      <td className="p-2">{row.name}</td>
+<td className="p-2 max-w-[260px]">
+  <div className="truncate" title={row.name}>
+    {row.name}
+  </div>
+</td>
+
       <td className="p-2">{row.sku ?? "-"}</td>
 
       <td className="p-2 text-right">
@@ -239,9 +267,9 @@ function RowLine({
         />
       </td>
 
-<td className="p-2 text-right font-semibold">
-  {money(n((row as any).price, priceFinal))}
-</td>
+      <td className="p-2 text-right font-semibold">
+        {money(n((row as any).price, priceFinal))}
+      </td>
 
       <td className="p-2 text-right">
         <input

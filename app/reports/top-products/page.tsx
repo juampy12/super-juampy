@@ -92,19 +92,11 @@ export default async function TopProductsPage({ searchParams }: PageProps) {
         </form>
       </div>
 
-      {/* Por ahora TopProducts usa solo storeId.
-          Más adelante si querés lo adaptamos para usar from/to también. */}
-{storeId ? (
-  <TopProducts
-    storeId={storeId || null}
-    from={from || undefined}
-    to={to || undefined}
-  />
-) : (
-  <div className="text-sm text-neutral-600">
-    Elegí una sucursal para ver el top de productos.
-  </div>
-)}
+      <TopProducts
+        storeId={storeId || null}
+        from={from || undefined}
+        to={to || undefined}
+      />
     </div>
   );
 }
