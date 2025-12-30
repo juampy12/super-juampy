@@ -10,11 +10,10 @@ type TopItem = {
   qty_sold: number;
   total_amount: number | null;
   stock: number | null;
-  last_sold_at: string | null;
 };
 
 type Props = {
-  storeId: string | null | undefined; // null => todas
+  storeId: string | null | undefined;
   from?: string;
   to?: string;
 };
@@ -25,58 +24,54 @@ export default function TopProducts({ storeId, from, to }: Props) {
 
   const hasDates = Boolean(from && to);
 
-const loadTop = async () => {
-  // Regla: solo funciona con fechas
-  if (!from || !to) {
-    setItems([]);
+  const loadTop = async () => {
+    if (!from || !to) {
+      setItems([]);
+      return;
+    }
+
+    setLoading(true);
+
+    const resp =
+      storeId && storeId.length > 0
+        ? await supabase.rpc("fn_top_products_range", {
+            p_store: storeId,
+            p_from: from,
+            p_to: to,
+            p_limit: 8,
+          })
+        : await supabase.rpc("fn_top_products_range_all", {
+            p_from: from,
+            p_to: to,
+            p_limit: 8,
+          });
+
+    if (!resp.error) {
+      setItems((resp.data ?? []) as TopItem[]);
+    } else {
+      console.error("Error cargando top productos", resp.error);
+      setItems([]);
+    }
+
     setLoading(false);
-    return;
-  }
-
-  setLoading(true);
-
-  const resp =
-    storeId && storeId.length > 0
-      ? await supabase.rpc("fn_top_products_range", {
-          p_store: storeId,
-          p_from: from,
-          p_to: to,
-          p_limit: 8,
-        })
-      : await supabase.rpc("fn_top_products_range_all", {
-          p_from: from,
-          p_to: to,
-          p_limit: 8,
-        });
-
-  if (!resp.error) {
-    setItems(((resp.data || []) as TopItem[]) ?? []);
-  } else {
-    console.error("Error cargando top productos", resp.error);
-    setItems([]);
-  }
-
-  setLoading(false);
-};
+  };
 
   useEffect(() => {
     loadTop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId, from, to]);
 
-  const quickAddFromTop = (it: TopItem) => {
-    const input = document.querySelector(
-      'input[placeholder="Escaneá o escribí código o nombre"]'
-    ) as HTMLInputElement | null;
-    if (!input) return;
-    input.focus();
-    input.value = (it.sku ?? it.name) || it.name;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  };
-
   const maxQty = Math.max(...items.map((x) => Number(x.qty_sold ?? 0)), 0);
 
-  const fmtInt = (v: number) => new Intl.NumberFormat("es-AR").format(v);
+  const fmtInt = (v: number) =>
+    new Intl.NumberFormat("es-AR").format(v);
+
+  const fmtQtyKg = (v: number) =>
+    new Intl.NumberFormat("es-AR", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(v);
+
   const fmtMoney = (v: number) =>
     new Intl.NumberFormat("es-AR", {
       style: "currency",
@@ -92,30 +87,25 @@ const loadTop = async () => {
     return { label: "OK", cls: "bg-green-100 text-green-800 border-green-200" };
   };
 
-  // ✅ Regla visual: si no hay fechas, no mostramos el top
   if (!hasDates) {
     return (
-      <div className="mt-4 border rounded-xl p-4 bg-white w-full text-sm text-neutral-600">
+      <div className="mt-4 border rounded-xl p-4 bg-white text-sm text-neutral-600">
         Seleccioná <b>Desde</b> y <b>Hasta</b> para ver el top de productos.
       </div>
     );
   }
 
   return (
-    <div className="mt-4 border rounded-xl p-4 bg-white w-full">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+    <div className="mt-4 border rounded-xl p-4 bg-white">
+      <div className="flex items-center gap-3 mb-4">
         <h3 className="font-semibold text-lg">Top de productos</h3>
-
         <button
           onClick={loadTop}
           className="text-sm border px-3 py-1 rounded-lg"
           disabled={loading}
-          title="Refrescar"
         >
           ↻ {loading ? "Cargando…" : "Refrescar"}
         </button>
-
         {from && to && (
           <div className="text-xs text-neutral-500">
             Rango: {from} a {to}
@@ -123,11 +113,10 @@ const loadTop = async () => {
         )}
       </div>
 
-      {/* Body */}
       {loading ? (
         <div className="text-sm opacity-60">Cargando…</div>
       ) : items.length === 0 ? (
-        <div className="text-sm opacity-60">Sin datos en este rango.</div>
+        <div className="text-sm opacity-60">Sin datos.</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {items.map((it, idx) => {
@@ -139,34 +128,38 @@ const loadTop = async () => {
             const stock = Number(it.stock ?? 0);
             const badge = stockBadge(stock);
 
+            const isWeighted = it.name.toLowerCase().includes("(x kg)");
+
             return (
-              <button
+              <div
                 key={it.product_id}
-                onClick={() => quickAddFromTop(it)}
-                className="group text-left border rounded-xl p-4 hover:bg-gray-50 transition"
+                className="text-left border rounded-xl p-4 hover:bg-gray-50"
               >
-                {/* Ranking + nombre */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                <div className="flex justify-between gap-3">
+                  <div>
                     <div className="text-xs text-neutral-500 mb-1">
-                      #{rank}{" "}
-                      {rank <= 3 ? (rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉") : ""}
+                      #{rank} {rank <= 3 ? (rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉") : ""}
                     </div>
-                    <div className="font-semibold truncate" title={it.name}>
-                      {it.name}
-                    </div>
-                    <div className="text-xs text-neutral-500 truncate">
+                    <div className="font-semibold truncate">{it.name}</div>
+                    <div className="text-xs text-neutral-500">
                       {it.sku ? `SKU: ${it.sku}` : "SKU: -"}
                     </div>
                   </div>
 
                   <div className="text-right">
-                    <div className="text-xs text-neutral-500">Vendidos</div>
-                    <div className="text-2xl font-bold tabular-nums">{fmtInt(qty)}</div>
+<div className="text-xs text-neutral-500">Vendidos</div>
+<div className="text-2xl font-bold tabular-nums">
+  {isWeighted ? (
+    qty < 1000
+      ? `${fmtInt(qty)} g`
+      : `${(qty / 1000).toFixed(2)} kg`
+  ) : (
+    `${fmtInt(qty)} unid.`
+  )}
+</div>
                   </div>
                 </div>
 
-                {/* Facturación + Stock */}
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <div className="border rounded-lg p-2">
                     <div className="text-[11px] text-neutral-500">Facturación</div>
@@ -174,7 +167,7 @@ const loadTop = async () => {
                   </div>
                   <div className="border rounded-lg p-2">
                     <div className="text-[11px] text-neutral-500">Stock</div>
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex justify-between items-center">
                       <div className="font-semibold">{fmtInt(stock)}</div>
                       <span
                         className={`text-[11px] px-2 py-0.5 rounded-full border ${badge.cls}`}
@@ -185,18 +178,18 @@ const loadTop = async () => {
                   </div>
                 </div>
 
-                {/* Barra */}
                 <div className="mt-3">
-                  <div className="h-2 w-full bg-neutral-200 rounded-full overflow-hidden">
-                    <div className="h-2 bg-neutral-900 rounded-full" style={{ width: `${pct}%` }} />
+                  <div className="h-2 bg-neutral-200 rounded-full">
+                    <div
+                      className="h-2 bg-neutral-900 rounded-full"
+                      style={{ width: `${pct}%` }}
+                    />
                   </div>
-                  <div className="mt-1 text-[11px] text-neutral-500">{pct}% vs el #1</div>
+                  <div className="text-[11px] text-neutral-500 mt-1">
+                    {pct}% vs el #1
+                  </div>
                 </div>
-
-                <div className="mt-3 text-xs text-neutral-600 opacity-0 group-hover:opacity-100 transition">
-                  Click para cargarlo en el POS
-                </div>
-              </button>
+              </div>
             );
           })}
         </div>

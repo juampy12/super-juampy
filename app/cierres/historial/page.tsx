@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 
 type Store = { id: string; name: string };
+type Register = { id: string; name: string };
 
 const STORES: Store[] = [
   { id: "06ca13ff-d96d-4670-84d7-41057b3f6bc7", name: "Av. San Martín" },
@@ -13,6 +14,7 @@ const STORES: Store[] = [
 type ClosureRow = {
   id: string;
   store_id: string | null;
+  register_id: string | null;
   date: string;
   closed_at: string | null;
   total_sales: number;
@@ -30,15 +32,12 @@ function formatMoney(n: number) {
 function formatDate(dateStr: string) {
   if (!dateStr) return "-";
 
-  // Si viene como YYYY-MM-DD (fecha de cierre), no usar Date()
-  // porque UTC la corre un día para atrás
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
   if (m) {
     const [, y, mo, d] = m;
     return `${d}/${mo}/${y}`;
   }
 
-  // Fallback si alguna vez viene con hora
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString("es-AR");
@@ -62,8 +61,29 @@ function storeName(storeId: string | null) {
 
 export default function CashClosuresHistoryPage() {
   const [rows, setRows] = useState<ClosureRow[]>([]);
+  const [registerMap, setRegisterMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function loadRegisters() {
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      const { data, error } = await supabase
+        .from("registers")
+        .select("id,name");
+
+      if (error) throw error;
+
+      const map: Record<string, string> = {};
+      for (const r of (data ?? []) as Register[]) {
+        map[r.id] = r.name;
+      }
+      setRegisterMap(map);
+    } catch (e) {
+      console.error("Error cargando cajas", e);
+      setRegisterMap({});
+    }
+  }
 
   async function loadClosures() {
     try {
@@ -85,6 +105,7 @@ export default function CashClosuresHistoryPage() {
       const mapped: ClosureRow[] = list.map((r: any) => ({
         id: String(r.id),
         store_id: r.store_id ? String(r.store_id) : null,
+        register_id: r.register_id ? String(r.register_id) : null,
         date: String(r.date),
         closed_at: r.closed_at ? String(r.closed_at) : null,
         total_sales: Number(r.total_sales ?? 0),
@@ -102,6 +123,7 @@ export default function CashClosuresHistoryPage() {
   }
 
   useEffect(() => {
+    void loadRegisters();
     void loadClosures();
   }, []);
 
@@ -111,7 +133,7 @@ export default function CashClosuresHistoryPage() {
         <div>
           <h1 className="text-2xl font-semibold">Historial de cierres</h1>
           <p className="text-sm text-neutral-500">
-            Listado de cierres de caja por fecha y sucursal.
+            Listado de cierres de caja por fecha, sucursal y caja.
           </p>
         </div>
 
@@ -145,6 +167,7 @@ export default function CashClosuresHistoryPage() {
                 <tr className="border-b bg-neutral-50">
                   <th className="text-left py-2 px-2">Fecha</th>
                   <th className="text-left py-2 px-2">Sucursal</th>
+                  <th className="text-left py-2 px-2">Caja</th>
                   <th className="text-right py-2 px-2">Total ventas</th>
                   <th className="text-right py-2 px-2">Efectivo</th>
                   <th className="text-right py-2 px-2">Tickets</th>
@@ -156,6 +179,11 @@ export default function CashClosuresHistoryPage() {
                   <tr key={r.id} className="border-b last:border-0">
                     <td className="py-1 px-2">{formatDate(r.date)}</td>
                     <td className="py-1 px-2">{storeName(r.store_id)}</td>
+                    <td className="py-1 px-2">
+                      {r.register_id
+                        ? registerMap[r.register_id] ?? "Caja"
+                        : "—"}
+                    </td>
                     <td className="py-1 px-2 text-right">
                       {formatMoney(r.total_sales)}
                     </td>
@@ -165,7 +193,9 @@ export default function CashClosuresHistoryPage() {
                     <td className="py-1 px-2 text-right">
                       {r.total_tickets}
                     </td>
-                    <td className="py-1 px-2">{formatTime(r.closed_at)}</td>
+                    <td className="py-1 px-2">
+                      {formatTime(r.closed_at)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

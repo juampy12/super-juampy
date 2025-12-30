@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date");
     const store_id = searchParams.get("store_id");
+    const register_id = searchParams.get("register_id");
 
     let q = supabaseAdmin
       .from("cash_closures")
@@ -14,9 +19,10 @@ export async function GET(req: Request) {
 
     if (date) q = q.eq("date", date);
     if (store_id) q = q.eq("store_id", store_id);
+    if (register_id && isUuid(register_id)) q = q.eq("register_id", register_id);
 
-    // Si piden fecha+sucursal devolvemos uno (o null)
-    if (date && store_id) {
+    // Fecha + sucursal + caja → 1 cierre
+    if (date && store_id && register_id) {
       const { data, error } = await q.maybeSingle();
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
@@ -24,7 +30,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ data }, { status: 200 });
     }
 
-    // Si no, devolvemos lista
+    // Listado
     const { data, error } = await q;
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
@@ -48,6 +54,7 @@ export async function POST(req: Request) {
       .from("cash_closures")
       .insert({
         store_id: body.store_id,
+        register_id: body.register_id,
         date: body.date,
         total_sales: body.total_sales,
         total_tickets: body.total_tickets,
@@ -66,7 +73,10 @@ export async function POST(req: Request) {
 
     if (error) {
       if (error.code === "23505") {
-        return NextResponse.json({ error: "Cierre ya existente" }, { status: 409 });
+        return NextResponse.json(
+          { error: "Cierre ya existente para esta caja" },
+          { status: 409 }
+        );
       }
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
@@ -90,6 +100,7 @@ export async function PUT(req: Request) {
       .upsert(
         {
           store_id: body.store_id,
+          register_id: body.register_id,
           date: body.date,
           total_sales: body.total_sales,
           total_tickets: body.total_tickets,
@@ -103,7 +114,7 @@ export async function PUT(req: Request) {
           last_ticket_at: body.last_ticket_at ?? null,
           notes: body.notes ?? null,
         },
-        { onConflict: "store_id,date" }
+        { onConflict: "store_id,register_id,date" }
       )
       .select()
       .single();
