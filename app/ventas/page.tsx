@@ -630,6 +630,10 @@ if (e.key === "F9") {
       <div className="md:col-span-1 space-y-3">
         <h1 className="text-xl font-semibold">POS — Nueva venta</h1>
 
+<div className="rounded border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+  ⚠️ <strong>Recordá:</strong> verificar producto y precio antes de cobrar.
+</div>
+
         <div className="space-y-3">
           <div className="space-y-1">
             <label className="block text-sm mb-1">Sucursal</label>
