@@ -125,17 +125,34 @@ inFlightRef.current = false;
     }
   }
 
-  return (
-    <button
-      type="button"
-data-pos-confirm="1"
-      onClick={() => {
-        void handleClick();
-      }}
-      disabled={loading || items.length === 0}
-      className="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      {loading ? "Confirmando..." : `Confirmar venta ($${total})`}
-    </button>
-  );
+return (
+  <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t shadow-[0_-6px_12px_-6px_rgba(0,0,0,0.3)]">
+    <div className="max-w-4xl mx-auto p-4">
+      <button
+        type="button"
+        data-pos-confirm="1"
+        onClick={() => {
+          void handleClick();
+        }}
+        disabled={loading || items.length === 0}
+        className="
+          w-full
+          rounded-xl
+          px-6 py-4
+          text-lg font-bold
+          text-white
+          bg-green-600 hover:bg-green-700
+          disabled:bg-gray-400 disabled:cursor-not-allowed
+          shadow-xl
+        "
+      >
+        {items.length === 0
+          ? "Agregá productos para confirmar"
+          : loading
+          ? "Confirmando..."
+          : `✅ Confirmar venta ($${total})`}
+      </button>
+    </div>
+  </div>
+);
 }
