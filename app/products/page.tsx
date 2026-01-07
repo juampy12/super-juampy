@@ -20,6 +20,14 @@ type Row = {
   markup_rate: number | null; // en tu UI lo manejás como % (40)
 };
 
+type DirtyPayload = {
+  newStock: number;
+  cost_net: number;
+  vat_rate: number;
+  markup_rate: number;
+  units_per_case: number;
+};
+
 function n(v: any, d = 0) {
   const x = Number(v);
   return Number.isFinite(x) ? x : d;
@@ -50,12 +58,26 @@ function isSupervisorClient() {
   }
 }
 
+function payloadEqualsRow(p: DirtyPayload, r: Row) {
+  return (
+    n(p.newStock, 0) === n(r.stock, 0) &&
+    n(p.cost_net, 0) === n(r.cost_net, 0) &&
+    n(p.vat_rate, 21) === n(r.vat_rate, 21) &&
+    n(p.markup_rate, 0) === n(r.markup_rate, 0) &&
+    Math.max(1, n(p.units_per_case, 1)) === Math.max(1, n(r.units_per_case, 1))
+  );
+}
+
 export default function ProductsPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [storeId, setStoreId] = useState<string>("");
   const [query, setQuery] = useState<string>("");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // ✅ Cambios pendientes (batch)
+  const [dirtyById, setDirtyById] = useState<Record<string, DirtyPayload>>({});
+  const dirtyCount = useMemo(() => Object.keys(dirtyById).length, [dirtyById]);
 
   // modal crear producto
   const [openCreate, setOpenCreate] = useState(false);
@@ -82,6 +104,7 @@ export default function ProductsPage() {
       });
       if (error) throw error;
       setRows((data ?? []) as Row[]);
+      // si cambió el listado, los "dirty" pueden no aplicar; mejor mantenerlos, pero si un id ya no está, queda igual
     } finally {
       setLoading(false);
     }
@@ -103,29 +126,20 @@ export default function ProductsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
-useEffect(() => {
-  if (!storeId) return;
+  useEffect(() => {
+    if (!storeId) return;
 
-  const t = setTimeout(() => {
-    reload(storeId);
-  }, 300);
+    const t = setTimeout(() => {
+      reload(storeId);
+    }, 300);
 
-  return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [query, storeId]);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, storeId]);
 
   const title = useMemo(() => "Productos – Precio, IVA, Ganancia y Caja", []);
 
-  const onSave = async (
-    productId: string,
-    payload: {
-      newStock: number;
-      cost_net: number;
-      vat_rate: number;
-      markup_rate: number;
-      units_per_case: number;
-    }
-  ) => {
+  const onSave = async (productId: string, payload: DirtyPayload) => {
     if (!storeId) return;
 
     // 1) Guardar precio/iva/margen/unidades por caja (y recalcula price)
@@ -157,6 +171,62 @@ useEffect(() => {
     }
 
     await reload(storeId);
+  };
+
+  // ✅ Guardar todos los cambios pendientes
+  const saveAll = async () => {
+    if (!storeId) return;
+    const ids = Object.keys(dirtyById);
+    if (ids.length === 0) return;
+
+    const ok = window.confirm(`¿Guardar ${ids.length} productos?`);
+    if (!ok) return;
+
+    setLoading(true);
+    try {
+      for (const productId of ids) {
+        const payload = dirtyById[productId];
+        if (!payload) continue;
+
+        // 1) Guardar precio/iva/margen/unidades por caja (y recalcula price)
+        const resPrice = await fetch("/api/products/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productId, ...payload }),
+        });
+        const jsonPrice = await resPrice.json().catch(() => ({}));
+        if (!jsonPrice?.ok) {
+          alert(
+            `Error guardando precio (${productId}): ` + (jsonPrice?.error ?? "desconocido")
+          );
+          return;
+        }
+
+        // 2) Guardar stock por sucursal
+        const resStock = await fetch("/api/stock/adjust", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storeId,
+            productId,
+            newStock: Number(payload.newStock),
+          }),
+        });
+        const jsonStock = await resStock.json().catch(() => ({}));
+        if (!jsonStock?.ok) {
+          alert(
+            `Error guardando stock (${productId}): ` + (jsonStock?.error ?? "desconocido")
+          );
+          return;
+        }
+      }
+
+      setDirtyById({});
+      await reload(storeId);
+      alert("Cambios guardados ✅");
+    } finally {
+      setLoading(false);
+    }
   };
 
   function resetCreateForm() {
@@ -253,7 +323,10 @@ useEffect(() => {
           <select
             className="border rounded px-3 py-2"
             value={storeId}
-            onChange={(e) => setStoreId(e.target.value)}
+            onChange={(e) => {
+              setDirtyById({});
+              setStoreId(e.target.value);
+            }}
           >
             {stores.map((s) => (
               <option key={s.id} value={s.id}>
@@ -265,15 +338,15 @@ useEffect(() => {
 
         <div className="flex flex-col">
           <label className="text-sm mb-1">Buscar</label>
-<input
-  className="border rounded px-3 py-2 w-72"
-  placeholder="Buscar nombre o SKU"
-  value={query}
-  onChange={(e) => setQuery(e.target.value)}
-  onKeyDown={(e) => {
-    if (e.key === "Enter") reload(storeId);
-  }}
-/>
+          <input
+            className="border rounded px-3 py-2 w-72"
+            placeholder="Buscar nombre o SKU"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") reload(storeId);
+            }}
+          />
         </div>
 
         <button
@@ -282,6 +355,23 @@ useEffect(() => {
           disabled={loading}
         >
           {loading ? "Cargando..." : "Refrescar"}
+        </button>
+
+        <button
+          className="bg-emerald-700 text-white rounded px-4 py-2 disabled:opacity-50"
+          onClick={saveAll}
+          disabled={loading || dirtyCount === 0}
+          title={dirtyCount === 0 ? "No hay cambios pendientes" : "Guardar todos los cambios"}
+        >
+          {dirtyCount === 0 ? "Sin cambios" : `Guardar cambios (${dirtyCount})`}
+        </button>
+
+        <button
+          className="border rounded px-4 py-2 disabled:opacity-50"
+          onClick={() => setDirtyById({})}
+          disabled={loading || dirtyCount === 0}
+        >
+          Descartar cambios
         </button>
 
         <button
@@ -300,7 +390,7 @@ useEffect(() => {
       </div>
 
       <div className="border rounded bg-white shadow-sm">
-<div className="overflow-auto max-h-[calc(100vh-180px)]">
+        <div className="overflow-auto max-h-[calc(100vh-180px)]">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 sticky top-0 z-20">
               <tr>
@@ -314,12 +404,29 @@ useEffect(() => {
                 <th className="text-right p-2">Precio Caja</th>
                 <th className="text-right p-2">Stock</th>
                 <th className="text-right p-2">Nuevo</th>
-<th className="p-2 sticky right-0 bg-gray-50 z-30 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.25)]"></th>
+                <th className="p-2 sticky right-0 bg-gray-50 z-30 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.25)]"></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <RowLine key={r.id} row={r} onSave={(v) => onSave(r.id, v)} />
+                <RowLine
+                  key={r.id}
+                  row={r}
+                  isDirty={!!dirtyById[r.id]}
+                  onDirtyChange={(payload) => {
+                    // si vuelve a los valores originales, lo sacamos de "dirty"
+                    if (payloadEqualsRow(payload, r)) {
+                      setDirtyById((prev) => {
+                        const copy = { ...prev };
+                        delete copy[r.id];
+                        return copy;
+                      });
+                      return;
+                    }
+                    setDirtyById((prev) => ({ ...prev, [r.id]: payload }));
+                  }}
+                  onSave={(v) => onSave(r.id, v)}
+                />
               ))}
             </tbody>
           </table>
@@ -462,15 +569,13 @@ useEffect(() => {
 function RowLine({
   row,
   onSave,
+  isDirty,
+  onDirtyChange,
 }: {
   row: Row;
-  onSave: (payload: {
-    newStock: number;
-    cost_net: number;
-    vat_rate: number;
-    markup_rate: number;
-    units_per_case: number;
-  }) => void;
+  isDirty: boolean;
+  onDirtyChange: (payload: DirtyPayload) => void;
+  onSave: (payload: DirtyPayload) => void;
 }) {
   const [newStock, setNewStock] = useState<number>(n(row.stock, 0));
 
@@ -485,6 +590,18 @@ function RowLine({
   useEffect(() => setMargin(n(row.markup_rate, 0)), [row.markup_rate]);
   useEffect(() => setUnitsCase(Math.max(1, n(row.units_per_case, 1))), [row.units_per_case]);
 
+  // ✅ cada cambio marca como pendiente
+  useEffect(() => {
+    onDirtyChange({
+      newStock,
+      cost_net: cost,
+      vat_rate: vat,
+      markup_rate: margin,
+      units_per_case: unitsCase,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newStock, cost, vat, margin, unitsCase]);
+
   const priceFinal = useMemo(() => calcFinalPrice(cost, vat, margin), [cost, vat, margin]);
   const priceCase = useMemo(
     () => Math.round(priceFinal * Math.max(1, unitsCase) * 100) / 100,
@@ -492,9 +609,18 @@ function RowLine({
   );
 
   return (
-    <tr className="border-t">
-      <td className="p-2 max-w-[260px]">
-        <div className="truncate" title={row.name}>
+    <tr className={`border-t ${isDirty ? "bg-amber-50" : ""}`}>
+      <td className="p-2 w-[340px] max-w-[340px] align-top">
+        <div
+          title={row.name}
+          className="whitespace-normal break-words leading-tight"
+          style={{
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
           {row.name}
         </div>
       </td>
@@ -549,7 +675,7 @@ function RowLine({
         />
       </td>
 
-<td className="p-2 text-right sticky right-0 bg-white z-20 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.25)]">
+      <td className="p-2 text-right sticky right-0 bg-white z-20 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.25)]">
         <button
           className="bg-black text-white rounded px-4 py-2"
           onClick={() =>
