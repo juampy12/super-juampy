@@ -26,6 +26,10 @@ type DirtyPayload = {
   vat_rate: number;
   markup_rate: number;
   units_per_case: number;
+
+  // ✅ nuevo
+  use_final_price?: boolean;
+  final_price?: number | null;
 };
 
 function n(v: any, d = 0) {
@@ -44,7 +48,6 @@ function calcFinalPrice(costNet: number, vatRate: number, markupRate: number) {
 }
 
 // Si ya tenés un sistema de roles/PIN guardado en localStorage, probamos varias keys.
-// (No rompe nada: si no existe, simplemente no deja crear.)
 function isSupervisorClient() {
   try {
     const v =
@@ -59,12 +62,18 @@ function isSupervisorClient() {
 }
 
 function payloadEqualsRow(p: DirtyPayload, r: Row) {
+  // si está en modo precio directo, comparamos contra row.price
+  const finalOk = p.use_final_price
+    ? n(p.final_price, n(r.price, 0)) === n(r.price, 0)
+    : true;
+
   return (
     n(p.newStock, 0) === n(r.stock, 0) &&
     n(p.cost_net, 0) === n(r.cost_net, 0) &&
     n(p.vat_rate, 21) === n(r.vat_rate, 21) &&
     n(p.markup_rate, 0) === n(r.markup_rate, 0) &&
-    Math.max(1, n(p.units_per_case, 1)) === Math.max(1, n(r.units_per_case, 1))
+    Math.max(1, n(p.units_per_case, 1)) === Math.max(1, n(r.units_per_case, 1)) &&
+    finalOk
   );
 }
 
@@ -75,7 +84,6 @@ export default function ProductsPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // ✅ Cambios pendientes (batch)
   const [dirtyById, setDirtyById] = useState<Record<string, DirtyPayload>>({});
   const dirtyCount = useMemo(() => Object.keys(dirtyById).length, [dirtyById]);
 
@@ -104,7 +112,6 @@ export default function ProductsPage() {
       });
       if (error) throw error;
       setRows((data ?? []) as Row[]);
-      // si cambió el listado, los "dirty" pueden no aplicar; mejor mantenerlos, pero si un id ya no está, queda igual
     } finally {
       setLoading(false);
     }
@@ -128,11 +135,9 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (!storeId) return;
-
     const t = setTimeout(() => {
       reload(storeId);
     }, 300);
-
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, storeId]);
@@ -142,11 +147,17 @@ export default function ProductsPage() {
   const onSave = async (productId: string, payload: DirtyPayload) => {
     if (!storeId) return;
 
-    // 1) Guardar precio/iva/margen/unidades por caja (y recalcula price)
     const resPrice = await fetch("/api/products/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId, ...payload }),
+      body: JSON.stringify({
+        productId,
+        cost_net: payload.cost_net,
+        vat_rate: payload.vat_rate,
+        markup_rate: payload.markup_rate,
+        units_per_case: payload.units_per_case,
+        final_price: payload.use_final_price ? payload.final_price : null, // ✅ clave
+      }),
     });
     const jsonPrice = await resPrice.json().catch(() => ({}));
     if (!jsonPrice?.ok) {
@@ -154,7 +165,6 @@ export default function ProductsPage() {
       return;
     }
 
-    // 2) Guardar stock por sucursal
     const resStock = await fetch("/api/stock/adjust", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -173,7 +183,6 @@ export default function ProductsPage() {
     await reload(storeId);
   };
 
-  // ✅ Guardar todos los cambios pendientes
   const saveAll = async () => {
     if (!storeId) return;
     const ids = Object.keys(dirtyById);
@@ -188,21 +197,24 @@ export default function ProductsPage() {
         const payload = dirtyById[productId];
         if (!payload) continue;
 
-        // 1) Guardar precio/iva/margen/unidades por caja (y recalcula price)
         const resPrice = await fetch("/api/products/update", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId, ...payload }),
+          body: JSON.stringify({
+            productId,
+            cost_net: payload.cost_net,
+            vat_rate: payload.vat_rate,
+            markup_rate: payload.markup_rate,
+            units_per_case: payload.units_per_case,
+            final_price: payload.use_final_price ? payload.final_price : null,
+          }),
         });
         const jsonPrice = await resPrice.json().catch(() => ({}));
         if (!jsonPrice?.ok) {
-          alert(
-            `Error guardando precio (${productId}): ` + (jsonPrice?.error ?? "desconocido")
-          );
+          alert(`Error guardando precio (${productId}): ` + (jsonPrice?.error ?? "desconocido"));
           return;
         }
 
-        // 2) Guardar stock por sucursal
         const resStock = await fetch("/api/stock/adjust", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -214,9 +226,7 @@ export default function ProductsPage() {
         });
         const jsonStock = await resStock.json().catch(() => ({}));
         if (!jsonStock?.ok) {
-          alert(
-            `Error guardando stock (${productId}): ` + (jsonStock?.error ?? "desconocido")
-          );
+          alert(`Error guardando stock (${productId}): ` + (jsonStock?.error ?? "desconocido"));
           return;
         }
       }
@@ -244,21 +254,14 @@ export default function ProductsPage() {
   async function handleCreate() {
     if (!storeId) return;
 
-    // SOLO supervisor
     if (!isSupervisorClient()) {
       alert("Solo supervisor puede crear productos (verificá tu PIN/rol).");
       return;
     }
 
     const name = createName.trim();
-    if (!name) {
-      alert("Falta nombre");
-      return;
-    }
-    if (!createOwn && !createSku.trim()) {
-      alert("Falta SKU (para productos no propios)");
-      return;
-    }
+    if (!name) return alert("Falta nombre");
+    if (!createOwn && !createSku.trim()) return alert("Falta SKU (para productos no propios)");
 
     setCreating(true);
     try {
@@ -297,7 +300,6 @@ export default function ProductsPage() {
         const jsonStock = await resStock.json().catch(() => ({}));
         if (!jsonStock?.ok) {
           alert("Producto creado, pero falló stock: " + (jsonStock?.error ?? "desconocido"));
-          // igual seguimos
         }
       }
 
@@ -349,11 +351,7 @@ export default function ProductsPage() {
           />
         </div>
 
-        <button
-          className="bg-black text-white rounded px-4 py-2"
-          onClick={() => reload(storeId)}
-          disabled={loading}
-        >
+        <button className="bg-black text-white rounded px-4 py-2" onClick={() => reload(storeId)} disabled={loading}>
           {loading ? "Cargando..." : "Refrescar"}
         </button>
 
@@ -366,18 +364,13 @@ export default function ProductsPage() {
           {dirtyCount === 0 ? "Sin cambios" : `Guardar cambios (${dirtyCount})`}
         </button>
 
-        <button
-          className="border rounded px-4 py-2 disabled:opacity-50"
-          onClick={() => setDirtyById({})}
-          disabled={loading || dirtyCount === 0}
-        >
+        <button className="border rounded px-4 py-2 disabled:opacity-50" onClick={() => setDirtyById({})} disabled={loading || dirtyCount === 0}>
           Descartar cambios
         </button>
 
         <button
           className="bg-emerald-600 text-white rounded px-4 py-2"
           onClick={() => {
-            // SOLO supervisor
             if (!isSupervisorClient()) {
               alert("Solo supervisor puede crear productos (verificá tu PIN/rol).");
               return;
@@ -414,7 +407,6 @@ export default function ProductsPage() {
                   row={r}
                   isDirty={!!dirtyById[r.id]}
                   onDirtyChange={(payload) => {
-                    // si vuelve a los valores originales, lo sacamos de "dirty"
                     if (payloadEqualsRow(payload, r)) {
                       setDirtyById((prev) => {
                         const copy = { ...prev };
@@ -433,7 +425,6 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* Modal Crear */}
       {openCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpenCreate(false)} />
@@ -457,11 +448,7 @@ export default function ProductsPage() {
               </div>
 
               <div className="col-span-2 flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={createOwn}
-                  onChange={(e) => setCreateOwn(e.target.checked)}
-                />
+                <input type="checkbox" checked={createOwn} onChange={(e) => setCreateOwn(e.target.checked)} />
                 <span className="text-sm">Producto propio (SKU automático)</span>
               </div>
 
@@ -479,63 +466,37 @@ export default function ProductsPage() {
 
               <div>
                 <label className="text-sm">Costo neto</label>
-                <input
-                  className="border rounded px-3 py-2 w-full text-right"
-                  value={String(createCost)}
-                  onChange={(e) => setCreateCost(n(e.target.value, 0))}
-                />
+                <input className="border rounded px-3 py-2 w-full text-right" value={String(createCost)} onChange={(e) => setCreateCost(n(e.target.value, 0))} />
               </div>
 
               <div>
                 <label className="text-sm">IVA %</label>
-                <input
-                  className="border rounded px-3 py-2 w-full text-right"
-                  value={String(createVat)}
-                  onChange={(e) => setCreateVat(n(e.target.value, 21))}
-                />
+                <input className="border rounded px-3 py-2 w-full text-right" value={String(createVat)} onChange={(e) => setCreateVat(n(e.target.value, 21))} />
               </div>
 
               <div>
                 <label className="text-sm">Margen %</label>
-                <input
-                  className="border rounded px-3 py-2 w-full text-right"
-                  value={String(createMargin)}
-                  onChange={(e) => setCreateMargin(n(e.target.value, 0))}
-                />
+                <input className="border rounded px-3 py-2 w-full text-right" value={String(createMargin)} onChange={(e) => setCreateMargin(n(e.target.value, 0))} />
               </div>
 
               <div>
                 <label className="text-sm">Unid/caja</label>
-                <input
-                  className="border rounded px-3 py-2 w-full text-right"
-                  value={String(createUnitsCase)}
-                  onChange={(e) => setCreateUnitsCase(Math.max(1, n(e.target.value, 1)))}
-                />
+                <input className="border rounded px-3 py-2 w-full text-right" value={String(createUnitsCase)} onChange={(e) => setCreateUnitsCase(Math.max(1, n(e.target.value, 1)))} />
               </div>
 
               <div className="col-span-2 flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={createWeighted}
-                  onChange={(e) => setCreateWeighted(e.target.checked)}
-                />
+                <input type="checkbox" checked={createWeighted} onChange={(e) => setCreateWeighted(e.target.checked)} />
                 <span className="text-sm">Producto pesado (kg)</span>
               </div>
 
               <div>
                 <label className="text-sm">Stock inicial (esta sucursal)</label>
-                <input
-                  className="border rounded px-3 py-2 w-full text-right"
-                  value={String(createInitialStock)}
-                  onChange={(e) => setCreateInitialStock(n(e.target.value, 0))}
-                />
+                <input className="border rounded px-3 py-2 w-full text-right" value={String(createInitialStock)} onChange={(e) => setCreateInitialStock(n(e.target.value, 0))} />
               </div>
 
               <div>
                 <label className="text-sm">Precio final (preview)</label>
-                <div className="border rounded px-3 py-2 w-full text-right font-semibold">
-                  {money(createPreviewFinal)}
-                </div>
+                <div className="border rounded px-3 py-2 w-full text-right font-semibold">{money(createPreviewFinal)}</div>
               </div>
             </div>
 
@@ -551,11 +512,7 @@ export default function ProductsPage() {
                 Cancelar
               </button>
 
-              <button
-                className="px-4 py-2 rounded bg-black text-white"
-                onClick={handleCreate}
-                disabled={creating}
-              >
+              <button className="px-4 py-2 rounded bg-black text-white" onClick={handleCreate} disabled={creating}>
                 {creating ? "Creando..." : "Crear"}
               </button>
             </div>
@@ -584,13 +541,25 @@ function RowLine({
   const [margin, setMargin] = useState<number>(n(row.markup_rate, 0));
   const [unitsCase, setUnitsCase] = useState<number>(Math.max(1, n(row.units_per_case, 1)));
 
+  // ✅ nuevo: modo precio directo
+  const [useFinalPrice, setUseFinalPrice] = useState<boolean>(false);
+  const [finalPriceManual, setFinalPriceManual] = useState<number>(n(row.price, 0));
+
   useEffect(() => setNewStock(n(row.stock, 0)), [row.stock]);
   useEffect(() => setCost(n(row.cost_net, 0)), [row.cost_net]);
   useEffect(() => setVat(n(row.vat_rate, 21)), [row.vat_rate]);
   useEffect(() => setMargin(n(row.markup_rate, 0)), [row.markup_rate]);
   useEffect(() => setUnitsCase(Math.max(1, n(row.units_per_case, 1))), [row.units_per_case]);
+  useEffect(() => setFinalPriceManual(n(row.price, 0)), [row.price]);
 
-  // ✅ cada cambio marca como pendiente
+  const priceCalc = useMemo(() => calcFinalPrice(cost, vat, margin), [cost, vat, margin]);
+  const priceFinal = useFinalPrice ? n(finalPriceManual, 0) : priceCalc;
+
+  const priceCase = useMemo(
+    () => Math.round(priceFinal * Math.max(1, unitsCase) * 100) / 100,
+    [priceFinal, unitsCase]
+  );
+
   useEffect(() => {
     onDirtyChange({
       newStock,
@@ -598,15 +567,11 @@ function RowLine({
       vat_rate: vat,
       markup_rate: margin,
       units_per_case: unitsCase,
+      use_final_price: useFinalPrice,
+      final_price: useFinalPrice ? n(finalPriceManual, 0) : null,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newStock, cost, vat, margin, unitsCase]);
-
-  const priceFinal = useMemo(() => calcFinalPrice(cost, vat, margin), [cost, vat, margin]);
-  const priceCase = useMemo(
-    () => Math.round(priceFinal * Math.max(1, unitsCase) * 100) / 100,
-    [priceFinal, unitsCase]
-  );
+  }, [newStock, cost, vat, margin, unitsCase, useFinalPrice, finalPriceManual]);
 
   return (
     <tr className={`border-t ${isDirty ? "bg-amber-50" : ""}`}>
@@ -628,30 +593,42 @@ function RowLine({
       <td className="p-2">{row.sku ?? "-"}</td>
 
       <td className="p-2 text-right">
-        <input
-          className="border rounded px-2 py-1 w-24 text-right"
-          value={String(cost)}
-          onChange={(e) => setCost(n(e.target.value, 0))}
-        />
+        <input className="border rounded px-2 py-1 w-24 text-right" value={String(cost)} onChange={(e) => setCost(n(e.target.value, 0))} />
       </td>
 
       <td className="p-2 text-right">
-        <input
-          className="border rounded px-2 py-1 w-16 text-right"
-          value={String(vat)}
-          onChange={(e) => setVat(n(e.target.value, 0))}
-        />
+        <input className="border rounded px-2 py-1 w-16 text-right" value={String(vat)} onChange={(e) => setVat(n(e.target.value, 0))} />
       </td>
 
       <td className="p-2 text-right">
-        <input
-          className="border rounded px-2 py-1 w-16 text-right"
-          value={String(margin)}
-          onChange={(e) => setMargin(n(e.target.value, 0))}
-        />
+        <input className="border rounded px-2 py-1 w-16 text-right" value={String(margin)} onChange={(e) => setMargin(n(e.target.value, 0))} />
       </td>
 
-      <td className="p-2 text-right font-semibold">{money(n((row as any).price, priceFinal))}</td>
+      {/* ✅ Precio final editable */}
+      <td className="p-2 text-right">
+        <div className="flex items-center justify-end gap-2">
+          <input
+            className="border rounded px-2 py-1 w-28 text-right font-semibold"
+            value={String(useFinalPrice ? n(finalPriceManual, 0) : priceCalc)}
+            onChange={(e) => {
+              const v = n(e.target.value, 0);
+              setFinalPriceManual(v);
+              if (!useFinalPrice) setUseFinalPrice(true); // si escribe, lo pasamos a modo directo
+            }}
+          />
+          <label className="text-xs flex items-center gap-1 select-none">
+            <input
+              type="checkbox"
+              checked={useFinalPrice}
+              onChange={(e) => setUseFinalPrice(e.target.checked)}
+            />
+            Precio directo
+          </label>
+        </div>
+        <div className="text-[11px] opacity-60 mt-1">
+          {useFinalPrice ? "Se guarda tal cual (sin cálculo)" : "Calculado por costo/IVA/margen"}
+        </div>
+      </td>
 
       <td className="p-2 text-right">
         <input
@@ -664,15 +641,11 @@ function RowLine({
       <td className="p-2 text-right">{money(priceCase)}</td>
 
       <td className="p-2 text-right">
-        {n(row.stock, 0)} {row.unit_label ?? "u"}
+        {Number(row.stock ?? 0)} {row.unit_label ?? "u"}
       </td>
 
       <td className="p-2 text-right">
-        <input
-          className="border rounded px-2 py-1 w-20 text-right"
-          value={String(newStock)}
-          onChange={(e) => setNewStock(n(e.target.value, 0))}
-        />
+        <input className="border rounded px-2 py-1 w-20 text-right" value={String(newStock)} onChange={(e) => setNewStock(n(e.target.value, 0))} />
       </td>
 
       <td className="p-2 text-right sticky right-0 bg-white z-20 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.25)]">
@@ -685,6 +658,8 @@ function RowLine({
               vat_rate: vat,
               markup_rate: margin,
               units_per_case: unitsCase,
+              use_final_price: useFinalPrice,
+              final_price: useFinalPrice ? n(finalPriceManual, 0) : null,
             })
           }
         >

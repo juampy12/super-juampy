@@ -10,13 +10,15 @@ import {
   Package,
   BarChart3,
   Wallet,
- AlertTriangle,
+  AlertTriangle,
+  Tag,
 } from 'lucide-react';
 
 const navLinks = [
   { href: '/', label: 'Inicio', icon: Home },
   { href: '/ventas', label: 'POS', icon: ShoppingCart },
   { href: '/products', label: 'Productos', icon: Package },
+  { href: '/ofertas', label: 'Ofertas', icon: Tag },
   { href: '/reports', label: 'Reportes', icon: BarChart3 },
   { href: '/cierres', label: 'Cierre de caja', icon: Wallet },
   { href: '/cierres/historial', label: 'Historial cierres', icon: Wallet },
