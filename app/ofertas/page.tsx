@@ -50,15 +50,21 @@ export default function OfertasPage() {
 
   const [type, setType] = useState<"fixed_price" | "percent">("fixed_price");
   const [value, setValue] = useState<number>(0);
-  const [startsAt, setStartsAt] = useState<string>(isoLocalInput(new Date(Date.now() - 60_000)));
-  const [endsAt, setEndsAt] = useState<string>(isoLocalInput(new Date(Date.now() + 7 * 24 * 60 * 60_000)));
+  const [startsAt, setStartsAt] = useState<string>(
+    isoLocalInput(new Date(Date.now() - 60_000))
+  );
+  const [endsAt, setEndsAt] = useState<string>(
+    isoLocalInput(new Date(Date.now() + 7 * 24 * 60 * 60_000))
+  );
 
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string>("");
 
   // mapa product_id -> "Nombre (SKU)" para mostrar lindo en Ofertas activas
-  const [productMap, setProductMap] = useState<Record<string, { name: string; sku: string }>>({});
+  const [productMap, setProductMap] = useState<
+    Record<string, { name: string; sku: string }>
+  >({});
 
   const effectiveStoreId = useMemo(() => storeId, [storeId]);
 
@@ -80,19 +86,22 @@ export default function OfertasPage() {
     setLoading(true);
     setMsg("");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/products_with_stock`, {
-        method: "POST",
-        headers: {
-          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          p_store: effectiveStoreId,
-          p_query: query || null,
-          p_limit: 30,
-        }),
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/products_with_stock`,
+        {
+          method: "POST",
+          headers: {
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            p_store: effectiveStoreId,
+            p_query: query || null,
+            p_limit: 30,
+          }),
+        }
+      );
       const data = await res.json();
       const rows = Array.isArray(data) ? (data as ProductRow[]) : [];
       setProducts(rows);
@@ -122,8 +131,10 @@ export default function OfertasPage() {
   async function loadOffers() {
     if (!storeId) return;
 
-    // 1) intentamos por sucursal (como venías haciendo)
-    const byStore = await fetchOffers(`/api/offers?store_id=${encodeURIComponent(storeId)}`);
+    // 1) intentamos por sucursal
+    const byStore = await fetchOffers(
+      `/api/offers?store_id=${encodeURIComponent(storeId)}`
+    );
 
     // 2) intentamos traer todas (por si /api/offers por store no incluye globales)
     const all = await fetchOffers(`/api/offers`);
@@ -149,7 +160,10 @@ export default function OfertasPage() {
 
     const uniq = Array.from(new Set(missing));
     if (uniq.length) {
-      const ids = uniq.slice(0, 100).map((id) => `"${id}"`).join(",");
+      const ids = uniq
+        .slice(0, 100)
+        .map((id) => `"${id}"`)
+        .join(",");
       const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/products?select=id,name,sku&id=in.(${ids})`;
       const r = await fetch(url, {
         headers: {
@@ -176,13 +190,11 @@ export default function OfertasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
+  // ✅ SIN PIN
   async function createOffer() {
     if (!selected) return setMsg("Seleccioná un producto");
     if (!storeId) return setMsg("Seleccioná una sucursal");
     if (!value || value <= 0) return setMsg("Valor inválido");
-
-    const pin = window.prompt("PIN de supervisor:");
-    if (!pin) return;
 
     setLoading(true);
     setMsg("");
@@ -200,7 +212,6 @@ export default function OfertasPage() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-supervisor-pin": pin,
       },
       body: JSON.stringify(payload),
     });
@@ -216,10 +227,8 @@ export default function OfertasPage() {
     setLoading(false);
   }
 
+  // ✅ SIN PIN
   async function deactivateOffer(id: string) {
-    const pin = window.prompt("PIN de supervisor para desactivar:");
-    if (!pin) return;
-
     setLoading(true);
     setMsg("");
 
@@ -227,7 +236,6 @@ export default function OfertasPage() {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "x-supervisor-pin": pin,
       },
       body: JSON.stringify({ id }),
     });
@@ -266,7 +274,11 @@ export default function OfertasPage() {
         </div>
 
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isGlobal} onChange={(e) => setIsGlobal(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={isGlobal}
+            onChange={(e) => setIsGlobal(e.target.checked)}
+          />
           Global (todas las sucursales)
         </label>
 
@@ -301,10 +313,14 @@ export default function OfertasPage() {
           </div>
 
           <div className="mt-4 border rounded-lg overflow-hidden">
-            <div className="px-3 py-2 text-sm font-semibold bg-black/5">Productos (elegí uno)</div>
+            <div className="px-3 py-2 text-sm font-semibold bg-black/5">
+              Productos (elegí uno)
+            </div>
             <div className="max-h-[360px] overflow-auto">
               {products.length === 0 ? (
-                <div className="px-3 py-3 text-sm opacity-70">No hay resultados</div>
+                <div className="px-3 py-3 text-sm opacity-70">
+                  No hay resultados
+                </div>
               ) : (
                 products.map((p) => (
                   <button
@@ -319,7 +335,8 @@ export default function OfertasPage() {
                   >
                     <div className="font-medium">{p.name}</div>
                     <div className="text-xs opacity-80">
-                      SKU {p.sku} · Stock {Number(p.stock)} · Normal ${Number(p.price).toFixed(2)}
+                      SKU {p.sku} · Stock {Number(p.stock)} · Normal $
+                      {Number(p.price).toFixed(2)}
                       {p.has_offer ? (
                         <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-800">
                           OFERTA ${Number(p.effective_price).toFixed(2)}
@@ -335,7 +352,7 @@ export default function OfertasPage() {
 
         {/* Crear oferta */}
         <div className="border rounded-xl p-4 bg-white/5">
-          <div className="font-semibold mb-3">Crear oferta (Supervisor)</div>
+          <div className="font-semibold mb-3">Crear oferta</div>
 
           <div className="text-sm mb-3">
             Producto: <b>{selectedLabel}</b>
@@ -401,7 +418,9 @@ export default function OfertasPage() {
           <div className="border rounded-lg overflow-hidden">
             <div className="max-h-[300px] overflow-auto">
               {offers.length === 0 ? (
-                <div className="px-3 py-3 text-sm opacity-70">No hay ofertas activas</div>
+                <div className="px-3 py-3 text-sm opacity-70">
+                  No hay ofertas activas
+                </div>
               ) : (
                 offers.map((o) => {
                   const p = productMap[o.product_id];
@@ -413,11 +432,16 @@ export default function OfertasPage() {
                         <div>
                           <div className="font-medium">{label}</div>
                           <div className="text-xs opacity-80 mt-1">
-                            <b>{o.type === "fixed_price" ? `$${o.value}` : `-${o.value}%`}</b>
+                            <b>
+                              {o.type === "fixed_price"
+                                ? `$${o.value}`
+                                : `-${o.value}%`}
+                            </b>
                             <span className="mx-2">·</span>
                             {o.store_id ? "Sucursal" : "Global"}
                             <span className="mx-2">·</span>
-                            {new Date(o.starts_at).toLocaleString()} → {new Date(o.ends_at).toLocaleString()}
+                            {new Date(o.starts_at).toLocaleString()} →{" "}
+                            {new Date(o.ends_at).toLocaleString()}
                           </div>
                         </div>
 
@@ -437,7 +461,8 @@ export default function OfertasPage() {
           </div>
 
           <div className="text-xs opacity-70 mt-3">
-            Nota: máximo 1 oferta activa por producto. Si querés cambiarla, desactivá la actual y creá otra.
+            Nota: máximo 1 oferta activa por producto. Si querés cambiarla,
+            desactivá la actual y creá otra.
           </div>
         </div>
       </div>

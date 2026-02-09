@@ -7,11 +7,6 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-function getSupervisorPinFromEnv() {
-  // Usamos el mismo nombre que ya venís usando en el frontend (para no cambiar nada hoy).
-  return process.env.NEXT_PUBLIC_SUPERJUAMPY_SUPERVISOR_PIN || "2580";
-}
-
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -36,7 +31,6 @@ export async function GET(req: NextRequest) {
     }
 
     const { data, error } = await q;
-
     if (error) return jsonError(error.message, 500);
 
     return NextResponse.json({ offers: data ?? [] });
@@ -47,11 +41,6 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const pin = req.headers.get("x-supervisor-pin") || "";
-    if (pin !== getSupervisorPinFromEnv()) {
-      return jsonError("PIN incorrecto", 401);
-    }
-
     const body = await req.json();
 
     const product_id = body?.product_id as string | undefined;
@@ -112,11 +101,6 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const pin = req.headers.get("x-supervisor-pin") || "";
-    if (pin !== getSupervisorPinFromEnv()) {
-      return jsonError("PIN incorrecto", 401);
-    }
-
     const body = await req.json();
     const id = body?.id as string | undefined;
     if (!id) return jsonError("Falta id");

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { getPosEmployee } from "@/lib/posSession";
 
 type Store = { id: string; name: string };
 
@@ -34,6 +36,16 @@ export default function StockBajoPage() {
   const [onlyMissing, setOnlyMissing] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("missing");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  // ✅ rol (para mostrar botón "Configurar mínimos" solo supervisor)
+  const [isSupervisor, setIsSupervisor] = useState(false);
+  const [roleReady, setRoleReady] = useState(false);
+
+  useEffect(() => {
+    const emp = getPosEmployee();
+    setIsSupervisor(emp?.role === "supervisor");
+    setRoleReady(true);
+  }, []);
 
   useEffect(() => {
     supabase
@@ -146,16 +158,13 @@ export default function StockBajoPage() {
 
     const text =
       `📦 Stock bajo (${stores.find((s) => s.id === selectedStoreId)?.name ?? ""})\n` +
-      `Items: ${sortedRows.length} | Faltante total: ${Number(totalMissing).toFixed(
-        0
-      )}\n\n` +
+      `Items: ${sortedRows.length} | Faltante total: ${Number(totalMissing).toFixed(0)}\n\n` +
       lines.join("\n");
 
     try {
       await navigator.clipboard.writeText(text);
       alert("Lista copiada ✅");
     } catch {
-      // fallback
       const ta = document.createElement("textarea");
       ta.value = text;
       document.body.appendChild(ta);
@@ -176,7 +185,18 @@ export default function StockBajoPage() {
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {/* ✅ Solo supervisor: link a mínimos */}
+          {roleReady && isSupervisor && (
+            <Link
+              href="/minimos"
+              className="rounded border px-3 py-2 text-sm hover:bg-neutral-50"
+              title="Configurar mínimos por producto y sucursal"
+            >
+              Configurar mínimos
+            </Link>
+          )}
+
           <button
             className="rounded border px-3 py-2 text-sm"
             onClick={() => void copyList()}
@@ -328,10 +348,7 @@ export default function StockBajoPage() {
                   return (
                     <tr
                       key={r.id}
-                      className={[
-                        "border-b last:border-0",
-                        miss > 0 ? "bg-red-50/40" : "",
-                      ].join(" ")}
+                      className={["border-b last:border-0", miss > 0 ? "bg-red-50/40" : ""].join(" ")}
                     >
                       <td className="py-2 px-3">
                         <div className="flex items-center justify-between gap-3">
@@ -382,6 +399,15 @@ export default function StockBajoPage() {
 
       <div className="text-xs text-neutral-500">
         Nota: para que aparezcan alertas, primero tenés que configurar “mínimo” por producto y sucursal.
+        {roleReady && isSupervisor && (
+          <>
+            {" "}
+            <Link href="/minimos" className="underline">
+              Configurar mínimos
+            </Link>
+            .
+          </>
+        )}
       </div>
     </div>
   );

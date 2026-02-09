@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Falta name" }, { status: 400 });
     }
 
-    const is_own = Boolean(body?.is_own ?? false);
+const is_own = Boolean(body?.is_own ?? body?.is_own_product ?? false);
 
     let sku = body?.sku != null ? String(body.sku).trim() : "";
     if (!is_own && !sku) {
