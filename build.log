@@ -1,0 +1,75 @@
+
+> super-juampy@0.1.0 build /home/juampy/work/super-juampy
+> next build
+
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⚠ `experimental.typedRoutes` has been moved to `typedRoutes`. Please update your next.config.mjs file accordingly.
+   ▲ Next.js 16.0.8 (Turbopack)
+   - Environments: .env.local
+   - Experiments (use with caution):
+     ✓ typedRoutes
+
+   Creating an optimized production build ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ✓ Compiled successfully in 4.3s
+   Running TypeScript ...
+   Collecting page data using 11 workers ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 11 workers (0/32) ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 11 workers (8/32) 
+   Generating static pages using 11 workers (16/32) 
+   Generating static pages using 11 workers (24/32) 
+ ✓ Generating static pages using 11 workers (32/32) in 971.0ms
+   Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/cash-closure
+├ ƒ /api/cash-closures
+├ ƒ /api/debug/env
+├ ƒ /api/employee/login
+├ ƒ /api/health
+├ ƒ /api/offers
+├ ƒ /api/pos/confirm
+├ ƒ /api/products/create
+├ ƒ /api/products/deactivate
+├ ƒ /api/products/update
+├ ƒ /api/products/update-active
+├ ƒ /api/products/update-name
+├ ƒ /api/reports/summary
+├ ƒ /api/stock/adjust
+├ ○ /catalogo
+├ ○ /cierres
+├ ○ /cierres/historial
+├ ○ /minimos
+├ ○ /ofertas
+├ ○ /pos-login
+├ ○ /products
+├ ƒ /reportes
+├ ○ /reports
+├ ƒ /reports/top-products
+├ ○ /robots.txt
+├ ○ /sitemap.xml
+├ ○ /stock
+├ ○ /stock-bajo
+├ ○ /top
+├ ○ /venta-test
+└ ○ /ventas
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

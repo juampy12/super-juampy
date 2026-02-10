@@ -344,6 +344,39 @@ export default function VentasPage() {
   function getUnitPrice(p: ProductRow) {
     return Number((p.effective_price ?? p.price ?? 0) as any);
   }
+function sortResultsForTerm(list: ProductRow[], termRaw: string) {
+  const term = (termRaw ?? "").trim();
+  if (!term) return list;
+
+  const termLower = term.toLowerCase();
+
+  function rank(p: ProductRow) {
+    const sku = (p.sku ?? "").trim();
+    const name = (p.name ?? "").toLowerCase();
+
+    // 0) match exacto por SKU (lo que queremos para 4003)
+    if (sku === term) return 0;
+
+    // 1) SKU empieza con term (útil si usan prefijos internos)
+    if (sku.startsWith(term)) return 1;
+
+    // 2) SKU contiene term (caso 7798...4003)
+    if (sku.includes(term)) return 2;
+
+    // 3) nombre contiene term
+    if (name.includes(termLower)) return 3;
+
+    // 4) resto
+    return 4;
+  }
+
+  return [...list].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return String(a.name ?? "").localeCompare(String(b.name ?? ""));
+  });
+}
 
   function calcLineTotal(it: {
     qty: number;
@@ -422,7 +455,11 @@ export default function VentasPage() {
   // =========================
   // SEARCH
   // =========================
-  async function handleSearch(opts?: { term?: string; autoAddFirst?: boolean }) {
+async function handleSearch(opts?: {
+  term?: string;
+  autoAddFirst?: boolean;
+  source?: "scanner" | "manual";
+}) {
     const term = (opts?.term ?? search).trim();
 
     if (!term) {
@@ -447,16 +484,69 @@ export default function VentasPage() {
         alert("Error buscando productos: " + error.message);
         return;
       }
+const list = (data ?? []) as ProductRow[];
+// ✅ Filtrar productos desactivados (active=false)
+let activeList = list;
 
-      const list = (data ?? []) as ProductRow[];
-      setResults(list);
+try {
+  const ids = list.map((p) => p.id).filter(Boolean);
 
-      if (opts?.autoAddFirst && list.length >= 1) {
-        addToCartMaybeWeighted(list[0]);
-        setSearch("");
-        setResults([]);
-        setTimeout(() => searchInputRef.current?.focus(), 0);
-      }
+  if (ids.length) {
+    const { data: actRows, error: actErr } = await supabase
+      .from("products")
+      .select("id, active")
+      .in("id", ids);
+
+    if (!actErr) {
+      const activeSet = new Set(
+        (actRows ?? []).filter((r: any) => r?.active).map((r: any) => r.id)
+      );
+      activeList = list.filter((p) => activeSet.has(p.id));
+    }
+  }
+} catch {
+  // si falla, no rompemos nada
+}
+
+const ordered = sortResultsForTerm(activeList, term);
+setResults(ordered);
+
+if (opts?.autoAddFirst && ordered.length >= 1) {
+  const is4Digits = /^\d{4}$/.test(term);
+  const isBarcode = /^\d{6,}$/.test(term); // barcode real
+
+  // CASO SCANNER: solo agrega si hay match exacto
+  if (opts?.source === "scanner" && isBarcode) {
+    const exact = ordered.find(
+      (p) => String(p.sku ?? "").trim() === term
+    );
+
+    if (exact) {
+      addToCartMaybeWeighted(exact);
+      setSearch("");
+      setResults([]);
+      setTimeout(() => searchInputRef.current?.focus(), 0);
+    } else {
+      // no agrega nada si no hay match exacto
+      setTimeout(() => searchInputRef.current?.focus(), 0);
+    }
+
+    return;
+  }
+
+  // CASO MANUAL
+  const pick = is4Digits
+    ? ordered.find((p) => String(p.sku ?? "").trim() === term)
+    : ordered[0];
+
+  if (pick) {
+    addToCartMaybeWeighted(pick);
+    setSearch("");
+    setResults([]);
+    setTimeout(() => searchInputRef.current?.focus(), 0);
+  }
+}
+
     } finally {
       setSearching(false);
     }
@@ -634,11 +724,11 @@ export default function VentasPage() {
           const code = scannerBufferRef.current.trim();
           scannerBufferRef.current = "";
 
-          if (code.length >= 3) {
+if (code.length >= 6) {
             e.preventDefault();
             setSearch(code);
             playBeep();
-            void handleSearch({ term: code, autoAddFirst: true });
+void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
             return;
           }
 
@@ -658,7 +748,7 @@ export default function VentasPage() {
             if (code.length >= 6) {
               setSearch(code);
               playBeep();
-              void handleSearch({ term: code, autoAddFirst: true });
+void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
             }
           }, 80);
         }
@@ -897,14 +987,19 @@ export default function VentasPage() {
                 className="border rounded px-3 py-2 flex-1"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    void handleSearch({
-                      term: search,
-                      autoAddFirst: quickMode ? true : false,
-                    });
-                  }
-                }}
+onKeyDown={(e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+
+    const term = search.trim();
+    const isOwn4DigitSku = /^\d{4}$/.test(term); // SOLO 4 dígitos
+
+    void handleSearch({
+      term,
+      autoAddFirst: quickMode ? true : isOwn4DigitSku,
+    });
+  }
+}}
               />
               <button
                 onClick={() =>

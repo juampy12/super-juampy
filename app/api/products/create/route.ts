@@ -59,14 +59,39 @@ const is_own = Boolean(body?.is_own ?? body?.is_own_product ?? false);
 
     const is_weighted = Boolean(body?.is_weighted ?? false);
 
-    const cost_net = Number(body?.cost_net ?? 0);
-    const vat_rate = Number(body?.vat_rate ?? 21);
-    const markup_rate = Number(body?.markup_rate ?? 0);
-    const units_per_case = Math.max(1, Number(body?.units_per_case ?? 1));
+const cost_net = Number(body?.cost_net ?? 0);
+const vat_rate = Number(body?.vat_rate ?? 21);
+const markup_rate = Number(body?.markup_rate ?? 0);
+const units_per_case = Math.max(1, Number(body?.units_per_case ?? 1));
 
-    // Precio final = costo * (1 + IVA%) * (1 + margen%)
-    const withVat = cost_net * (1 + vat_rate / 100);
-    const finalPrice = Math.round(withVat * (1 + markup_rate / 100) * 100) / 100;
+// ✅ Soporte precio final manual
+const use_final_price = Boolean(body?.use_final_price ?? body?.use_final ?? false);
+const manual_final = body?.final_price != null ? Number(body.final_price) : NaN;
+
+// Precio final = manual (si corresponde) o cálculo por costo
+let finalPrice: number;
+
+if (use_final_price) {
+  if (!Number.isFinite(manual_final) || manual_final <= 0) {
+    return NextResponse.json(
+      { ok: false, error: "Precio final manual inválido" },
+      { status: 400 }
+    );
+  }
+  finalPrice = Math.round(manual_final * 100) / 100;
+} else {
+  // Evita crear productos con precio 0 por error
+  if (!Number.isFinite(cost_net) || cost_net <= 0) {
+    return NextResponse.json(
+      { ok: false, error: "Costo neto inválido (o 0). Cargá costo o marcá precio final manual." },
+      { status: 400 }
+    );
+  }
+
+  // Precio final = costo * (1 + IVA%) * (1 + margen%)
+  const withVat = cost_net * (1 + vat_rate / 100);
+  finalPrice = Math.round(withVat * (1 + markup_rate / 100) * 100) / 100;
+}
 
     const { data, error } = await supabaseAdmin
       .from("products")
