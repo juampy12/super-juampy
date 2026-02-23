@@ -128,14 +128,23 @@ export async function POST(req: Request) {
       }
 
       // 3) movimiento
-      const { error: insErr } = await supabaseAdmin.from("stock_movements").insert({
-        store_id: storeId,
-        product_id: productId,
-        delta,
-        reason,
-        created_at: new Date().toISOString(),
-      });
+// 3) Registrar movimiento (stock_movements exige qty NOT NULL)
+const qty = Math.max(1, Math.round(Math.abs(delta)));
 
+const { error: insErr } = await supabaseAdmin.from("stock_movements").insert({
+  store_id: storeId,
+  product_id: productId,
+
+  // ✅ columnas reales
+  qty,                 // NOT NULL
+  qty_delta: delta,    // numérico (puede ser negativo)
+  delta,               // existe pero puede ser null; lo dejamos por compatibilidad
+
+  reason,
+  note: null,
+
+  created_at: new Date().toISOString(),
+});
       if (insErr) {
         // stock ya quedó guardado; igual informamos error del movimiento
         return NextResponse.json(
