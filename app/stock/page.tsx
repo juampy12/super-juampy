@@ -3,12 +3,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Store = { id: string; name: string };
+
 type Row = {
   id: string;
   sku: string | null;
   name: string;
   stock: number | null;
   is_weighted?: boolean | null;
+  active?: boolean | null;
 };
 
 export default function StockPage() {
@@ -18,11 +20,8 @@ export default function StockPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [storeId, setStoreId] = useState<string>("");
 
-  // búsqueda normal
+  // único buscador (sirve para nombre o SKU)
   const [query, setQuery] = useState<string>("");
-
-  // modo escáner (SKU)
-  const [scan, setScan] = useState<string>("");
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
@@ -32,14 +31,24 @@ export default function StockPage() {
   const pageSize = 200;
   const [page, setPage] = useState<number>(0);
 
-  // “dataLimit” = cuántas filas traemos al backend (crece al avanzar páginas)
+  // cuántas filas “pedimos” al backend (crece al avanzar páginas)
   const [dataLimit, setDataLimit] = useState<number>(pageSize);
+
+  // si hay más resultados en el backend
+  const [hasMore, setHasMore] = useState<boolean>(false);
 
   // cambios: product_id -> stock nuevo (string para permitir vacío)
   const [newStockById, setNewStockById] = useState<Record<string, string>>({});
 
   // ref para enfocar el primer input de la página actual
   const firstInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ✅ evita que respuestas viejas pisen las nuevas (race condition)
+  const searchSeq = useRef(0);
+
+  const hasAnyTypedChanges = useMemo(() => {
+    return Object.values(newStockById).some((v) => v !== undefined && v !== "");
+  }, [newStockById]);
 
   function confirmDiscardIfNeeded(actionLabel: string) {
     if (!hasAnyTypedChanges) return true;
@@ -77,32 +86,38 @@ export default function StockPage() {
    * search:
    * - default: reemplaza rows y limpia cambios (seguro)
    * - keepEdits=true: NO pide confirmación y NO limpia cambios (para paginar sin perder lo tipeado)
+   *
+   * Importante paginación:
+   * - pedimos p_limit = useLimit + 1 para saber si hay más (hasMore)
    */
   async function search(opts?: {
     forceQuery?: string | null;
     useLimit?: number;
     keepEdits?: boolean;
-  }) {
-    if (!storeId) return;
+  }): Promise<{ count: number; hasMore: boolean }> {
+    if (!storeId) return { count: 0, hasMore: false };
 
     const keepEdits = opts?.keepEdits ?? false;
     const useLimit = opts?.useLimit ?? dataLimit;
     const forceQuery = opts?.forceQuery ?? undefined;
 
     if (!keepEdits) {
-      if (!confirmDiscardIfNeeded("Buscar/recargar")) return;
+      if (!confirmDiscardIfNeeded("Buscar/recargar")) return { count: rows.length, hasMore };
     }
+
+    // ✅ cada búsqueda tiene un id; si llega una respuesta vieja, se ignora
+    const mySeq = ++searchSeq.current;
 
     setLoading(true);
     try {
       const q =
-        forceQuery !== undefined
-          ? forceQuery
-          : query?.trim()
-          ? query.trim()
-          : null;
+        forceQuery !== undefined ? forceQuery : query?.trim() ? query.trim() : null;
 
-      const body = { p_store: storeId, p_query: q, p_limit: useLimit };
+      // pedimos 1 más para detectar si hay más páginas
+      const askLimit = useLimit + 1;
+
+      const body = { p_store: storeId, p_query: q, p_limit: askLimit };
+      console.log("[INV] RPC body", body);
 
       const res = await supaFetch(`/rest/v1/rpc/products_with_stock`, {
         method: "POST",
@@ -110,25 +125,47 @@ export default function StockPage() {
       });
 
       const data = (await res.json()) as any[];
-      const mapped: Row[] = data.map((x) => ({
+      console.log("[INV] RPC rows sample", data?.slice?.(0, 3));
+
+      // ✅ si esta respuesta no es la última, ignorar (evita pisadas)
+      if (mySeq !== searchSeq.current) return { count: rows.length, hasMore };
+
+      const mappedAll: Row[] = data.map((x) => ({
         id: x.id,
         sku: x.sku ?? null,
         name: x.name,
         stock: typeof x.stock === "number" ? x.stock : Number(x.stock ?? 0),
         is_weighted: x.is_weighted ?? null,
+        active: typeof x.active === "boolean" ? x.active : x.active ?? null,
       }));
 
-      setRows(mapped);
+      // ocultar desactivados
+      const filtered = mappedAll.filter((r) => r.active !== false);
+
+      // hasMore: si (después de filtrar) sobran filas respecto a useLimit
+      const nextHasMore = filtered.length > useLimit;
+
+      // guardamos solo hasta useLimit
+      const finalRows = filtered.slice(0, useLimit);
+
+      setHasMore(nextHasMore);
+      setRows(finalRows);
 
       if (!keepEdits) setNewStockById({});
 
       setTimeout(() => {
+        if (mySeq !== searchSeq.current) return;
         firstInputRef.current?.focus();
       }, 50);
+
+      return { count: finalRows.length, hasMore: nextHasMore };
     } catch (e: any) {
-      alert(`Error buscando productos: ${e?.message ?? e}`);
+      if (mySeq === searchSeq.current) {
+        alert(`Error buscando productos: ${e?.message ?? e}`);
+      }
+      return { count: rows.length, hasMore };
     } finally {
-      setLoading(false);
+      if (mySeq === searchSeq.current) setLoading(false);
     }
   }
 
@@ -141,33 +178,40 @@ export default function StockPage() {
     const nextPage = page + 1;
     const neededLimit = (nextPage + 1) * pageSize;
 
+    // si ya sabemos que no hay más y la próxima página quedaría vacía, no avanzar
+    if (!hasMore && nextPage * pageSize >= rows.length) return;
+
+    // si necesitamos pedir más al backend, subimos dataLimit y recargamos sin perder lo tipeado
     if (neededLimit > dataLimit) {
       setDataLimit(neededLimit);
-      await search({ useLimit: neededLimit, keepEdits: true });
+      const result = await search({ useLimit: neededLimit, keepEdits: true });
+
+      // si igual no hay suficientes para mostrar la próxima página, no avanzar
+      if (nextPage * pageSize >= result.count) return;
+    } else {
+      // aunque no aumente el límite, si la próxima página no existe, no avanzar
+      if (nextPage * pageSize >= rows.length) return;
     }
 
     setPage(nextPage);
     setTimeout(() => firstInputRef.current?.focus(), 50);
   }
 
-  async function scanSearch() {
-    if (!storeId) return;
-    const sku = scan.trim();
-    if (!sku) return;
+  async function runSearchSmart() {
+    // un solo buscador:
+    // - si parece SKU (solo números y largo razonable), buscamos rápido
+    // - si no, búsqueda normal
+    const t = query.trim();
+    const looksLikeSku = /^\d{6,}$/.test(t);
 
-    // escaneo: siempre página 1, resultados chicos y rápidos
     setPage(0);
-    setDataLimit(20);
-    await search({ forceQuery: sku, useLimit: 20 });
-
-    setScan("");
-  }
-
-  async function runNormalSearch() {
-    // buscar normal: página 1 y 200 resultados
-    setPage(0);
-    setDataLimit(pageSize);
-    await search({ useLimit: pageSize });
+    if (looksLikeSku) {
+      setDataLimit(20);
+      await search({ forceQuery: t, useLimit: 20 });
+    } else {
+      setDataLimit(pageSize);
+      await search({ useLimit: pageSize });
+    }
   }
 
   function setRowNewStock(productId: string, value: string) {
@@ -187,25 +231,23 @@ export default function StockPage() {
     setRowNewStock(r.id, String(current));
   }
 
+  const pageRows = useMemo(() => {
+    return rows.slice(page * pageSize, (page + 1) * pageSize);
+  }, [rows, page]);
+
   function copyVisiblePageToNew() {
-    // Copia SOLO los visibles (página actual). No pisa si ya hay valor tipeado.
     setNewStockById((prev) => {
       const next = { ...prev };
       for (const r of pageRows) {
         const existing = next[r.id];
-        if (existing !== undefined && existing !== "") continue; // no pisar lo que ya tipeaste
+        if (existing !== undefined && existing !== "") continue;
         next[r.id] = String(Number(r.stock ?? 0));
       }
       return next;
     });
   }
 
-  const pageRows = useMemo(() => {
-    return rows.slice(page * pageSize, (page + 1) * pageSize);
-  }, [rows, page]);
-
   const changes = useMemo(() => {
-    // Solo cambios reales (nuevo != actual)
     const list: Array<{ id: string; current: number; next: number; delta: number }> = [];
     for (const r of rows) {
       const v = newStockById[r.id];
@@ -219,81 +261,63 @@ export default function StockPage() {
     return list;
   }, [rows, newStockById]);
 
-  const hasAnyTypedChanges = useMemo(() => {
-    // “hay algo escrito” aunque sea igual (para advertir si se limpia)
-    return rows.some((r) => {
-      const v = newStockById[r.id];
-      return v !== undefined && v !== "";
-    });
-  }, [rows, newStockById]);
+  const changesCount = changes.length;
 
-  const summary = useMemo(() => {
+  const changesSummary = useMemo(() => {
     let up = 0;
     let down = 0;
-    let big = 0;
-
     for (const c of changes) {
-      if (c.delta > 0) up++;
-      if (c.delta < 0) down++;
-
-      const abs = Math.abs(c.delta);
-      // "cambio grande": más de 50 unidades o más del 50% del stock actual (si actual > 0)
-      const bigByAbs = abs >= 50;
-      const bigByPct = c.current > 0 ? abs / c.current >= 0.5 : abs >= 50;
-      if (bigByAbs || bigByPct) big++;
+      if (c.delta > 0) up += 1;
+      if (c.delta < 0) down += 1;
     }
-
-    return {
-      changed: changes.length,
-      up,
-      down,
-      big,
-    };
+    return { up, down };
   }, [changes]);
 
-  async function saveChanges() {
-    if (changes.length === 0) return;
-
-    // advertencia si hay cambios grandes
-    if (summary.big > 0) {
-      const ok = window.confirm(
-        `⚠️ Hay ${summary.big} cambio(s) grande(s) de stock.\n\n` +
-          `Esto puede ser correcto (conteo real) o un error de tipeo.\n\n` +
-          `¿Querés continuar y guardar igual?`
-      );
-      if (!ok) return;
+  async function saveAll() {
+    if (!storeId) return;
+    if (changesCount === 0) {
+      alert("No hay cambios para guardar.");
+      return;
     }
 
-    if (!window.confirm(`¿Guardar stock de ${changes.length} productos?`)) return;
+    const ok = window.confirm(
+      `Vas a guardar ${changesCount} cambio(s) de stock.\n\n↑ ${changesSummary.up}  ↓ ${changesSummary.down}\n\n¿Confirmás?`
+    );
+    if (!ok) return;
 
     setSaving(true);
     try {
-      for (const item of changes) {
-        const res = await fetch(`/api/stock/adjust`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            store_id: storeId,
-            product_id: item.id,
-            new_stock: item.next,
-            stock: item.next,
-            quantity: item.next,
-            reason: "inventory_count",
-            note: "Conteo desde /stock",
-          }),
-        });
+      // ✅ BATCH: 1 request (más confiable + más rápido)
+      const res = await fetch(`/api/stock/adjust`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: storeId,
+          reason: "Ajuste manual (Inventario)",
+          changes: changes.map((c) => ({ product_id: c.id, stock: c.next })),
+        }),
+      });
 
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          throw new Error(
-            `Fallo guardando ${item.id}: ${res.status} ${res.statusText} - ${txt}`
-          );
-        }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error ?? `${res.status} ${res.statusText}`);
       }
 
-      // refrescar (misma query, mismo dataLimit) sin limpiar los inputs
-      await search({ useLimit: dataLimit, keepEdits: true });
-      alert("Stock actualizado ✅");
+      // ✅ UI inmediata: reflejar lo guardado sin esperar refetch
+      const nextById = new Map(changes.map((c) => [c.id, c.next]));
+      setRows((prev) =>
+        prev.map((r) => (nextById.has(r.id) ? { ...r, stock: nextById.get(r.id)! } : r))
+      );
+
+      // limpiamos inputs “Stock nuevo”
+      setNewStockById({});
+
+      // y además refrescamos desde backend para quedar 100% sync
+      setPage(0);
+      setDataLimit(pageSize);
+      await search({ useLimit: pageSize });
+
+      alert("Stock guardado correctamente ✅");
     } catch (e: any) {
       alert(`Error guardando stock: ${e?.message ?? e}`);
     } finally {
@@ -307,267 +331,235 @@ export default function StockPage() {
   }, []);
 
   useEffect(() => {
-    if (storeId) {
-      setPage(0);
-      setDataLimit(pageSize);
-      search({ forceQuery: null, useLimit: pageSize });
-    }
+    if (!storeId) return;
+    setPage(0);
+    setDataLimit(pageSize);
+    search({ useLimit: pageSize });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
-  function deltaClass(delta: number) {
-    if (delta > 0) return "text-emerald-700";
-    if (delta < 0) return "text-red-700";
-    return "text-gray-500";
-  }
-
-  function rowBgClass(delta: number, changed: boolean, big: boolean) {
-    if (!changed) return "";
-    if (big) return "bg-red-50"; // cambio grande: destacarlo fuerte (para revisar)
-    // cambio normal
-    return delta >= 0 ? "bg-emerald-50" : "bg-red-50";
-  }
+  const canGoNext = useMemo(() => {
+    if (loading || saving) return false;
+    if (hasMore) return true;
+    return (page + 1) * pageSize < rows.length;
+  }, [loading, saving, hasMore, page, rows.length]);
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-4">Inventario — Stock</h1>
-
-      <div className="flex flex-wrap gap-3 items-center mb-2">
-        <select
-          className="border rounded px-3 py-2"
-          value={storeId}
-          onChange={(e) => setStoreId(e.target.value)}
-        >
-          {stores.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-
-        {/* ESCANEAR SKU */}
-        <input
-          className="border rounded px-3 py-2 min-w-[260px] font-mono"
-          placeholder="Escanear SKU y Enter"
-          value={scan}
-          onChange={(e) => setScan(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") scanSearch();
-          }}
-        />
-
-        {/* BUSCAR NORMAL */}
-        <input
-          className="border rounded px-3 py-2 min-w-[320px]"
-          placeholder="Buscar nombre o SKU"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") runNormalSearch();
-          }}
-        />
-
-        <button
-          className="bg-black text-white rounded px-4 py-2 disabled:opacity-50"
-          onClick={runNormalSearch}
-          disabled={loading || !storeId}
-        >
-          {loading ? "Buscando..." : "Buscar"}
-        </button>
-      </div>
-
-      <div className="flex flex-wrap gap-3 items-center mb-3">
-        {/* PAGINACIÓN */}
-        <div className="flex items-center gap-2">
-          <button
-            className="bg-gray-200 rounded px-3 py-2 disabled:opacity-50"
-            onClick={goPrevPage}
-            disabled={page === 0}
-            title="Página anterior"
-          >
-            ◀
-          </button>
-
-          <span className="text-sm text-gray-700">
-            Página <b>{page + 1}</b>
-          </span>
-
-          <button
-            className="bg-gray-200 rounded px-3 py-2 disabled:opacity-50"
-            onClick={goNextPage}
-            disabled={loading || !storeId}
-            title="Página siguiente"
-          >
-            ▶
-          </button>
+    <div className="p-4 max-w-6xl mx-auto space-y-4">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold">Inventario</h1>
+          <p className="text-sm text-gray-600">
+            Nota: en Inventario se muestran <b>solo productos activos</b> (desactivados quedan ocultos).
+          </p>
         </div>
 
-        <button
-          className="bg-gray-100 hover:bg-gray-200 rounded px-4 py-2 disabled:opacity-50"
-          onClick={copyVisiblePageToNew}
-          disabled={pageRows.length === 0}
-          title="Copiar stock actual → stock nuevo (solo visibles, no pisa lo ya tipeado)"
-        >
-          Copiar visible
-        </button>
+        <div className="flex gap-2 items-center">
+          <button
+            className="px-3 py-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50"
+            onClick={() => search({ useLimit: dataLimit })}
+            disabled={loading || saving}
+          >
+            Recargar
+          </button>
 
-        <button
-          className="bg-emerald-600 text-white rounded px-4 py-2 disabled:opacity-50"
-          onClick={saveChanges}
-          disabled={changes.length === 0 || saving}
-          title={changes.length === 0 ? "No hay cambios" : "Guardar cambios de stock"}
-        >
-          {saving ? "Guardando..." : "Guardar stock"}
-        </button>
+          <button
+            className="px-3 py-2 rounded-lg bg-black text-white hover:opacity-90 disabled:opacity-50"
+            onClick={saveAll}
+            disabled={saving || loading || changesCount === 0}
+          >
+            {saving ? "Guardando..." : `Guardar (${changesCount})`}
+          </button>
+        </div>
+      </div>
 
-        {/* RESUMEN */}
-        <div className="text-sm text-gray-700">
-          Cambios: <b>{summary.changed}</b>{" "}
-          <span className="ml-2 text-emerald-700">⬆ {summary.up}</span>{" "}
-          <span className="ml-2 text-red-700">⬇ {summary.down}</span>{" "}
-          {summary.big > 0 && (
-            <span className="ml-2 text-red-700">⚠ grandes: {summary.big}</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="p-3 rounded-xl border bg-white space-y-2">
+          <div className="text-sm font-medium">Sucursal</div>
+          <select
+            className="w-full border rounded-lg px-3 py-2"
+            value={storeId}
+            onChange={(e) => {
+              if (!confirmDiscardIfNeeded("Cambiar sucursal")) return;
+              setNewStockById({});
+              setStoreId(e.target.value);
+            }}
+          >
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="p-3 rounded-xl border bg-white space-y-2">
+          <div className="text-sm font-medium">Buscar (nombre / SKU)</div>
+          <div className="flex gap-2">
+            <input
+              className="w-full border rounded-lg px-3 py-2"
+              placeholder="Ej: coca / 779..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") runSearchSmart();
+              }}
+            />
+            <button
+              className="px-3 py-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50"
+              onClick={runSearchSmart}
+              disabled={loading || saving}
+            >
+              Buscar
+            </button>
+          </div>
+          <div className="text-xs text-gray-500">
+            Tip: si escaneás un código (solo números), busca rápido.
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <div className="text-sm text-gray-600">
+          {loading ? (
+            "Cargando..."
+          ) : (
+            <>
+              Productos: <b>{rows.length.toLocaleString("es-AR")}</b> (activos)
+              {hasMore ? <span>+</span> : null}
+            </>
+          )}
+          {changesCount > 0 && (
+            <span className="ml-2">
+              • Cambios: <b>{changesCount}</b> (↑ {changesSummary.up} / ↓ {changesSummary.down})
+            </span>
           )}
         </div>
+
+        <div className="flex gap-2">
+          <button
+            className="px-3 py-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50"
+            onClick={copyVisiblePageToNew}
+            disabled={loading || saving || pageRows.length === 0}
+          >
+            Copiar visibles (actual → nuevo)
+          </button>
+        </div>
       </div>
 
-      <div className="text-sm text-gray-600 mb-4">
-        Stock actual = solo lectura • Stock nuevo = conteo (lo que hay) • Tip: escaneá SKU para cargar rápido y enfocar el conteo.
-      </div>
+      <div className="rounded-xl border overflow-hidden bg-white">
+        <div className="overflow-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="p-2 text-left">Producto</th>
+                <th className="p-2 text-left">SKU</th>
+                <th className="p-2 text-right">Stock actual</th>
+                <th className="p-2 text-right">Stock nuevo</th>
+                <th className="p-2 text-right">Δ</th>
+                <th className="p-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.map((r, idx) => {
+                const current = Number(r.stock ?? 0);
+                const typed = newStockById[r.id];
+                const parsed = typed === undefined || typed === "" ? null : Number(typed);
+                const delta =
+                  parsed === null || !Number.isFinite(parsed) ? null : parsed - current;
 
-      <div className="border rounded overflow-auto">
-        <table className="min-w-[1000px] w-full">
-          <thead className="bg-gray-100 sticky top-0">
-            <tr>
-              <th className="text-left p-2">Nombre</th>
-              <th className="text-left p-2">SKU</th>
-              <th className="text-right p-2">Stock actual</th>
-              <th className="text-right p-2">
-                <div className="leading-tight">
-                  <div>Stock nuevo</div>
-                  <div className="text-xs text-gray-500">(conteo)</div>
-                </div>
-              </th>
-              <th className="text-right p-2">Δ</th>
-              <th className="text-left p-2">Acciones</th>
-            </tr>
-          </thead>
+                return (
+                  <tr key={r.id} className="border-t">
+                    <td className="p-2">
+                      <div className="font-medium">{r.name}</div>
+                      {r.is_weighted ? (
+                        <div className="text-xs text-gray-500">Pesable</div>
+                      ) : null}
+                    </td>
 
-          <tbody>
-            {pageRows.map((r, i) => {
-              const current = Number(r.stock ?? 0);
-              const v = newStockById[r.id] ?? "";
-              const parsed = v === "" ? null : Number(v);
+                    <td className="p-2 text-gray-700">{r.sku ?? "-"}</td>
 
-              const changed =
-                parsed !== null && Number.isFinite(parsed) && parsed !== current;
+                    <td className="p-2 text-right tabular-nums">{current}</td>
 
-              const delta = changed ? (parsed as number) - current : 0;
+                    <td className="p-2 text-right">
+                      <input
+                        ref={idx === 0 ? firstInputRef : undefined}
+                        className="w-28 text-right border rounded-lg px-2 py-1 tabular-nums"
+                        inputMode="numeric"
+                        placeholder="(vacío)"
+                        value={typed ?? ""}
+                        onChange={(e) => setRowNewStock(r.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") clearRowNewStock(r.id);
+                        }}
+                      />
+                    </td>
 
-              const abs = Math.abs(delta);
-              const bigByAbs = abs >= 50;
-              const bigByPct = current > 0 ? abs / current >= 0.5 : abs >= 50;
-              const big = changed && (bigByAbs || bigByPct);
+                    <td className="p-2 text-right tabular-nums">
+                      {delta === null || !Number.isFinite(delta) ? (
+                        <span className="text-gray-400">—</span>
+                      ) : delta === 0 ? (
+                        <span className="text-gray-500">0</span>
+                      ) : delta > 0 ? (
+                        <span className="text-green-700">+{delta}</span>
+                      ) : (
+                        <span className="text-red-700">{delta}</span>
+                      )}
+                    </td>
 
-              return (
-                <tr
-                  key={r.id}
-                  className={[
-                    i % 2 === 0 ? "bg-white" : "bg-gray-50",
-                    "hover:bg-yellow-50",
-                    rowBgClass(delta, changed, big),
-                  ].join(" ")}
-                >
-                  <td className="p-2">{r.name}</td>
-                  <td className="p-2 font-mono text-sm">{r.sku ?? "-"}</td>
-
-                  <td className="p-2 text-right whitespace-nowrap">
-                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-sm font-medium text-gray-900">
-                      {current} u
-                    </span>
-                  </td>
-
-                  <td className="p-2 text-right">
-                    <input
-                      type="number"
-                      className={
-                        "border rounded px-2 py-1 w-28 text-right outline-none " +
-                        (changed ? (big ? "border-red-600" : "border-emerald-600") : "")
-                      }
-                      ref={i === 0 ? firstInputRef : undefined}
-                      value={v}
-                      onChange={(e) => setRowNewStock(r.id, e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          // Enter → siguiente input (solo los visibles)
-                          const inputs = Array.from(
-                            document.querySelectorAll<HTMLInputElement>('input[type="number"]')
-                          );
-                          const idx = inputs.indexOf(e.currentTarget);
-                          if (idx >= 0 && inputs[idx + 1]) inputs[idx + 1].focus();
-                        }
-                      }}
-                    />
-                  </td>
-
-                  <td className={"p-2 text-right font-mono " + deltaClass(delta)}>
-                    {changed ? (
-                      <span title={big ? "Cambio grande: revisá antes de guardar" : ""}>
-                        {delta > 0 ? `+${delta}` : `${delta}`}{" "}
-                        {big ? "⚠" : ""}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
-                  </td>
-
-                  <td className="p-2">
-                    <div className="flex gap-2">
-                      <button
-                        className="border rounded px-3 py-1 hover:bg-gray-100"
-                        type="button"
-                        onClick={() => copyRowCurrentToNew(r)}
-                        title="Copiar stock actual → stock nuevo"
-                      >
-                        Copiar
-                      </button>
-
-                      <button
-                        className="border rounded px-3 py-1 hover:bg-gray-100"
-                        type="button"
-                        onClick={() => setRowNewStock(r.id, "0")}
-                        title="Marcar 0 (faltante)"
-                      >
-                        0
-                      </button>
-
-                      <button
-                        className="border rounded px-3 py-1 hover:bg-gray-100"
-                        type="button"
-                        onClick={() => clearRowNewStock(r.id)}
-                        title="Limpiar stock nuevo"
-                      >
-                        Limpiar
-                      </button>
-                    </div>
+                    <td className="p-2 text-right">
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          className="px-2 py-1 rounded-lg border hover:bg-gray-50"
+                          onClick={() => copyRowCurrentToNew(r)}
+                          title="Copiar actual → nuevo"
+                        >
+                          =
+                        </button>
+                        <button
+                          className="px-2 py-1 rounded-lg border hover:bg-gray-50"
+                          onClick={() => clearRowNewStock(r.id)}
+                          title="Limpiar"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {pageRows.length === 0 && (
+                <tr>
+                  <td className="p-6 text-center text-gray-500" colSpan={6}>
+                    {loading ? "Cargando..." : "Sin resultados."}
                   </td>
                 </tr>
-              );
-            })}
+              )}
+            </tbody>
+          </table>
+        </div>
 
-            {rows.length === 0 && (
-              <tr>
-                <td className="p-4 text-gray-600" colSpan={6}>
-                  No hay resultados. Elegí sucursal y buscá por nombre o SKU.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-3 text-xs text-gray-500">
-        Mostrando {rows.length === 0 ? 0 : page * pageSize + 1}–{Math.min((page + 1) * pageSize, rows.length)} de {rows.length} cargados.
+        <div className="flex items-center justify-between gap-2 p-3 border-t bg-gray-50">
+          <div className="text-xs text-gray-600">
+            Página <b>{page + 1}</b>
+          </div>
+          <div className="flex gap-2">
+            <button
+              className="px-3 py-2 rounded-lg border hover:bg-white disabled:opacity-50"
+              onClick={goPrevPage}
+              disabled={loading || saving || page === 0}
+            >
+              ← Anterior
+            </button>
+            <button
+              className="px-3 py-2 rounded-lg border hover:bg-white disabled:opacity-50"
+              onClick={goNextPage}
+              disabled={!canGoNext}
+            >
+              Siguiente →
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
