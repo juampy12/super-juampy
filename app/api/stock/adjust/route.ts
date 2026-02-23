@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Asegurar Node runtime en Vercel (evita edge/variantes raras)
+// ✅ Asegurar Node runtime en Vercel (evita Edge/variantes raras)
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -10,12 +10,15 @@ function getEnv(name: string) {
   return typeof v === "string" && v.length > 0 ? v : "";
 }
 
-const SUPABASE_URL =
-  getEnv("SUPABASE_URL") || getEnv("NEXT_PUBLIC_SUPABASE_URL");
+const SUPABASE_URL = getEnv("SUPABASE_URL") || getEnv("NEXT_PUBLIC_SUPABASE_URL");
 const SERVICE_KEY = getEnv("SUPABASE_SERVICE_ROLE_KEY");
 
-// Creamos cliente admin (server-only)
-const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_KEY);
+// Cliente admin (SERVER ONLY)
+const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_KEY, {
+  auth: { persistSession: false },
+});
+
+type Change = { product_id: string; stock: number };
 
 export async function POST(req: Request) {
   try {
@@ -24,13 +27,13 @@ export async function POST(req: Request) {
         {
           ok: false,
           error:
-            "Faltan envs del backend (SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY).",
+            "Faltan envs del backend (SUPABASE_URL o NEXT_PUBLIC_SUPABASE_URL) y/o SUPABASE_SERVICE_ROLE_KEY.",
         },
         { status: 500 }
       );
     }
 
-    const body: any = await req.json();
+    const body: any = await req.json().catch(() => ({}));
 
     // Batch si viene changes como array
     const isBatch = Array.isArray(body?.changes);
@@ -41,10 +44,7 @@ export async function POST(req: Request) {
     // reason (batch) o _reason (single)
     const reason = String((body?.reason ?? body?._reason) ?? "adjust").trim();
 
-    // Normalizar cambios:
-    // - Batch esperado: { product_id, stock }
-    // - Aceptamos también: { productId, newStock }
-    const changes: Array<{ product_id: string; stock: number }> = isBatch
+    const changes: Change[] = isBatch
       ? (body.changes ?? [])
           .map((c: any) => ({
             product_id: String(c?.product_id ?? c?.productId ?? "").trim(),
@@ -58,25 +58,30 @@ export async function POST(req: Request) {
           },
         ].filter((c) => c.product_id && Number.isFinite(c.stock));
 
-    if (!storeId || changes.length === 0) {
+    if (!storeId) {
+      return NextResponse.json({ ok: false, error: "Falta store_id" }, { status: 400 });
+    }
+    if (!changes.length) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "Parámetros inválidos",
-          storeId,
-          changesCount: changes.length,
-        },
+        { ok: false, error: "No hay cambios válidos para guardar." },
         { status: 400 }
       );
     }
 
-    const results: any[] = [];
+    const results: Array<{
+      product_id: string;
+      changed: boolean;
+      before: number;
+      requested: number;
+      stored: number;
+      delta: number;
+    }> = [];
 
     for (const ch of changes) {
       const productId = ch.product_id;
       const newStock = ch.stock;
 
-      // 1) Leer stock actual
+      // 1) leer stock actual
       const { data: psRow, error: psErr } = await supabaseAdmin
         .from("product_stocks")
         .select("stock")
@@ -86,14 +91,15 @@ export async function POST(req: Request) {
 
       if (psErr) {
         return NextResponse.json(
-          { ok: false, error: psErr.message, product_id: productId },
-          { status: 400 }
+          { ok: false, error: `Error leyendo stock actual: ${psErr.message}` },
+          { status: 500 }
         );
       }
 
       const current = Number(psRow?.stock ?? 0);
       const delta = newStock - current;
 
+      // Si no cambia, igual lo registramos como noop
       if (delta === 0) {
         results.push({
           product_id: productId,
@@ -106,9 +112,7 @@ export async function POST(req: Request) {
         continue;
       }
 
-      // 2) Upsert stock (IMPORTANTE: NO usamos .select() acá)
-      // En prod nos estaba dando “guardado” pero después aparecía 0.
-      // Con esto, lo único que importa es que NO haya error.
+      // 2) upsert stock (IMPORTANTE: no dependemos de devolver row)
       const { error: upErr } = await supabaseAdmin
         .from("product_stocks")
         .upsert(
@@ -118,26 +122,25 @@ export async function POST(req: Request) {
 
       if (upErr) {
         return NextResponse.json(
-          { ok: false, error: upErr.message, product_id: productId },
-          { status: 400 }
+          { ok: false, error: `Error actualizando stock: ${upErr.message}` },
+          { status: 500 }
         );
       }
 
-      // 3) Registrar movimiento
-      const { error: insErr } = await supabaseAdmin
-        .from("stock_movements")
-        .insert({
-          store_id: storeId,
-          product_id: productId,
-          reason,
-          qty: Math.abs(delta),
-          delta,
-        });
+      // 3) movimiento
+      const { error: insErr } = await supabaseAdmin.from("stock_movements").insert({
+        store_id: storeId,
+        product_id: productId,
+        delta,
+        reason,
+        created_at: new Date().toISOString(),
+      });
 
       if (insErr) {
+        // stock ya quedó guardado; igual informamos error del movimiento
         return NextResponse.json(
-          { ok: false, error: insErr.message, product_id: productId },
-          { status: 400 }
+          { ok: false, error: `Stock guardado pero falló movimiento: ${insErr.message}` },
+          { status: 500 }
         );
       }
 
@@ -151,16 +154,11 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({
-      ok: true,
-      store_id: storeId,
-      count: results.length,
-      results,
-    });
+    return NextResponse.json({ ok: true, results });
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "Error" },
-      { status: 400 }
+      { ok: false, error: e?.message ?? String(e) },
+      { status: 500 }
     );
   }
 }
