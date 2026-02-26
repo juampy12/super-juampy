@@ -17,6 +17,9 @@ type Row = {
   vat_rate: number | null;
   cost_net: number | null;
   markup_rate: number | null;
+
+  // ✅ para ocultar desactivados
+  active?: boolean | null;
 };
 
 type DirtyPayload = {
@@ -63,23 +66,19 @@ export default function ProductsPage() {
   const [storeId, setStoreId] = useState("");
   const [query, setQuery] = useState("");
 
-  // rows = todo lo cargado (puede crecer por páginas)
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // paginación
   const [page, setPage] = useState<number>(0);
   const [dataLimit, setDataLimit] = useState<number>(pageSize);
 
   const [dirtyById, setDirtyById] = useState<Record<string, DirtyPayload>>({});
   const dirtyCount = Object.keys(dirtyById).length;
 
-  // foco al primer input visible
   const firstInputRef = useRef<HTMLInputElement | null>(null);
 
   const hasChanges = useMemo(() => dirtyCount > 0, [dirtyCount]);
 
-  // ===== Resumen ↑ / ↓ basado en "precio final elegido" vs row.price =====
   const changesSummary = useMemo(() => {
     let up = 0;
     let down = 0;
@@ -128,7 +127,15 @@ export default function ProductsPage() {
       });
       if (error) throw error;
 
-      setRows((data ?? []) as Row[]);
+      // ✅ Ocultar desactivados (active=false). Si no viene active => se muestra (modo seguro).
+      const list = ((data ?? []) as any[]).filter((x) => x?.active !== false) as Row[];
+
+      setRows(list);
+
+      setPage((p) => {
+        const maxPage = Math.max(0, Math.ceil(list.length / pageSize) - 1);
+        return Math.min(p, maxPage);
+      });
 
       if (!keepEdits) setDirtyById({});
 
@@ -142,7 +149,6 @@ export default function ProductsPage() {
 
   async function runNormalSearch() {
     if (!storeId) return;
-    // búsqueda normal: página 1, trae 200
     setPage(0);
     setDataLimit(pageSize);
     await reload({ sid: storeId, useLimit: pageSize, keepEdits: false });
@@ -176,7 +182,6 @@ export default function ProductsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // cambio sucursal: página 1 y 200
   useEffect(() => {
     if (!storeId) return;
     setPage(0);
@@ -185,7 +190,6 @@ export default function ProductsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
-  // debounce búsqueda: vuelve a página 1 y 200
   useEffect(() => {
     if (!storeId) return;
     const t = setTimeout(() => {
@@ -217,6 +221,7 @@ export default function ProductsPage() {
             vat_rate: payload.vat_rate,
             markup_rate: payload.markup_rate,
             units_per_case: payload.units_per_case,
+            use_final_price: payload.use_final_price === true,
             final_price: payload.use_final_price ? payload.final_price : null,
           }),
         });
@@ -273,7 +278,6 @@ export default function ProductsPage() {
           {loading ? "Cargando..." : "Buscar"}
         </button>
 
-        {/* PAGINACIÓN */}
         <div className="flex items-center gap-2">
           <button
             className="bg-gray-200 rounded px-3 py-2 disabled:opacity-50"
@@ -306,7 +310,6 @@ export default function ProductsPage() {
           {dirtyCount === 0 ? "Sin cambios" : `Guardar cambios (${dirtyCount})`}
         </button>
 
-        {/* RESUMEN CAMBIOS */}
         <span className="text-sm text-gray-700">
           Cambios: <b>{dirtyCount}</b>{" "}
           {dirtyCount > 0 && (
@@ -318,8 +321,8 @@ export default function ProductsPage() {
         </span>
 
         <span className="text-sm text-gray-600">
-          Mostrando {rows.length === 0 ? 0 : page * pageSize + 1}–{Math.min((page + 1) * pageSize, rows.length)} de{" "}
-          {rows.length} cargados
+          Mostrando {rows.length === 0 ? 0 : page * pageSize + 1}–
+          {Math.min((page + 1) * pageSize, rows.length)} de {rows.length} cargados
         </span>
       </div>
 
@@ -376,7 +379,6 @@ export default function ProductsPage() {
 }
 
 function focusNextInput(from: HTMLInputElement) {
-  // solo inputs de la tabla de precios (evita saltar a search/store)
   const table = from.closest("table");
   if (!table) return;
 
@@ -405,8 +407,32 @@ function RowLine({
   // fijo: no se edita acá
   const unitsCaseFixed = Math.max(1, n(row.units_per_case, 1));
 
+  // ✅ modo manual/auto persistente al recargar
   const [useFinalPrice, setUseFinalPrice] = useState(false);
   const [finalManual, setFinalManual] = useState(n(row.price, 0));
+
+  // ✅ sincronizar state cuando cambian los datos del row (recargar / cambiar sucursal / buscar)
+  useEffect(() => {
+    const nextCost = n(row.cost_net, 0);
+    const nextVat = n(row.vat_rate, 21);
+    const nextMargin = n(row.markup_rate, 0);
+    const nextPrice = n(row.price, 0);
+
+    setCost(nextCost);
+    setVat(nextVat);
+    setMargin(nextMargin);
+    setFinalManual(nextPrice);
+
+    const calc = calcFinalPrice(nextCost, nextVat, nextMargin);
+
+    // Si el price guardado difiere del calculado => es MANUAL
+    const isManual = Math.abs(nextPrice - calc) > 0.009;
+    setUseFinalPrice(isManual);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row.id, row.cost_net, row.vat_rate, row.markup_rate, row.price]);
+
+  const calcPrice = calcFinalPrice(cost, vat, margin);
+  const shownPrice = useFinalPrice ? finalManual : calcPrice;
 
   useEffect(() => {
     onDirtyChange({
@@ -420,9 +446,6 @@ function RowLine({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cost, vat, margin, useFinalPrice, finalManual, unitsCaseFixed]);
 
-  const calcPrice = calcFinalPrice(cost, vat, margin);
-  const shownPrice = useFinalPrice ? finalManual : calcPrice;
-
   return (
     <tr className={isDirty ? "bg-amber-50" : ""}>
       <td className="p-2">{row.name}</td>
@@ -433,7 +456,10 @@ function RowLine({
           data-price-input="1"
           className="border rounded px-2 py-1 w-24 text-right"
           value={cost}
-          onChange={(e) => setCost(n(e.target.value, 0))}
+          onChange={(e) => {
+            setCost(n(e.target.value, 0));
+            setUseFinalPrice(false);
+          }}
           ref={firstRow ? firstInputRef : undefined}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -449,7 +475,10 @@ function RowLine({
           data-price-input="1"
           className="border rounded px-2 py-1 w-16 text-right"
           value={vat}
-          onChange={(e) => setVat(n(e.target.value, 21))}
+          onChange={(e) => {
+            setVat(n(e.target.value, 21));
+            setUseFinalPrice(false);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -464,7 +493,10 @@ function RowLine({
           data-price-input="1"
           className="border rounded px-2 py-1 w-16 text-right"
           value={margin}
-          onChange={(e) => setMargin(n(e.target.value, 0))}
+          onChange={(e) => {
+            setMargin(n(e.target.value, 0));
+            setUseFinalPrice(false);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -491,6 +523,9 @@ function RowLine({
             }
           }}
         />
+        <div className="text-[11px] text-neutral-500 mt-1">
+          {useFinalPrice ? "Manual" : "Auto"}
+        </div>
       </td>
     </tr>
   );

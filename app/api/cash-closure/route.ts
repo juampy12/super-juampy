@@ -25,7 +25,7 @@ type SaleRow = {
   store_id: string | null;
   status: string | null;
   payment: Payment | null;
-register_id: string | null;
+  register_id: string | null;
 };
 
 function safeNumber(v: any): number {
@@ -33,49 +33,82 @@ function safeNumber(v: any): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-// Día en horario Argentina, formateado YYYY-MM-DD
-function getArgentinaDay(ts: string | Date): string {
-  const d = new Date(ts);
-  // Argentina -03:00, sin DST
-  const arg = new Date(d.getTime() - 3 * 60 * 60 * 1000);
-  return arg.toISOString().slice(0, 10);
-}
 function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    v
+  );
 }
+
+// dateParam: "YYYY-MM-DD" (día en Argentina)
+// AR es UTC-03:00 fijo → AR 00:00 = UTC 03:00
+function argentinaDayToUtcRange(dateParam: string) {
+  // start exclusive/inclusive: >= startUtc && < endUtc
+  const startUtcIso = `${dateParam}T03:00:00.000Z`;
+
+  const d = new Date(`${dateParam}T00:00:00.000Z`); // referencia estable
+  d.setUTCDate(d.getUTCDate() + 1);
+  const nextDay = d.toISOString().slice(0, 10);
+  const endUtcIso = `${nextDay}T03:00:00.000Z`;
+
+  return { startUtcIso, endUtcIso };
+}
+
+function formatHourKeyAR(ts: string) {
+  const dt = new Date(ts);
+  const hh = new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    hour: "2-digit",
+    hour12: false,
+  }).format(dt);
+  return `${hh}:00`;
+}
+
+function formatTimeAR(ts: string) {
+  const dt = new Date(ts);
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(dt);
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const dateParam = searchParams.get("date"); // YYYY-MM-DD
+
+    const dateParam = searchParams.get("date"); // YYYY-MM-DD (Argentina)
     const storeId = searchParams.get("store_id");
-const registerId = searchParams.get("register_id");
+    const registerId = searchParams.get("register_id");
 
     if (!dateParam || !storeId) {
-      return NextResponse.json(
-        { error: "Falta date o store_id" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Falta date o store_id" }, { status: 400 });
     }
-if (registerId && !isUuid(registerId)) {
-  return NextResponse.json(
-    { error: "register_id inválido (debe ser UUID)" },
-    { status: 400 }
-  );
-}
-// 1) Traemos ventas confirmadas (por sucursal y opcionalmente por caja)
-let q = supabaseAdmin
-  .from("sales")
-  .select("id, created_at, total, store_id, status, payment, register_id")
-  .eq("status", "confirmed")
-  .eq("store_id", storeId);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      return NextResponse.json({ error: "date inválida (formato YYYY-MM-DD)" }, { status: 400 });
+    }
+    if (!isUuid(storeId)) {
+      return NextResponse.json({ error: "store_id inválido (debe ser UUID)" }, { status: 400 });
+    }
+    if (registerId && !isUuid(registerId)) {
+      return NextResponse.json({ error: "register_id inválido (debe ser UUID)" }, { status: 400 });
+    }
 
-if (registerId) {
-  q = q.eq("register_id", registerId);
-}
+    const { startUtcIso, endUtcIso } = argentinaDayToUtcRange(dateParam);
 
-q = q.order("created_at", { ascending: true });
+    // 1) Ventas confirmadas por sucursal + rango del día Argentina (filtrado en DB)
+    let q = supabaseAdmin
+      .from("sales")
+      .select("id, created_at, total, store_id, status, payment, register_id")
+      .eq("status", "confirmed")
+      .eq("store_id", storeId)
+      .gte("created_at", startUtcIso)
+      .lt("created_at", endUtcIso)
+      .order("created_at", { ascending: true });
 
-const { data, error } = await q;
+    if (registerId) q = q.eq("register_id", registerId);
+
+    const { data, error } = await q;
 
     if (error) {
       console.error("Supabase error /api/cash-closure:", error);
@@ -84,22 +117,9 @@ const { data, error } = await q;
 
     const rows: SaleRow[] = (data ?? []) as any;
 
-    // 2) Filtramos por día en horario AR
-    const filtered = rows.filter(
-      (r) => getArgentinaDay(r.created_at) === dateParam
-    );
-
-    // Si no hay ventas, devolvemos todo en cero
-    if (!filtered.length) {
+    if (!rows.length) {
       return NextResponse.json({
-        kpis: {
-          totalAmount: 0,
-          tickets: 0,
-          avgTicket: 0,
-          cashIn: 0,
-          change: 0,
-          netCash: 0,
-        },
+        kpis: { totalAmount: 0, tickets: 0, avgTicket: 0, cashIn: 0, change: 0, netCash: 0 },
         methods: [
           { key: "efectivo", label: "Efectivo", total: 0 },
           { key: "debito", label: "Débito", total: 0 },
@@ -109,19 +129,16 @@ const { data, error } = await q;
         ],
         hourly: [],
         tickets: [],
-        meta: {
-          mixtoTickets: 0,
-          mixtoTotal: 0,
-        },
+        meta: { mixtoTickets: 0, mixtoTotal: 0 },
       });
     }
 
-    // 3) Acumuladores
+    // 2) Acumuladores
     let totalAmount = 0;
     let tickets = 0;
 
-    let cashIn = 0; // efectivo cobrado
-    let totalChange = 0; // vuelto entregado
+    let cashIn = 0;
+    let totalChange = 0;
 
     const methodTotals: Record<string, number> = {
       efectivo: 0,
@@ -137,24 +154,16 @@ const { data, error } = await q;
     const hourlyMap: Record<string, { tickets: number; total: number }> = {};
     const ticketsOut: any[] = [];
 
-    for (const row of filtered) {
+    for (const row of rows) {
       const saleTotal = safeNumber(row.total);
       totalAmount += saleTotal;
       tickets += 1;
 
-      // Hora en AR para curva horaria
-      const d = new Date(row.created_at);
-      const arg = new Date(d.getTime() - 3 * 60 * 60 * 1000);
-      const hour = arg.toISOString().substring(11, 13);
-      const hourKey = `${hour}:00`;
-
-      if (!hourlyMap[hourKey]) {
-        hourlyMap[hourKey] = { tickets: 0, total: 0 };
-      }
+      const hourKey = formatHourKeyAR(row.created_at);
+      if (!hourlyMap[hourKey]) hourlyMap[hourKey] = { tickets: 0, total: 0 };
       hourlyMap[hourKey].tickets += 1;
       hourlyMap[hourKey].total += saleTotal;
 
-      // Pagos
       const p: Payment | null = row.payment ?? null;
       const method = (p?.method ?? "desconocido") as string;
       const change = safeNumber(p?.change ?? 0);
@@ -165,30 +174,30 @@ const { data, error } = await q;
       let ticketCredit = 0;
       let ticketMp = 0;
       let ticketAccount = 0;
-if (method === "efectivo") {
-  const cash = safeNumber(breakdown?.cash ?? p?.total_paid ?? saleTotal);
-  methodTotals.efectivo += cash;
-  cashIn += cash;
-  totalChange += change;
-  ticketCash = cash;
-} else if (method === "debito") {
-        const paid = safeNumber(p?.total_paid ?? saleTotal);
+
+      if (method === "efectivo") {
+        const cash = safeNumber(breakdown?.cash ?? p?.total_paid ?? saleTotal);
+        methodTotals.efectivo += cash;
+        cashIn += cash;
+        totalChange += change;
+        ticketCash = cash;
+      } else if (method === "debito") {
+        const paid = safeNumber(breakdown?.debit ?? p?.total_paid ?? saleTotal);
         methodTotals.debito += paid;
         ticketDebit = paid;
       } else if (method === "credito") {
-        const paid = safeNumber(p?.total_paid ?? saleTotal);
+        const paid = safeNumber(breakdown?.credit ?? p?.total_paid ?? saleTotal);
         methodTotals.credito += paid;
         ticketCredit = paid;
       } else if (method === "mp") {
-        const paid = safeNumber(p?.total_paid ?? saleTotal);
+        const paid = safeNumber(breakdown?.mp ?? p?.total_paid ?? saleTotal);
         methodTotals.mp += paid;
         ticketMp = paid;
       } else if (method === "cuenta_corriente") {
-        const paid = safeNumber(p?.total_paid ?? saleTotal);
+        const paid = safeNumber(breakdown?.account ?? p?.total_paid ?? saleTotal);
         methodTotals.account += paid;
         ticketAccount = paid;
       } else if (method === "mixto") {
-        // Usamos breakdown para repartir
         const cash = safeNumber(breakdown.cash ?? 0);
         const debit = safeNumber(breakdown.debit ?? 0);
         const credit = safeNumber(breakdown.credit ?? 0);
@@ -214,11 +223,9 @@ if (method === "efectivo") {
         mixtoTotal += saleTotal;
       }
 
-      const timeStr = arg.toTimeString().slice(0, 5); // HH:MM
-
       ticketsOut.push({
         id: row.id,
-        time: timeStr,
+        time: formatTimeAR(row.created_at),
         total: saleTotal,
         method,
         method_label:
@@ -248,11 +255,7 @@ if (method === "efectivo") {
     const netCash = cashIn - totalChange;
 
     const hourly = Object.entries(hourlyMap)
-      .map(([hour, vals]) => ({
-        hour,
-        tickets: vals.tickets,
-        total: vals.total,
-      }))
+      .map(([hour, vals]) => ({ hour, tickets: vals.tickets, total: vals.total }))
       .sort((a, b) => a.hour.localeCompare(b.hour));
 
     const methods = [
@@ -264,27 +267,14 @@ if (method === "efectivo") {
     ];
 
     return NextResponse.json({
-      kpis: {
-        totalAmount,
-        tickets,
-        avgTicket,
-        cashIn,
-        change: totalChange,
-        netCash,
-      },
+      kpis: { totalAmount, tickets, avgTicket, cashIn, change: totalChange, netCash },
       methods,
       hourly,
       tickets: ticketsOut,
-      meta: {
-        mixtoTickets,
-        mixtoTotal,
-      },
+      meta: { mixtoTickets, mixtoTotal },
     });
   } catch (err) {
     console.error("Error en /api/cash-closure:", err);
-    return NextResponse.json(
-      { error: "Error generando cierre de caja" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Error generando cierre de caja" }, { status: 500 });
   }
 }

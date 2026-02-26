@@ -14,6 +14,9 @@ type ProductRow = {
   offer_type: string | null;
   offer_value: number | null;
   stock: number;
+
+  // ✅ para ocultar desactivados
+  active?: boolean | null;
 };
 
 type Offer = {
@@ -63,7 +66,7 @@ export default function OfertasPage() {
 
   // mapa product_id -> "Nombre (SKU)" para mostrar lindo en Ofertas activas
   const [productMap, setProductMap] = useState<
-    Record<string, { name: string; sku: string }>
+    Record<string, { name: string; sku: string; active?: boolean | null }>
   >({});
 
   const effectiveStoreId = useMemo(() => storeId, [storeId]);
@@ -103,13 +106,20 @@ export default function OfertasPage() {
         }
       );
       const data = await res.json();
-      const rows = Array.isArray(data) ? (data as ProductRow[]) : [];
+
+      // ✅ ocultar desactivados (active=false). Si no viene active => se muestra (modo seguro).
+      const rowsAll = Array.isArray(data) ? (data as ProductRow[]) : [];
+      const rows = rowsAll.filter((r) => (r as any)?.active !== false);
+
       setProducts(rows);
 
       // refrescar map con lo que tenemos a mano
-      const next: Record<string, { name: string; sku: string }> = {};
-      for (const r of rows) next[r.id] = { name: r.name, sku: r.sku };
+      const next: Record<string, { name: string; sku: string; active?: boolean | null }> = {};
+      for (const r of rows) next[r.id] = { name: r.name, sku: r.sku, active: (r as any)?.active ?? null };
       setProductMap((prev) => ({ ...prev, ...next }));
+
+      // ✅ si el seleccionado quedó desactivado/no aparece, lo limpiamos
+      if (selected && (selected as any)?.active === false) setSelected(null);
     } catch (e: any) {
       setMsg(e?.message || "Error buscando productos");
     } finally {
@@ -164,7 +174,9 @@ export default function OfertasPage() {
         .slice(0, 100)
         .map((id) => `"${id}"`)
         .join(",");
-      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/products?select=id,name,sku&id=in.(${ids})`;
+
+      // ✅ pedimos active también (si existe y RLS lo permite)
+      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/products?select=id,name,sku,active&id=in.(${ids})`;
       const r = await fetch(url, {
         headers: {
           apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
@@ -173,8 +185,8 @@ export default function OfertasPage() {
       });
       const prod = await r.json();
       if (Array.isArray(prod)) {
-        const add: Record<string, { name: string; sku: string }> = {};
-        for (const p of prod) add[p.id] = { name: p.name, sku: p.sku };
+        const add: Record<string, { name: string; sku: string; active?: boolean | null }> = {};
+        for (const p of prod) add[p.id] = { name: p.name, sku: p.sku, active: (p as any)?.active ?? null };
         setProductMap((prev) => ({ ...prev, ...add }));
       }
     }
@@ -195,6 +207,11 @@ export default function OfertasPage() {
     if (!selected) return setMsg("Seleccioná un producto");
     if (!storeId) return setMsg("Seleccioná una sucursal");
     if (!value || value <= 0) return setMsg("Valor inválido");
+
+    // ✅ seguridad extra: no permitir crear oferta a desactivados
+    if ((selected as any)?.active === false) {
+      return setMsg("Ese producto está desactivado. Reactivalo en Catálogo si querés hacer oferta.");
+    }
 
     setLoading(true);
     setMsg("");
@@ -252,6 +269,15 @@ export default function OfertasPage() {
   }
 
   const selectedLabel = selected ? `${selected.name} (SKU ${selected.sku})` : "—";
+
+  // ✅ Filtrar ofertas activas cuyo producto esté desactivado (si lo sabemos por productMap)
+  const visibleOffers = useMemo(() => {
+    return offers.filter((o) => {
+      const p = productMap[o.product_id];
+      if (!p) return true; // si no sabemos, mostramos (modo seguro)
+      return p.active !== false;
+    });
+  }, [offers, productMap]);
 
   return (
     <div className="max-w-7xl mx-auto px-3 py-4">
@@ -417,12 +443,12 @@ export default function OfertasPage() {
 
           <div className="border rounded-lg overflow-hidden">
             <div className="max-h-[300px] overflow-auto">
-              {offers.length === 0 ? (
+              {visibleOffers.length === 0 ? (
                 <div className="px-3 py-3 text-sm opacity-70">
                   No hay ofertas activas
                 </div>
               ) : (
-                offers.map((o) => {
+                visibleOffers.map((o) => {
                   const p = productMap[o.product_id];
                   const label = p ? `${p.name} (SKU ${p.sku})` : o.product_id;
 

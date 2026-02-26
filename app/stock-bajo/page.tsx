@@ -15,6 +15,9 @@ type Row = {
   stock: number;
   min_stock: number;
   missing: number;
+
+  // ✅ para poder filtrar desactivados (lo traemos por 2da consulta)
+  active?: boolean | null;
 };
 
 type SortKey = "missing" | "stock" | "min_stock" | "value" | "name";
@@ -83,7 +86,42 @@ export default function StockBajoPage() {
         alert("Error buscando stock bajo: " + error.message);
         return;
       }
-      setRows((data ?? []) as Row[]);
+
+      const base = ((data ?? []) as Row[]) ?? [];
+
+      // ✅ 2do paso: traer active desde products para filtrar desactivados
+      const ids = Array.from(new Set(base.map((r) => r.id).filter(Boolean)));
+      if (ids.length === 0) {
+        setRows([]);
+        return;
+      }
+
+      const { data: prodData, error: prodErr } = await supabase
+        .from("products")
+        .select("id,active")
+        .in("id", ids);
+
+      if (prodErr) {
+        // Si falla por RLS o algo, NO rompemos: mostramos todo (modo seguro)
+        console.warn("No se pudo leer products.active, se muestra todo:", prodErr);
+        setRows(base);
+        return;
+      }
+
+      const activeMap = new Map<string, boolean | null>();
+      for (const p of (prodData ?? []) as any[]) {
+        activeMap.set(p.id, typeof p.active === "boolean" ? p.active : null);
+      }
+
+      const withActive = base.map((r) => ({
+        ...r,
+        active: activeMap.has(r.id) ? (activeMap.get(r.id) as any) : null,
+      }));
+
+      // ✅ ocultar desactivados (active=false). Si active viene null => se considera activo.
+      const filteredActive = withActive.filter((r) => r.active !== false);
+
+      setRows(filteredActive);
     } finally {
       setLoading(false);
     }
@@ -182,6 +220,9 @@ export default function StockBajoPage() {
           <h1 className="text-xl font-semibold">Stock bajo</h1>
           <p className="text-sm text-neutral-600">
             Detectá faltantes vs mínimo por sucursal y armá pedido rápido.
+          </p>
+          <p className="text-xs text-neutral-500 mt-1">
+            Nota: acá se muestran <b>solo productos activos</b> (desactivados quedan ocultos).
           </p>
         </div>
 

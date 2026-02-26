@@ -17,10 +17,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Falta productId" }, { status: 400 });
     }
 
-    // ✅ Si viene final_price => guardamos SOLO price (NO tocamos cost/vat/markup)
-    const hasFinal = isProvided(body?.final_price);
+    // ✅ Modo manual SOLO si el front lo indica explícitamente
+    const useFinal = body?.use_final_price === true;
 
-    if (hasFinal) {
+    if (useFinal) {
+      if (!isProvided(body?.final_price)) {
+        return NextResponse.json(
+          { ok: false, error: "Falta final_price en modo manual" },
+          { status: 400 }
+        );
+      }
+
       let finalPrice = Number(body.final_price);
       if (!Number.isFinite(finalPrice) || finalPrice < 0) {
         return NextResponse.json({ ok: false, error: "final_price inválido" }, { status: 400 });
@@ -39,7 +46,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, price: finalPrice, mode: "direct" });
     }
 
-    // ✅ Modo cálculo: acá sí esperamos cost/vat/markup (si no, error)
+    // ✅ Modo cálculo: acá sí esperamos cost/vat/markup
     const cost_net = Number(body?.cost_net);
     const vat_rate = Number(body?.vat_rate);
     const markup_rate = Number(body?.markup_rate);
@@ -58,7 +65,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "units_per_case inválido" }, { status: 400 });
     }
 
-    // Precio final = costo * (1 + IVA%) * (1 + margen%)
     const withVat = cost_net * (1 + vat_rate / 100);
     const finalPrice = Math.round(withVat * (1 + markup_rate / 100) * 100) / 100;
 
