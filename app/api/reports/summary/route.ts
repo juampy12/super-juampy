@@ -1,5 +1,11 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+function isYmd(v: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(v);
+}
 
 // Detecta el campo de fecha que exista y lo devuelve como "YYYY-MM-DD"
 function getRowDay(row: any): string {
@@ -14,9 +20,8 @@ function getRowDay(row: any): string {
 
   if (!raw) return "";
 
-  // Si viene como Date o timestamp, lo convertimos a string
   const str = typeof raw === "string" ? raw : new Date(raw).toISOString();
-  return str.slice(0, 10); // "YYYY-MM-DD"
+  return str.slice(0, 10);
 }
 
 // Devuelve el valor correcto de ingresos sin importar el nombre de la columna
@@ -37,18 +42,38 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
 
-    const fromParam = searchParams.get("from");
-    const toParam = searchParams.get("to");
+    let from = searchParams.get("from");
+    let to = searchParams.get("to");
     const storeId = searchParams.get("store_id");
 
-    // 🔧 Si viene solo `from` o solo `to`, usamos el mismo valor para ambos
-    const from = fromParam || toParam;
-    const to = toParam || fromParam;
+    // Validación formato fecha
+    if (from && !isYmd(from)) {
+      return NextResponse.json(
+        { error: "from inválido (YYYY-MM-DD)" },
+        { status: 400 }
+      );
+    }
 
-    // 1) Traemos TODOS los campos de la vista y filtramos fechas en JS
+    if (to && !isYmd(to)) {
+      return NextResponse.json(
+        { error: "to inválido (YYYY-MM-DD)" },
+        { status: 400 }
+      );
+    }
+
+    // Si están invertidas las fechas, las acomodamos
+    if (from && to && from > to) {
+      const tmp = from;
+      from = to;
+      to = tmp;
+    }
+
+    // Si viene solo una fecha, usamos la misma para ambas
+    if (from && !to) to = from;
+    if (to && !from) from = to;
+
     let query = supabaseAdmin.from("v_sales_daily").select("*");
 
-    // El filtro por sucursal sí lo podemos hacer en la DB
     if (storeId) {
       query = query.eq("store_id", storeId);
     }
@@ -65,30 +90,32 @@ export async function GET(req: NextRequest) {
       day: getRowDay(row),
     }));
 
-    // 2) Filtro de fechas en JavaScript usando el campo "day" calculado
+    // Filtro por rango en JS (seguro porque no conocemos exacto el campo fecha en la vista)
     if (from) {
-      rows = rows.filter((r) => r.day && r.day >= from);
-    }
-    if (to) {
-      rows = rows.filter((r) => r.day && r.day <= to);
+      rows = rows.filter((r: any) => r.day && r.day >= from);
     }
 
-    // 3) Ordenar por día ascendente (y por store_id para que quede prolijo)
-    rows.sort((a, b) => {
+    if (to) {
+      rows = rows.filter((r: any) => r.day && r.day <= to);
+    }
+
+    // Orden prolijo
+    rows.sort((a: any, b: any) => {
       if (a.day === b.day) {
-        return String(a.store_id ?? "").localeCompare(String(b.store_id ?? ""));
+        return String(a.store_id ?? "").localeCompare(
+          String(b.store_id ?? "")
+        );
       }
       return String(a.day).localeCompare(String(b.day));
     });
 
-    // 4) KPIs
     const totalAmount = rows.reduce(
-      (acc, row) => acc + getRevenue(row),
+      (acc: number, row: any) => acc + getRevenue(row),
       0
     );
 
     const tickets = rows.reduce(
-      (acc, row) => acc + Number(row.tickets ?? 0),
+      (acc: number, row: any) => acc + Number(row.tickets ?? 0),
       0
     );
 

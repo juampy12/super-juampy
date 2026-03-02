@@ -104,7 +104,9 @@ export default function CashClosurePage() {
     return `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
+  // =========================
   // Cargar cajas por sucursal
+  // =========================
   useEffect(() => {
     let alive = true;
 
@@ -145,6 +147,9 @@ export default function CashClosurePage() {
     };
   }, [selectedStore]);
 
+  // =========================
+  // Cargar cierre existente
+  // =========================
   async function loadClosure() {
     try {
       if (!selectedDate || !selectedStore || !selectedRegister) {
@@ -163,33 +168,32 @@ export default function CashClosurePage() {
         return;
       }
 
-      const json = await res.json();
+      const json: any = await res.json().catch(() => null);
 
-      // Caso 1: { data: row }
-      if (json && json.data && !Array.isArray(json.data)) {
-        setExistingClosure(json.data);
+      // ✅ API actual: { data: row|null }
+      if (json && Object.prototype.hasOwnProperty.call(json, "data")) {
+        setExistingClosure((json.data as ExistingClosure) ?? null);
         return;
       }
 
-      // Caso 2: array directo
+      // ✅ fallback defensivo (por si alguna vez llega un formato viejo)
       if (Array.isArray(json)) {
         const match = json.find(
           (row: any) =>
-            row.date === selectedDate &&
-            row.store_id === selectedStore &&
-            row.register_id === selectedRegister
+            row?.date === selectedDate &&
+            row?.store_id === selectedStore &&
+            row?.register_id === selectedRegister
         );
         setExistingClosure(match ?? null);
         return;
       }
 
-      // Caso 3: { data: rows[] }
       if (Array.isArray(json?.data)) {
         const match = json.data.find(
           (row: any) =>
-            row.date === selectedDate &&
-            row.store_id === selectedStore &&
-            row.register_id === selectedRegister
+            row?.date === selectedDate &&
+            row?.store_id === selectedStore &&
+            row?.register_id === selectedRegister
         );
         setExistingClosure(match ?? null);
         return;
@@ -202,6 +206,9 @@ export default function CashClosurePage() {
     }
   }
 
+  // =========================
+  // Cargar data del día (KPIs/tickets)
+  // =========================
   async function loadData() {
     try {
       if (!selectedDate || !selectedStore || !selectedRegister) {
@@ -335,7 +342,7 @@ export default function CashClosurePage() {
 
       const payload = {
         store_id: selectedStore,
-        register_id: selectedRegister, // ✅ CLAVE
+        register_id: selectedRegister,
         date: selectedDate,
         total_sales: kpis.totalAmount,
         total_tickets: kpis.tickets,
@@ -404,7 +411,7 @@ export default function CashClosurePage() {
 
       const payload = {
         store_id: selectedStore,
-        register_id: selectedRegister, // ✅ CLAVE
+        register_id: selectedRegister,
         date: selectedDate,
         total_sales: kpis.totalAmount,
         total_tickets: kpis.tickets,

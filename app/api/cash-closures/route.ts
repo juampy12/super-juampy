@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    v
+  );
 }
 
 export async function GET(req: Request) {
@@ -12,6 +14,17 @@ export async function GET(req: Request) {
     const store_id = searchParams.get("store_id");
     const register_id = searchParams.get("register_id");
 
+    // ✅ Validaciones estrictas (evita devolver datos de otra caja por error)
+    if (store_id && !isUuid(store_id)) {
+      return NextResponse.json({ error: "store_id inválido (UUID)" }, { status: 400 });
+    }
+    if (register_id && !isUuid(register_id)) {
+      return NextResponse.json({ error: "register_id inválido (UUID)" }, { status: 400 });
+    }
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return NextResponse.json({ error: "date inválida (YYYY-MM-DD)" }, { status: 400 });
+    }
+
     let q = supabaseAdmin
       .from("cash_closures")
       .select("*")
@@ -19,7 +32,7 @@ export async function GET(req: Request) {
 
     if (date) q = q.eq("date", date);
     if (store_id) q = q.eq("store_id", store_id);
-    if (register_id && isUuid(register_id)) q = q.eq("register_id", register_id);
+    if (register_id) q = q.eq("register_id", register_id);
 
     // Fecha + sucursal + caja → 1 cierre
     if (date && store_id && register_id) {
@@ -39,10 +52,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ data: data ?? [] }, { status: 200 });
   } catch (e) {
     console.error("Error en GET /api/cash-closures:", e);
-    return NextResponse.json(
-      { error: "Error inesperado en el servidor" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Error inesperado en el servidor" }, { status: 500 });
   }
 }
 
@@ -73,10 +83,7 @@ export async function POST(req: Request) {
 
     if (error) {
       if (error.code === "23505") {
-        return NextResponse.json(
-          { error: "Cierre ya existente para esta caja" },
-          { status: 409 }
-        );
+        return NextResponse.json({ error: "Cierre ya existente para esta caja" }, { status: 409 });
       }
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
@@ -84,10 +91,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ data }, { status: 200 });
   } catch (e) {
     console.error("Error en POST /api/cash-closures:", e);
-    return NextResponse.json(
-      { error: "Error inesperado en el servidor" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Error inesperado en el servidor" }, { status: 500 });
   }
 }
 
@@ -126,9 +130,6 @@ export async function PUT(req: Request) {
     return NextResponse.json({ data }, { status: 200 });
   } catch (e) {
     console.error("Error en PUT /api/cash-closures:", e);
-    return NextResponse.json(
-      { error: "Error inesperado en el servidor" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Error inesperado en el servidor" }, { status: 500 });
   }
 }
