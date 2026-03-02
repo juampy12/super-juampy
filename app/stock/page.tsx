@@ -50,10 +50,16 @@ export default function StockPage() {
     return Object.values(newStockById).some((v) => v !== undefined && v !== "");
   }, [newStockById]);
 
-  function confirmDiscardIfNeeded(actionLabel: string) {
+  function getStoreName(id: string) {
+    const s = stores.find((x) => x.id === id);
+    return s?.name ?? id.slice(0, 8);
+  }
+
+  function confirmDiscardIfNeeded(actionLabel: string, storeIdForMsg?: string) {
     if (!hasAnyTypedChanges) return true;
+    const storeLabel = storeIdForMsg ? `\nSucursal: ${getStoreName(storeIdForMsg)}\n` : "\n";
     return window.confirm(
-      `Tenés cambios de stock sin guardar.\n\nSi continuás, se van a limpiar.\n\n¿Querés continuar con: ${actionLabel}?`
+      `Tenés cambios de stock sin guardar.${storeLabel}\nSi continuás, se van a limpiar.\n\n¿Querés continuar con: ${actionLabel}?`
     );
   }
 
@@ -89,20 +95,26 @@ export default function StockPage() {
    *
    * Importante paginación:
    * - pedimos p_limit = useLimit + 1 para saber si hay más (hasMore)
+   *
+   * storeOverride: permite buscar contra una sucursal específica (snapshot)
    */
   async function search(opts?: {
     forceQuery?: string | null;
     useLimit?: number;
     keepEdits?: boolean;
+    storeOverride?: string;
   }): Promise<{ count: number; hasMore: boolean }> {
-    if (!storeId) return { count: 0, hasMore: false };
+    const effectiveStoreId = (opts?.storeOverride ?? storeId) || "";
+    if (!effectiveStoreId) return { count: 0, hasMore: false };
 
     const keepEdits = opts?.keepEdits ?? false;
     const useLimit = opts?.useLimit ?? dataLimit;
     const forceQuery = opts?.forceQuery ?? undefined;
 
     if (!keepEdits) {
-      if (!confirmDiscardIfNeeded("Buscar/recargar")) return { count: rows.length, hasMore };
+      if (!confirmDiscardIfNeeded("Buscar/recargar", effectiveStoreId)) {
+        return { count: rows.length, hasMore };
+      }
     }
 
     // ✅ cada búsqueda tiene un id; si llega una respuesta vieja, se ignora
@@ -110,13 +122,12 @@ export default function StockPage() {
 
     setLoading(true);
     try {
-      const q =
-        forceQuery !== undefined ? forceQuery : query?.trim() ? query.trim() : null;
+      const q = forceQuery !== undefined ? forceQuery : query?.trim() ? query.trim() : null;
 
       // pedimos 1 más para detectar si hay más páginas
       const askLimit = useLimit + 1;
 
-      const body = { p_store: storeId, p_query: q, p_limit: askLimit };
+      const body = { p_store: effectiveStoreId, p_query: q, p_limit: askLimit };
       console.log("[INV] RPC body", body);
 
       const res = await supaFetch(`/rest/v1/rpc/products_with_stock`, {
@@ -198,9 +209,6 @@ export default function StockPage() {
   }
 
   async function runSearchSmart() {
-    // un solo buscador:
-    // - si parece SKU (solo números y largo razonable), buscamos rápido
-    // - si no, búsqueda normal
     const t = query.trim();
     const looksLikeSku = /^\d{6,}$/.test(t);
 
@@ -280,19 +288,22 @@ export default function StockPage() {
       return;
     }
 
+    // ✅ snapshot para que NO haya dudas de a qué sucursal se guardó
+    const storeIdSnap = storeId;
+    const storeNameSnap = getStoreName(storeIdSnap);
+
     const ok = window.confirm(
-      `Vas a guardar ${changesCount} cambio(s) de stock.\n\n↑ ${changesSummary.up}  ↓ ${changesSummary.down}\n\n¿Confirmás?`
+      `Sucursal: ${storeNameSnap}\n\nVas a guardar ${changesCount} cambio(s) de stock.\n\n↑ ${changesSummary.up}  ↓ ${changesSummary.down}\n\n¿Confirmás?`
     );
     if (!ok) return;
 
     setSaving(true);
     try {
-      // ✅ BATCH: 1 request (más confiable + más rápido)
       const res = await fetch(`/api/stock/adjust`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          store_id: storeId,
+          store_id: storeIdSnap,
           reason: "Ajuste manual (Inventario)",
           changes: changes.map((c) => ({ product_id: c.id, stock: c.next })),
         }),
@@ -303,7 +314,7 @@ export default function StockPage() {
         throw new Error(json?.error ?? `${res.status} ${res.statusText}`);
       }
 
-      // ✅ UI inmediata: reflejar lo guardado sin esperar refetch
+      // ✅ UI inmediata
       const nextById = new Map(changes.map((c) => [c.id, c.next]));
       setRows((prev) =>
         prev.map((r) => (nextById.has(r.id) ? { ...r, stock: nextById.get(r.id)! } : r))
@@ -312,12 +323,12 @@ export default function StockPage() {
       // limpiamos inputs “Stock nuevo”
       setNewStockById({});
 
-      // y además refrescamos desde backend para quedar 100% sync
+      // refrescar desde backend (pero con snapshot de sucursal, por seguridad)
       setPage(0);
       setDataLimit(pageSize);
-      await search({ useLimit: pageSize });
+      await search({ useLimit: pageSize, storeOverride: storeIdSnap });
 
-      alert("Stock guardado correctamente ✅");
+      alert(`Stock guardado correctamente ✅\nSucursal: ${storeNameSnap}`);
     } catch (e: any) {
       alert(`Error guardando stock: ${e?.message ?? e}`);
     } finally {
@@ -330,11 +341,21 @@ export default function StockPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ Al cambiar sucursal: limpiar UI vieja y recargar seguro
   useEffect(() => {
     if (!storeId) return;
+
+    // invalida búsquedas en vuelo
+    searchSeq.current += 1;
+
+    // limpiar “mezcla visual”
+    setRows([]);
+    setHasMore(false);
     setPage(0);
     setDataLimit(pageSize);
-    search({ useLimit: pageSize });
+
+    // cargar
+    void search({ useLimit: pageSize, storeOverride: storeId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
@@ -352,13 +373,19 @@ export default function StockPage() {
           <p className="text-sm text-gray-600">
             Nota: en Inventario se muestran <b>solo productos activos</b> (desactivados quedan ocultos).
           </p>
+          {storeId ? (
+            <div className="inline-flex items-center gap-2 text-xs rounded-full border px-3 py-1 bg-white">
+              <span className="text-neutral-500">Sucursal actual:</span>
+              <b>{getStoreName(storeId)}</b>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex gap-2 items-center">
           <button
             className="px-3 py-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50"
             onClick={() => search({ useLimit: dataLimit })}
-            disabled={loading || saving}
+            disabled={loading || saving || !storeId}
           >
             Recargar
           </button>
@@ -366,7 +393,7 @@ export default function StockPage() {
           <button
             className="px-3 py-2 rounded-lg bg-black text-white hover:opacity-90 disabled:opacity-50"
             onClick={saveAll}
-            disabled={saving || loading || changesCount === 0}
+            disabled={saving || loading || changesCount === 0 || !storeId}
           >
             {saving ? "Guardando..." : `Guardar (${changesCount})`}
           </button>
@@ -380,10 +407,12 @@ export default function StockPage() {
             className="w-full border rounded-lg px-3 py-2"
             value={storeId}
             onChange={(e) => {
-              if (!confirmDiscardIfNeeded("Cambiar sucursal")) return;
+              const next = e.target.value;
+              if (!confirmDiscardIfNeeded("Cambiar sucursal", storeId)) return;
               setNewStockById({});
-              setStoreId(e.target.value);
+              setStoreId(next);
             }}
+            disabled={saving}
           >
             {stores.map((s) => (
               <option key={s.id} value={s.id}>
@@ -391,6 +420,10 @@ export default function StockPage() {
               </option>
             ))}
           </select>
+
+          <div className="text-xs text-gray-500">
+            Tip: antes de guardar, mirá que diga <b>“Sucursal actual”</b> arriba.
+          </div>
         </div>
 
         <div className="p-3 rounded-xl border bg-white space-y-2">
@@ -404,11 +437,12 @@ export default function StockPage() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") runSearchSmart();
               }}
+              disabled={!storeId || saving}
             />
             <button
               className="px-3 py-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50"
               onClick={runSearchSmart}
-              disabled={loading || saving}
+              disabled={loading || saving || !storeId}
             >
               Buscar
             </button>
@@ -465,8 +499,7 @@ export default function StockPage() {
                 const current = Number(r.stock ?? 0);
                 const typed = newStockById[r.id];
                 const parsed = typed === undefined || typed === "" ? null : Number(typed);
-                const delta =
-                  parsed === null || !Number.isFinite(parsed) ? null : parsed - current;
+                const delta = parsed === null || !Number.isFinite(parsed) ? null : parsed - current;
 
                 return (
                   <tr key={r.id} className="border-t">
