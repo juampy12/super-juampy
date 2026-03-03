@@ -13,6 +13,8 @@ import {
   AlertTriangle,
   Tag,
   ClipboardList,
+  Shield,
+  TrendingUp, // ✅ FIX: agregado correctamente
 } from 'lucide-react';
 
 const navLinks = [
@@ -30,14 +32,21 @@ const navLinks = [
 
   { href: '/ofertas', label: 'Ofertas', icon: Tag },
   { href: '/reports', label: 'Reportes', icon: BarChart3 },
+
+  // IA Control — SOLO supervisor
+  { href: '/inteligencia/control', label: 'Inteligencia', icon: Shield },
+
   { href: '/cierres', label: 'Cierre de caja', icon: Wallet },
   { href: '/cierres/historial', label: 'Historial cierres', icon: Wallet },
   { href: '/reports/top-products', label: 'Top productos', icon: BarChart3 },
   { href: '/stock-bajo', label: 'Stock bajo', icon: AlertTriangle },
+  { href: '/inteligencia/diferencias', label: 'Diferencias caja', icon: AlertTriangle },
+
+  // ✅ IA Margen
+  { href: '/inteligencia/margen', label: 'IA Margen', icon: TrendingUp },
 ];
 
-// ❗️ IMPORTANTE:
-// acá SOLO dejamos lo que el CAJERO puede ver
+// ❗️ SOLO lo que el CAJERO puede ver
 const employeeAllowed = new Set([
   "/ventas",
   "/cierres",
