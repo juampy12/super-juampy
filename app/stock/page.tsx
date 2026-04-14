@@ -13,6 +13,13 @@ type Row = {
   active?: boolean | null;
 };
 
+type DbCheck = {
+  loading: boolean;
+  stock: number | null; // null = sin fila en product_stocks
+  updated_at: string | null;
+  error: string | null;
+};
+
 export default function StockPage() {
   const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -39,6 +46,9 @@ export default function StockPage() {
 
   // cambios: product_id -> stock nuevo (string para permitir vacío)
   const [newStockById, setNewStockById] = useState<Record<string, string>>({});
+
+  // ✅ verificación contra DB (product_stocks) bajo demanda
+  const [dbCheckById, setDbCheckById] = useState<Record<string, DbCheck>>({});
 
   // ref para enfocar el primer input de la página actual
   const firstInputRef = useRef<HTMLInputElement | null>(null);
@@ -86,6 +96,41 @@ export default function StockPage() {
     const data = (await res.json()) as Store[];
     setStores(data);
     if (!storeId && data.length) setStoreId(data[0].id);
+  }
+
+  // ✅ Verificar stock real en DB (product_stocks) para ESTA sucursal
+  async function checkDbStock(productId: string) {
+    if (!storeId) return;
+
+    setDbCheckById((prev) => ({
+      ...prev,
+      [productId]: { loading: true, stock: null, updated_at: null, error: null },
+    }));
+
+    try {
+      const res = await supaFetch(
+        `/rest/v1/product_stocks?select=stock,updated_at&store_id=eq.${storeId}&product_id=eq.${productId}`
+      );
+      const data = (await res.json()) as Array<{ stock: any; updated_at: string }>;
+
+      // si no hay fila -> null
+      const row = data?.[0] ?? null;
+
+      setDbCheckById((prev) => ({
+        ...prev,
+        [productId]: {
+          loading: false,
+          stock: row ? Number(row.stock) : null,
+          updated_at: row ? row.updated_at : null,
+          error: null,
+        },
+      }));
+    } catch (e: any) {
+      setDbCheckById((prev) => ({
+        ...prev,
+        [productId]: { loading: false, stock: null, updated_at: null, error: e?.message ?? String(e) },
+      }));
+    }
   }
 
   /**
@@ -145,7 +190,12 @@ export default function StockPage() {
         id: x.id,
         sku: x.sku ?? null,
         name: x.name,
-        stock: typeof x.stock === "number" ? x.stock : Number(x.stock ?? 0),
+        stock:
+          x.stock == null
+            ? null
+            : typeof x.stock === "number"
+            ? x.stock
+            : Number(x.stock),
         is_weighted: x.is_weighted ?? null,
         active: typeof x.active === "boolean" ? x.active : x.active ?? null,
       }));
@@ -163,6 +213,7 @@ export default function StockPage() {
       setRows(finalRows);
 
       if (!keepEdits) setNewStockById({});
+      if (!keepEdits) setDbCheckById({}); // ✅ limpiamos checks al recargar (evita confusión)
 
       setTimeout(() => {
         if (mySeq !== searchSeq.current) return;
@@ -322,6 +373,7 @@ export default function StockPage() {
 
       // limpiamos inputs “Stock nuevo”
       setNewStockById({});
+      setDbCheckById({});
 
       // refrescar desde backend (pero con snapshot de sucursal, por seguridad)
       setPage(0);
@@ -353,6 +405,7 @@ export default function StockPage() {
     setHasMore(false);
     setPage(0);
     setDataLimit(pageSize);
+    setDbCheckById({});
 
     // cargar
     void search({ useLimit: pageSize, storeOverride: storeId });
@@ -371,8 +424,10 @@ export default function StockPage() {
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold">Inventario</h1>
           <p className="text-sm text-gray-600">
-            Nota: en Inventario se muestran <b>solo productos activos</b> (desactivados quedan ocultos).
+            Nota: se muestran <b>solo productos activos</b>. <br />
+            Tip: si ves un stock raro, tocá <b>“Ver DB”</b> para confirmar el valor real en <b>product_stocks</b>.
           </p>
+
           {storeId ? (
             <div className="inline-flex items-center gap-2 text-xs rounded-full border px-3 py-1 bg-white">
               <span className="text-neutral-500">Sucursal actual:</span>
@@ -410,6 +465,7 @@ export default function StockPage() {
               const next = e.target.value;
               if (!confirmDiscardIfNeeded("Cambiar sucursal", storeId)) return;
               setNewStockById({});
+              setDbCheckById({});
               setStoreId(next);
             }}
             disabled={saving}
@@ -491,6 +547,7 @@ export default function StockPage() {
                 <th className="p-2 text-right">Stock actual</th>
                 <th className="p-2 text-right">Stock nuevo</th>
                 <th className="p-2 text-right">Δ</th>
+                <th className="p-2 text-right">Ver DB</th>
                 <th className="p-2"></th>
               </tr>
             </thead>
@@ -501,18 +558,41 @@ export default function StockPage() {
                 const parsed = typed === undefined || typed === "" ? null : Number(typed);
                 const delta = parsed === null || !Number.isFinite(parsed) ? null : parsed - current;
 
+                const db = dbCheckById[r.id];
+                const dbMismatch =
+                  db && !db.loading && db.error == null && db.stock != null && Number.isFinite(db.stock) && db.stock !== current;
+
                 return (
                   <tr key={r.id} className="border-t">
                     <td className="p-2">
                       <div className="font-medium">{r.name}</div>
-                      {r.is_weighted ? (
-                        <div className="text-xs text-gray-500">Pesable</div>
-                      ) : null}
+                      {r.is_weighted ? <div className="text-xs text-gray-500">Pesable</div> : null}
                     </td>
 
                     <td className="p-2 text-gray-700">{r.sku ?? "-"}</td>
 
-                    <td className="p-2 text-right tabular-nums">{current}</td>
+                    <td className="p-2 text-right tabular-nums">
+                      <div className="flex items-center justify-end gap-2">
+                        <span className={current < 0 ? "text-red-700 font-semibold" : "text-black"}>
+                          {current}
+                        </span>
+                        {current < 0 ? (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full border bg-red-50 text-red-700">
+                            NEGATIVO
+                          </span>
+                        ) : null}
+                        {dbMismatch ? (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full border bg-yellow-50 text-yellow-800">
+                            NO COINCIDE
+                          </span>
+                        ) : null}
+                      </div>
+                      {db && !db.loading && db.error == null ? (
+                        <div className="text-[11px] text-gray-500 text-right">
+                          DB: {db.stock === null ? "sin fila" : db.stock}
+                        </div>
+                      ) : null}
+                    </td>
 
                     <td className="p-2 text-right">
                       <input
@@ -541,6 +621,27 @@ export default function StockPage() {
                     </td>
 
                     <td className="p-2 text-right">
+                      <button
+                        className="px-2 py-1 rounded-lg border hover:bg-gray-50 disabled:opacity-50"
+                        onClick={() => checkDbStock(r.id)}
+                        disabled={loading || saving || !storeId || (db?.loading ?? false)}
+                        title="Consulta product_stocks directo para esta sucursal"
+                      >
+                        {db?.loading ? "..." : "Ver DB"}
+                      </button>
+                      {db?.error ? (
+                        <div className="text-[11px] text-red-600 mt-1 max-w-[220px] text-right">
+                          {db.error}
+                        </div>
+                      ) : null}
+                      {db && !db.loading && db.error == null && db.updated_at ? (
+                        <div className="text-[11px] text-gray-500 mt-1 text-right">
+                          upd: {db.updated_at}
+                        </div>
+                      ) : null}
+                    </td>
+
+                    <td className="p-2 text-right">
                       <div className="flex gap-2 justify-end">
                         <button
                           className="px-2 py-1 rounded-lg border hover:bg-gray-50"
@@ -561,9 +662,10 @@ export default function StockPage() {
                   </tr>
                 );
               })}
+
               {pageRows.length === 0 && (
                 <tr>
-                  <td className="p-6 text-center text-gray-500" colSpan={6}>
+                  <td className="p-6 text-center text-gray-500" colSpan={7}>
                     {loading ? "Cargando..." : "Sin resultados."}
                   </td>
                 </tr>
