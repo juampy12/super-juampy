@@ -47,3 +47,19 @@ $$;
 
 -- (opcional) garantizar que el rol público pueda ejecutar el RPC
 grant execute on function public.products_top(timestamptz,timestamptz,uuid,int) to anon, authenticated;
+
+-- Vista de stock por producto y sucursal
+create or replace view public.v_products_with_stock_by_store as
+select
+  p.id as product_id,
+  p.sku,
+  p.name,
+  p.price,
+  st.id as store_id,
+  st.name as store_name,
+  coalesce(ps.stock, 0) as stock
+from public.products p
+cross join public.stores st
+left join public.product_stocks ps
+  on ps.product_id = p.id
+ and ps.store_id = st.id;
