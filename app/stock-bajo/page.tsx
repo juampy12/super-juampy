@@ -215,10 +215,10 @@ export default function StockBajoPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-end justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold">Stock bajo</h1>
-          <p className="text-sm text-neutral-600">
+      <div className="flex flex-col gap-4 rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-3">
+          <h1 className="text-2xl font-semibold">Stock bajo</h1>
+          <p className="text-sm text-neutral-600 max-w-2xl">
             Detectá faltantes vs mínimo por sucursal y armá pedido rápido.
           </p>
           <p className="text-xs text-neutral-500 mt-1">
@@ -226,12 +226,12 @@ export default function StockBajoPage() {
           </p>
         </div>
 
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
           {/* ✅ Solo supervisor: link a mínimos */}
           {roleReady && isSupervisor && (
             <Link
               href="/minimos"
-              className="rounded border px-3 py-2 text-sm hover:bg-neutral-50"
+              className="rounded-2xl border border-neutral-300 bg-white px-4 py-2 text-sm hover:bg-neutral-50"
               title="Configurar mínimos por producto y sucursal"
             >
               Configurar mínimos
@@ -239,7 +239,7 @@ export default function StockBajoPage() {
           )}
 
           <button
-            className="rounded border px-3 py-2 text-sm"
+            className="rounded-2xl border border-neutral-300 bg-white px-4 py-2 text-sm hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
             onClick={() => void copyList()}
             disabled={loading || sortedRows.length === 0}
             title="Copia la lista para enviar por WhatsApp"
@@ -248,7 +248,7 @@ export default function StockBajoPage() {
           </button>
 
           <button
-            className="rounded bg-black text-white px-4 py-2"
+            className="rounded-2xl bg-black px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-60"
             onClick={() => void refresh()}
             disabled={loading}
           >
@@ -258,11 +258,11 @@ export default function StockBajoPage() {
       </div>
 
       {/* Filtros */}
-      <div className="flex flex-wrap gap-3 items-end">
-        <div className="space-y-1">
-          <div className="text-sm text-neutral-600">Sucursal</div>
+      <div className="grid gap-3 rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm lg:grid-cols-[minmax(220px,280px)_minmax(320px,360px)_minmax(180px,220px)_minmax(240px,320px)] lg:items-end">
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-neutral-700">Sucursal</div>
           <select
-            className="border rounded px-3 py-2"
+            className="w-full rounded-2xl border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-black focus:ring-2 focus:ring-black/10"
             value={selectedStoreId}
             onChange={(e) => setSelectedStoreId(e.target.value)}
           >
@@ -274,10 +274,10 @@ export default function StockBajoPage() {
           </select>
         </div>
 
-        <div className="space-y-1">
-          <div className="text-sm text-neutral-600">Buscar</div>
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-neutral-700">Buscar</div>
           <input
-            className="border rounded px-3 py-2 w-64"
+            className="w-full rounded-2xl border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-black focus:ring-2 focus:ring-black/10"
             placeholder="Nombre o SKU"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -287,7 +287,7 @@ export default function StockBajoPage() {
           />
         </div>
 
-        <label className="flex items-center gap-2 select-none text-sm border rounded px-3 py-2">
+        <label className="flex items-center gap-2 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm">
           <input
             type="checkbox"
             checked={onlyMissing}
@@ -296,18 +296,18 @@ export default function StockBajoPage() {
           Solo faltantes
         </label>
 
-        <div className="ml-auto grid grid-cols-3 gap-2">
-          <div className="border rounded-lg px-3 py-2 bg-white">
-            <div className="text-xs text-neutral-500">Items</div>
-            <div className="text-lg font-semibold">{sortedRows.length}</div>
+        <div className="ml-auto grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-3xl border border-neutral-200 bg-white px-5 py-5 shadow-sm">
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Items</div>
+            <div className="mt-2 text-3xl font-semibold text-black">{sortedRows.length}</div>
           </div>
-          <div className="border rounded-lg px-3 py-2 bg-white">
-            <div className="text-xs text-neutral-500">Faltante total</div>
-            <div className="text-lg font-semibold">{Number(totalMissing).toFixed(0)}</div>
+          <div className="rounded-3xl border border-neutral-200 bg-white px-5 py-5 shadow-sm">
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Faltante total</div>
+            <div className="mt-2 text-3xl font-semibold text-black">{Number(totalMissing).toFixed(0)}</div>
           </div>
-          <div className="border rounded-lg px-3 py-2 bg-white">
-            <div className="text-xs text-neutral-500">Valor faltante</div>
-            <div className="text-lg font-semibold">{money.format(totalValue)}</div>
+          <div className="rounded-3xl border border-neutral-200 bg-white px-5 py-5 shadow-sm">
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Valor faltante</div>
+            <div className="mt-2 text-3xl font-semibold text-black">{money.format(totalValue)}</div>
           </div>
         </div>
       </div>
@@ -315,10 +315,16 @@ export default function StockBajoPage() {
       {/* Tabla */}
       <div className="border rounded-xl bg-white overflow-hidden">
         {sortedRows.length === 0 ? (
-          <div className="p-4 text-sm text-neutral-600">
-            {onlyMissing
-              ? "No hay faltantes vs mínimo para esta sucursal."
-              : "Sin datos (o no configuraste mínimos)."}
+          <div className="flex min-h-[180px] flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-neutral-300 bg-neutral-50 px-6 py-10 text-center text-sm text-neutral-600">
+            <div className="text-3xl">📦</div>
+            <div className="max-w-xl text-base font-medium text-neutral-800">
+              {onlyMissing
+                ? "No hay faltantes vs mínimo para esta sucursal."
+                : "Sin datos (o no configuraste mínimos)."}
+            </div>
+            <div className="text-sm text-neutral-500">
+              Probá cambiar de sucursal o desactivar el filtro "Solo faltantes" para explorar más productos.
+            </div>
           </div>
         ) : (
           <div className="overflow-auto" style={{ maxHeight: "65vh" }}>
