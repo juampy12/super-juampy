@@ -146,11 +146,16 @@ export default function ReportsPage() {
 
   return (
     <main className="p-4 space-y-6">
-      <h1 className="text-2xl font-semibold">Reportes</h1>
+      <div className="space-y-3">
+        <h1 className="text-3xl font-semibold">Reportes</h1>
+        <p className="max-w-2xl text-sm text-neutral-600">
+          Consulta ingresos por sucursal y rango de fechas. Los KPIs y la tabla se actualizan automáticamente según tu selección.
+        </p>
+      </div>
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-[minmax(380px,1fr)_minmax(480px,1fr)]">
         {/* Selector de rango */}
-        <div className="rounded-xl border p-4">
+        <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
           <h2 className="font-medium mb-2">Rango</h2>
           <DayPicker
             mode="range"
@@ -163,14 +168,19 @@ export default function ReportsPage() {
         </div>
 
         {/* KPIs + selector de sucursal */}
-        <div className="rounded-xl border p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-medium">KPIs</h2>
+        <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="font-medium">KPIs</h2>
+              <div className="text-sm text-neutral-500">Sucursal</div>
+            </div>
 
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-neutral-500">Sucursal:</span>
+            <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3">
+              <label className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">
+                Sucursal
+              </label>
               <select
-                className="rounded border px-2 py-1 text-sm"
+                className="w-full rounded-2xl border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-black focus:ring-2 focus:ring-black/10"
                 value={selectedStore ?? ""}
                 onChange={(e) =>
                   setSelectedStore(
@@ -188,11 +198,11 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="mt-4 grid grid-cols-3 gap-4">
             {/* Ingresos */}
-            <div className="rounded-lg border p-3">
-              <div className="text-sm text-neutral-500">Ingresos</div>
-              <div className="text-2xl font-bold">
+            <div className="rounded-3xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Ingresos</div>
+              <div className="mt-2 text-2xl font-semibold text-black">
                 {loadingKpis
                   ? "Cargando..."
                   : `$${kpis.totalAmount.toLocaleString("es-AR")}`}
@@ -200,17 +210,17 @@ export default function ReportsPage() {
             </div>
 
             {/* Tickets */}
-            <div className="rounded-lg border p-3">
-              <div className="text-sm text-neutral-500">Tickets</div>
-              <div className="text-2xl font-bold">
+            <div className="rounded-3xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Tickets</div>
+              <div className="mt-2 text-2xl font-semibold text-black">
                 {loadingKpis ? "Cargando..." : kpis.tickets}
               </div>
             </div>
 
             {/* Ticket Promedio */}
-            <div className="rounded-lg border p-3">
-              <div className="text-sm text-neutral-500">Ticket Prom.</div>
-              <div className="text-2xl font-bold">
+            <div className="rounded-3xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Ticket Prom.</div>
+              <div className="mt-2 text-2xl font-semibold text-black">
                 {loadingKpis
                   ? "Cargando..."
                   : `$${kpis.avgTicket.toLocaleString("es-AR")}`}
@@ -221,14 +231,14 @@ export default function ReportsPage() {
       </section>
 
       {/* Tabla por día y sucursal */}
-      <section className="rounded-xl border p-4 overflow-x-auto">
+      <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm overflow-x-auto">
         <h2 className="font-medium mb-3">Ingresos por día y sucursal</h2>
-        <table className="min-w-[600px] w-full text-sm">
+        <table className="min-w-[600px] w-full text-sm divide-y divide-neutral-200">
           <thead>
-            <tr className="text-left border-b">
-              <th className="py-2 pr-4">Día</th>
-              <th className="py-2 pr-4">Sucursal</th>
-              <th className="py-2 pr-4">Ingresos</th>
+            <tr className="bg-gray-50 text-left text-xs uppercase tracking-[0.12em] text-neutral-600">
+              <th className="py-3 pr-4">Día</th>
+              <th className="py-3 pr-4">Sucursal</th>
+              <th className="py-3 pr-4">Ingresos</th>
             </tr>
           </thead>
           <tbody>
@@ -250,11 +260,13 @@ export default function ReportsPage() {
             })}
             {!days.length && (
               <tr>
-                <td
-                  colSpan={3}
-                  className="py-6 text-center text-neutral-500"
-                >
-                  Sin datos en el rango seleccionado
+                <td colSpan={3} className="py-10">
+                  <div className="mx-auto max-w-xl rounded-3xl border border-dashed border-neutral-200 bg-neutral-50 px-6 py-6 text-center text-sm text-neutral-600">
+                    <div className="mb-2 text-lg font-semibold text-black">Sin datos en el rango seleccionado</div>
+                    <div className="text-xs text-neutral-500">
+                      Cambiá el rango de fechas o la sucursal para ver resultados.
+                    </div>
+                  </div>
                 </td>
               </tr>
             )}
