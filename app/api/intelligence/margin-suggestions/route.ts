@@ -46,7 +46,32 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ rows: data ?? [] });
+    const rows = (data ?? []).map((row: any) => {
+  const current_price = row.price ?? null;
+  const current_markup_pct = row.margin_pct ?? null;
+  const suggested_pct = row.suggested_pct ?? null;
+
+  let suggested_price = null;
+
+  if (
+    current_price !== null &&
+    suggested_pct !== null &&
+    !Number.isNaN(Number(current_price)) &&
+    !Number.isNaN(Number(suggested_pct))
+  ) {
+    suggested_price =
+      Number(current_price) * (1 + Number(suggested_pct) / 100);
+  }
+
+  return {
+    ...row,
+    current_price,
+    current_markup_pct,
+    suggested_price,
+  };
+});
+
+return NextResponse.json({ rows });
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? String(e) },
