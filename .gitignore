@@ -13,3 +13,20 @@ pnpm-debug.log*
 
 *.bak
 .vercel
+
+# Temporales y builds
+_tmp_*
+build.log
+tsconfig.tsbuildinfo
+tsconfig.backup.json
+clientize-report.csv
+*.ps1
+
+# Backups manuales
+.backup-*/
+legacy_backups/
+.fix/
+
+# Lock files alternativos
+package-lock.json
+yarn.lock
