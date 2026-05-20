@@ -13,7 +13,7 @@ export async function GET() {
 
   try {
     if (url && (service || anon)) {
-      const supabase = createClient(url, service ?? anon, { auth: { persistSession: false } });
+      const supabase = createClient(url, service ?? anon ?? '', { auth: { persistSession: false } });
 
       // 1) Intento RPC 'now'; si no existe, caemos a un SELECT head:true
       const { error: rpcErr } = await supabase.rpc("now");

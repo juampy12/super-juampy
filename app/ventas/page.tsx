@@ -167,6 +167,7 @@ export default function VentasPage() {
 
       if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
       const ctx = audioCtxRef.current;
+      if (!ctx) return;
 
       if (ctx.state === "suspended") void ctx.resume();
 

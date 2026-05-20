@@ -1,5 +1,5 @@
-﻿import React from "react";
-const passthrough = (Tag="div") => ({ children, ...props }) => React.createElement(Tag, { ...props }, children);
+import React from "react";
+const passthrough = (Tag="div") => ({ children, ...props }: { children?: React.ReactNode; [key: string]: unknown }) => React.createElement(Tag, { ...props }, children);
 export const ResponsiveContainer = passthrough("div");
 export const LineChart = passthrough("div");
 export const Line = passthrough("div");

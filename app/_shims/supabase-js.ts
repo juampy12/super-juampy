@@ -1,6 +1,6 @@
-﻿export function createClient(_url, _key, _opts) {
-  const ok = (data=null) => ({ data, error: null });
-  const q = () => ({
+export function createClient(_url: string, _key: string, _opts?: unknown) {
+  const ok = (data: unknown = null) => ({ data, error: null });
+  const q = (): unknown => ({
     select: async () => ok([]),
     insert: async () => ok([]),
     update: async () => ok([]),
@@ -11,9 +11,9 @@
     from: () => q(),
     rpc: async () => ok(null),
     auth: {
-      getUser: async () => ok({ user: null }),
-      signInWithPassword: async () => ok({ user: null }),
-      signOut: async () => ok(null),
+      getUser: async () => ({ data: { user: null }, error: null }),
+      signInWithPassword: async () => ({ data: { user: null }, error: null }),
+      signOut: async () => ({ data: null, error: null }),
     },
     storage: { from: () => ({ upload: async () => ok(), getPublicUrl: () => ({ data: { publicUrl: "" }, error: null }) }) }
   };
