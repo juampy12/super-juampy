@@ -378,7 +378,8 @@ export default function StockPage() {
       // refrescar desde backend (pero con snapshot de sucursal, por seguridad)
       setPage(0);
       setDataLimit(pageSize);
-      await search({ useLimit: pageSize, storeOverride: storeIdSnap });
+      await new Promise(r => setTimeout(r, 800));
+      await search({ useLimit: pageSize, keepEdits: false, storeOverride: storeIdSnap });
 
       alert(`Stock guardado correctamente ✅\nSucursal: ${storeNameSnap}`);
     } catch (e: any) {
