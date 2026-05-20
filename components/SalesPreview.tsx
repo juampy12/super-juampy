@@ -25,7 +25,7 @@ export default function SalesPreview() {
     setLoading(true);
     const { data, error } = await supabase
       .from("sale_items")
-      .select("id,sale_id,product_id,qty,unit_price,subtotal,created_at")
+      .select("id,sale_id,product_id,quantity,unit_price,subtotal,created_at")
       .order("created_at", { ascending: false })
       .limit(5);
 

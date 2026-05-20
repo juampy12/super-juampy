@@ -126,12 +126,12 @@ export async function POST(req: Request) {
     let items = rawItems
       .map((it) => ({
         product_id: resolveProductId(it),
-        qty: resolveQty(it),
+        quantity: resolveQty(it),
         unit_price: resolveUnitPrice(it),
       }))
-      .filter((it) => it.product_id && it.qty > 0) as Array<{
+      .filter((it) => it.product_id && it.quantity > 0) as Array<{
       product_id: string;
-      qty: number;
+      quantity: number;
       unit_price: number;
     }>;
 
@@ -164,7 +164,7 @@ export async function POST(req: Request) {
 
     // Total: si viene 0 / inválido, calculamos desde items
     const totalFromBody = toNum(body.total ?? 0, 0);
-    const calcTotal = items.reduce((acc, it) => acc + it.qty * it.unit_price, 0);
+    const calcTotal = items.reduce((acc, it) => acc + it.quantity * it.unit_price, 0);
     const total = totalFromBody > 0 ? totalFromBody : calcTotal;
 
     const payment = normalizePayment(body.payment);
