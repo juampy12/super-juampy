@@ -1506,6 +1506,7 @@ onKeyDown={(e) => {
                     setTimeout(() => searchInputRef.current?.focus(), 0);
                   }}
                   storeId={selectedStoreId}
+                  storeName={stores.find(s => s.id === selectedStoreId)?.name ?? "Super Juampy"}
                   registerId={selectedRegisterId}
                 />
               </div>

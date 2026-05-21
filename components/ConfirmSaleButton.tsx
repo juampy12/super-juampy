@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { exportReceiptPDF } from "@/app/_utils/receipt";
 
 type ConfirmItem = {
   product_id: string;
@@ -32,11 +32,14 @@ type Props = {
   onConfirmed?: () => void;
   storeId?: string | null;
   registerId?: string | null;
+  storeName?: string | null;
 };
 
-export default function ConfirmSaleButton({ items, total, payment, onConfirmed, storeId, registerId }: Props) {
+export default function ConfirmSaleButton({ items, total, payment, onConfirmed, storeId, registerId, storeName }: Props) {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [lastSaleId, setLastSaleId] = useState<string | null>(null);
+  const [showTicket, setShowTicket] = useState(false);
   const inFlightRef = useRef(false);
 
   function handleClick() {
@@ -69,7 +72,10 @@ export default function ConfirmSaleButton({ items, total, payment, onConfirmed, 
         const txt = await res.text().catch(() => "");
         throw new Error(txt || `HTTP ${res.status}`);
       }
-      alert("Venta confirmada");
+      const json2 = await res.clone().json().catch(() => ({}));
+      const saleId = json2?.saleId ?? null;
+      setLastSaleId(saleId);
+      setShowTicket(true);
       onConfirmed?.();
     } catch (e: any) {
       alert("Error al confirmar: " + (e?.message ?? "desconocido"));
@@ -84,8 +90,43 @@ export default function ConfirmSaleButton({ items, total, payment, onConfirmed, 
     mp: "Mercado Pago", cuenta_corriente: "Cuenta corriente", mixto: "Mixto",
   };
 
+  async function imprimirTicket() {
+    await exportReceiptPDF({
+      saleId: lastSaleId ?? undefined,
+      storeName: storeName ?? "Super Juampy",
+      items: items.map(it => ({
+        name: it.name,
+        qty: it.qty,
+        price: it.unit_price,
+        subtotal: it.qty * it.unit_price,
+      })),
+      payMethod: payment?.method ?? "efectivo",
+      amount: payment?.total_paid ?? 0,
+      change: payment?.change ?? 0,
+      total: total,
+    });
+    setShowTicket(false);
+  }
+
   return (
     <>
+      {showTicket && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ background:"#fff", borderRadius:16, padding:"24px 28px", maxWidth:320, width:"90%", textAlign:"center" }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>✅</div>
+            <h2 style={{ fontSize:18, fontWeight:500, marginBottom:8 }}>Venta confirmada</h2>
+            <p style={{ fontSize:14, color:"#666", marginBottom:20 }}>Total: ${total.toFixed(2)}</p>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={() => setShowTicket(false)} style={{ flex:1, padding:"10px 0", borderRadius:8, border:"1px solid #ddd", background:"#fff", cursor:"pointer", fontSize:14 }}>
+                Cerrar
+              </button>
+              <button onClick={imprimirTicket} style={{ flex:2, padding:"10px 0", borderRadius:8, border:"none", background:"#1d4ed8", color:"#fff", cursor:"pointer", fontSize:14, fontWeight:500 }}>
+                🖨️ Imprimir ticket
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showModal && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <div style={{ background:"#fff", borderRadius:16, padding:"24px 28px", maxWidth:340, width:"90%", boxShadow:"0 8px 32px rgba(0,0,0,0.2)" }}>
