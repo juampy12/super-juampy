@@ -30,3 +30,4 @@ legacy_backups/
 # Lock files alternativos
 package-lock.json
 yarn.lock
+tsconfig.tsbuildinfo

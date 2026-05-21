@@ -99,6 +99,7 @@ function round2(n: number) {
 }
 
 export default function VentasPage() {
+  const quickMode = false;
   const router = useRouter();
 
   useEffect(() => {
@@ -159,7 +160,6 @@ export default function VentasPage() {
   }
 
   // ================= D) MODO CAJERO RÁPIDO =================
-  const quickMode = false;
 
   // --- Scanner de código de barras ---
   const scannerBufferRef = useRef("");
