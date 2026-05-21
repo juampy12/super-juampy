@@ -259,9 +259,7 @@ export default function VentasPage() {
       confirmLockRef.current = false;
     }, 650);
 
-    setTimeout(() => {
-      setSaleFeedback(null);
-    }, quickMode ? 850 : 1400);
+
   }
 
   // =========================
