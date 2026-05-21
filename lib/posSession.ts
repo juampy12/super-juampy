@@ -11,7 +11,6 @@ export function setPosEmployee(emp: PosEmployee) {
   if (typeof window === "undefined") return;
   localStorage.setItem(KEY, JSON.stringify(emp));
   localStorage.setItem(KEY_ROLE, emp.role ?? "");
-  document.cookie = "sj_pos_auth=1; path=/; max-age=43200; SameSite=Strict";
 }
 
 export function getPosEmployee(): PosEmployee | null {
@@ -29,13 +28,12 @@ export function clearPosEmployee() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(KEY);
   localStorage.removeItem(KEY_ROLE);
-  document.cookie = "sj_pos_auth=; path=/; max-age=0";
 }
 
-export function logoutPos() {
+export async function logoutPos() {
   if (typeof window === "undefined") return;
   localStorage.removeItem("sj_pos_employee");
   localStorage.removeItem("pos_role");
-  document.cookie = "sj_pos_auth=; path=/; max-age=0";
+  await fetch("/api/employee/logout", { method: "POST" }).catch(() => {});
   window.location.href = "/pos-login";
 }
