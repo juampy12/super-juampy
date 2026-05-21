@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+
 type ConfirmItem = {
   product_id: string;
   name: string;
@@ -17,18 +18,13 @@ type PaymentBreakdown = {
 };
 
 type PaymentInfo = {
-  method:
-    | "efectivo"
-    | "debito"
-    | "credito"
-    | "mp"
-    | "cuenta_corriente"
-    | "mixto";
+  method: "efectivo" | "debito" | "credito" | "mp" | "cuenta_corriente" | "mixto";
   total_paid: number;
   change?: number;
   breakdown?: PaymentBreakdown;
   notes?: string;
 };
+
 type Props = {
   items: ConfirmItem[];
   total: number;
@@ -37,122 +33,108 @@ type Props = {
   storeId?: string | null;
   registerId?: string | null;
 };
-export default function ConfirmSaleButton({
-  items,
-  total,
-  payment,
-  onConfirmed,
-  storeId,
-  registerId,
-}: Props) {
+
+export default function ConfirmSaleButton({ items, total, payment, onConfirmed, storeId, registerId }: Props) {
   const [loading, setLoading] = useState(false);
-const inFlightRef = useRef(false);
-  const router = useRouter();
+  const [showModal, setShowModal] = useState(false);
+  const inFlightRef = useRef(false);
 
-  async function handleClick() {
-if (inFlightRef.current) return;
-    if (!items || items.length === 0) {
-      alert("No hay productos en el carrito.");
-      return;
-    }
-if (!storeId) {
-  alert("Falta sucursal (storeId). Elegí una sucursal antes de confirmar.");
-  return;
-}
-if (!registerId) {
-  alert("Falta caja. Elegí Caja 1 / Caja 2 antes de confirmar.");
-  return;
-}
-const storeIdToUse = storeId;
-    if (!payment) {
-      alert("Falta información de pago.");
-      return;
-    }
-
-    // Validaciones básicas
+  function handleClick() {
+    if (inFlightRef.current) return;
+    if (!items || items.length === 0) { alert("No hay productos en el carrito."); return; }
+    if (!storeId) { alert("Falta sucursal. Elegí una sucursal antes de confirmar."); return; }
+    if (!registerId) { alert("Falta caja. Elegí Caja 1 / Caja 2 antes de confirmar."); return; }
+    if (!payment) { alert("Falta información de pago."); return; }
     if (payment.method === "efectivo" || payment.method === "mixto") {
       if (payment.total_paid < total) {
-        alert(
-          `El monto pagado ($${payment.total_paid}) es menor que el total ($${total}).`
-        );
+        alert(`El monto pagado ($${payment.total_paid}) es menor que el total ($${total}).`);
         return;
       }
     }
-try {
-  // ✅ Confirmación antes de registrar la venta
-// 🔒 Paso 5: bloqueo anti doble confirmación
-if (inFlightRef.current) return;
-inFlightRef.current = true;
-
-// Confirmación antes de registrar la venta
-const ok = window.confirm(
-  `¿Confirmar venta?\n\nTotal: $${total}\nMétodo: ${payment.method}\nPagado: $${payment.total_paid}`
-);
-if (!ok) {
-  inFlightRef.current = false;
-  return;
-}
-
-setLoading(true);
-
-  const res = await fetch("/api/pos/confirm", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      items,
-      total,
-      payment,
-      store_id: storeIdToUse,
-register_id: registerId ?? null,
-    }),
-  });
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(txt || `HTTP ${res.status}`);
+    setShowModal(true);
   }
 
-  alert("Venta confirmada");
-  router.refresh();
-  onConfirmed?.();
-} catch (e: any) {
-
-      console.error(e);
+  async function confirmar() {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    setShowModal(false);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/pos/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items, total, payment, store_id: storeId, register_id: registerId }),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      alert("Venta confirmada");
+      onConfirmed?.();
+    } catch (e: any) {
       alert("Error al confirmar: " + (e?.message ?? "desconocido"));
     } finally {
       setLoading(false);
-inFlightRef.current = false;
+      inFlightRef.current = false;
     }
   }
 
-return (
-  <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t shadow-[0_-6px_12px_-6px_rgba(0,0,0,0.3)]">
-    <div className="max-w-4xl mx-auto p-4">
-      <button
-        type="button"
-        data-pos-confirm="1"
-        onClick={() => {
-          void handleClick();
-        }}
-        disabled={loading || items.length === 0}
-        className="
-          w-full
-          rounded-xl
-          px-6 py-4
-          text-lg font-bold
-          text-white
-          bg-green-600 hover:bg-green-700
-          disabled:bg-gray-400 disabled:cursor-not-allowed
-          shadow-xl
-        "
-      >
-        {items.length === 0
-          ? "Agregá productos para confirmar"
-          : loading
-          ? "Confirmando..."
-          : `✅ Confirmar venta ($${total})`}
-      </button>
-    </div>
-  </div>
-);
+  const methodLabel: Record<string, string> = {
+    efectivo: "Efectivo", debito: "Débito", credito: "Crédito",
+    mp: "Mercado Pago", cuenta_corriente: "Cuenta corriente", mixto: "Mixto",
+  };
+
+  return (
+    <>
+      {showModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ background:"#fff", borderRadius:16, padding:"24px 28px", maxWidth:340, width:"90%", boxShadow:"0 8px 32px rgba(0,0,0,0.2)" }}>
+            <h2 style={{ fontSize:18, fontWeight:500, marginBottom:16 }}>Confirmar venta</h2>
+            <div style={{ fontSize:14, color:"#555", marginBottom:8 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                <span>Total</span>
+                <strong>${total.toFixed(2)}</strong>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                <span>Método</span>
+                <span>{methodLabel[payment?.method ?? ""] ?? payment?.method}</span>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between" }}>
+                <span>Pagado</span>
+                <span>${(payment?.total_paid ?? 0).toFixed(2)}</span>
+              </div>
+              {(payment?.change ?? 0) > 0 && (
+                <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, color:"#059669", fontWeight:500 }}>
+                  <span>Vuelto</span>
+                  <span>${(payment?.change ?? 0).toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:20 }}>
+              <button onClick={() => setShowModal(false)} style={{ flex:1, padding:"10px 0", borderRadius:8, border:"1px solid #ddd", background:"#fff", cursor:"pointer", fontSize:14 }}>
+                Cancelar
+              </button>
+              <button onClick={confirmar} style={{ flex:2, padding:"10px 0", borderRadius:8, border:"none", background:"#16a34a", color:"#fff", cursor:"pointer", fontSize:14, fontWeight:500 }}>
+                ✅ Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t shadow-[0_-6px_12px_-6px_rgba(0,0,0,0.3)]">
+        <div className="max-w-4xl mx-auto p-4">
+          <button
+            type="button"
+            data-pos-confirm="1"
+            onClick={handleClick}
+            disabled={loading || items.length === 0}
+            className="w-full rounded-xl px-6 py-4 text-lg font-bold text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed shadow-xl"
+          >
+            {items.length === 0 ? "Agregá productos para confirmar" : loading ? "Confirmando..." : `✅ Confirmar venta ($${total})`}
+          </button>
+        </div>
+      </div>
+    </>
+  );
 }

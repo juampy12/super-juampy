@@ -56,11 +56,8 @@ type ExistingClosure = {
   total_cash: number;
 };
 
-const STORES: Store[] = [
-  { id: "06ca13ff-d96d-4670-84d7-41057b3f6bc7", name: "Av. San Martín" },
-  { id: "914dee4d-a78c-4f3f-8998-402c56fc88e9", name: "Alberdi" },
-  { id: "fb38a57d-78cc-4ccc-92d4-c2cc2cefd22f", name: "Tacuari" },
-];
+import { STORES as ALL_STORES } from "@/lib/stores";
+const STORES: Store[] = ALL_STORES.map(s => ({ id: s.id, name: s.short }));
 
 function todayStr() {
   const d = new Date();

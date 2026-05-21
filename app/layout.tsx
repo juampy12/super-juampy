@@ -36,11 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Toaster position="top-right" />
           <JsonLd />
 
-          <footer id="seo-footer" className="px-4 py-6 text-sm">
-            Super Juampy es tu supermercado en Charata, Chaco. Panificados frescos,
-            fiambrería y productos de almacén. Consultá stock por sucursal, registrá
-            ventas con nuestro POS y mirá reportes diarios.
-          </footer>
+
         </div>
       </body>
     </html>

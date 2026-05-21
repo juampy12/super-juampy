@@ -173,7 +173,6 @@ export default function StockPage() {
       const askLimit = useLimit + 1;
 
       const body = { p_store: effectiveStoreId, p_query: q, p_limit: askLimit };
-      console.log("[INV] RPC body", body);
 
       const res = await supaFetch(`/rest/v1/rpc/products_with_stock`, {
         method: "POST",
@@ -181,7 +180,6 @@ export default function StockPage() {
       });
 
       const data = (await res.json()) as any[];
-      console.log("[INV] RPC rows sample", data?.slice?.(0, 3));
 
       // ✅ si esta respuesta no es la última, ignorar (evita pisadas)
       if (mySeq !== searchSeq.current) return { count: rows.length, hasMore };

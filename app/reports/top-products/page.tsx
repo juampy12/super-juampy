@@ -14,9 +14,7 @@ type PageProps = {
 
 const STORE_OPTIONS = [
   { id: "", label: "Todas las sucursales" },
-  { id: "914dee4d-a78c-4f3f-8998-402c56fc88e9", label: "Super Juampy (Alberdi)" },
-  { id: "06ca13ff-d96d-4670-84d7-41057b3f6bc7", label: "Super Juampy (Av. San Martín)" },
-  { id: "fb38a57d-78cc-4ccc-92d4-c2cc2cefd22f", label: "Super Juampy (Tacuari)" },
+  ...require("@/lib/stores").STORES.map((s: any) => ({ id: s.id, label: s.name })),
 ];
 
 function isYmd(s: string) {
