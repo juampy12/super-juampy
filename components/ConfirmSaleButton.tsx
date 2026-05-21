@@ -35,11 +35,25 @@ type Props = {
   storeName?: string | null;
 };
 
-export default function ConfirmSaleButton({ items, total, payment, onConfirmed, storeId, registerId, storeName }: Props) {
+const METHOD_LABELS: Record<string, string> = {
+  efectivo: "Efectivo",
+  debito: "Débito",
+  credito: "Crédito",
+  mp: "Mercado Pago",
+  cuenta_corriente: "Cuenta corriente",
+  mixto: "Mixto",
+};
+
+export default function ConfirmSaleButton({
+  items, total, payment, onConfirmed, storeId, registerId, storeName,
+}: Props) {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [lastSaleId, setLastSaleId] = useState<string | null>(null);
   const [showTicket, setShowTicket] = useState(false);
+  const [lastSaleId, setLastSaleId] = useState<string | null>(null);
+  const [savedItems, setSavedItems] = useState<ConfirmItem[]>([]);
+  const [savedTotal, setSavedTotal] = useState(0);
+  const [savedPayment, setSavedPayment] = useState<PaymentInfo | null>(null);
   const inFlightRef = useRef(false);
 
   function handleClick() {
@@ -48,11 +62,9 @@ export default function ConfirmSaleButton({ items, total, payment, onConfirmed, 
     if (!storeId) { alert("Falta sucursal. Elegí una sucursal antes de confirmar."); return; }
     if (!registerId) { alert("Falta caja. Elegí Caja 1 / Caja 2 antes de confirmar."); return; }
     if (!payment) { alert("Falta información de pago."); return; }
-    if (payment.method === "efectivo" || payment.method === "mixto") {
-      if (payment.total_paid < total) {
-        alert(`El monto pagado ($${payment.total_paid}) es menor que el total ($${total}).`);
-        return;
-      }
+    if ((payment.method === "efectivo" || payment.method === "mixto") && payment.total_paid < total) {
+      alert(`El monto pagado ($${payment.total_paid}) es menor que el total ($${total}).`);
+      return;
     }
     setShowModal(true);
   }
@@ -62,19 +74,20 @@ export default function ConfirmSaleButton({ items, total, payment, onConfirmed, 
     inFlightRef.current = true;
     setShowModal(false);
     setLoading(true);
+    setSavedItems([...items]);
+    setSavedTotal(total);
+    setSavedPayment(payment ?? null);
     try {
       const res = await fetch("/api/pos/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items, total, payment, store_id: storeId, register_id: registerId }),
       });
-      const json2 = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(json2?.error ?? json2?.details ?? `HTTP ${res.status}`);
-      }
-      setLastSaleId(json2?.saleId ?? null);
-      setShowTicket(true);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? json?.details ?? `HTTP ${res.status}`);
+      setLastSaleId(json?.saleId ?? null);
       onConfirmed?.();
+      setShowTicket(true);
     } catch (e: any) {
       alert("Error al confirmar: " + (e?.message ?? "desconocido"));
     } finally {
@@ -83,25 +96,20 @@ export default function ConfirmSaleButton({ items, total, payment, onConfirmed, 
     }
   }
 
-  const methodLabel: Record<string, string> = {
-    efectivo: "Efectivo", debito: "Débito", credito: "Crédito",
-    mp: "Mercado Pago", cuenta_corriente: "Cuenta corriente", mixto: "Mixto",
-  };
-
   async function imprimirTicket() {
     await exportReceiptPDF({
       saleId: lastSaleId ?? undefined,
       storeName: storeName ?? "Super Juampy",
-      items: items.map(it => ({
+      items: savedItems.map(it => ({
         name: it.name,
         qty: it.qty,
         price: it.unit_price,
         subtotal: it.qty * it.unit_price,
       })),
-      payMethod: payment?.method ?? "efectivo",
-      amount: payment?.total_paid ?? 0,
-      change: payment?.change ?? 0,
-      total: total,
+      payMethod: savedPayment?.method ?? "efectivo",
+      amount: savedPayment?.total_paid ?? 0,
+      change: savedPayment?.change ?? 0,
+      total: savedTotal,
     });
     setShowTicket(false);
   }
@@ -109,43 +117,44 @@ export default function ConfirmSaleButton({ items, total, payment, onConfirmed, 
   return (
     <>
       {showTicket && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ background:"#fff", borderRadius:16, padding:"24px 28px", maxWidth:320, width:"90%", textAlign:"center" }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>✅</div>
-            <h2 style={{ fontSize:18, fontWeight:500, marginBottom:8 }}>Venta confirmada</h2>
-            <p style={{ fontSize:14, color:"#666", marginBottom:20 }}>Total: ${total.toFixed(2)}</p>
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ background:"#fff", borderRadius:16, padding:"28px 32px", maxWidth:320, width:"90%", textAlign:"center", boxShadow:"0 8px 32px rgba(0,0,0,0.25)" }}>
+            <div style={{ fontSize:48, marginBottom:12 }}>✅</div>
+            <h2 style={{ fontSize:20, fontWeight:600, marginBottom:8, color:"#111" }}>Venta confirmada</h2>
+            <p style={{ fontSize:15, color:"#555", marginBottom:4 }}>Total: <strong>${savedTotal.toFixed(2)}</strong></p>
+            <p style={{ fontSize:13, color:"#777", marginBottom:24 }}>
+              {METHOD_LABELS[savedPayment?.method ?? ""] ?? savedPayment?.method}
+              {(savedPayment?.change ?? 0) > 0 && ` · Vuelto: $${(savedPayment?.change ?? 0).toFixed(2)}`}
+            </p>
             <div style={{ display:"flex", gap:10 }}>
-              <button onClick={() => setShowTicket(false)} style={{ flex:1, padding:"10px 0", borderRadius:8, border:"1px solid #ddd", background:"#fff", cursor:"pointer", fontSize:14 }}>
+              <button onClick={() => setShowTicket(false)} style={{ flex:1, padding:"11px 0", borderRadius:8, border:"1px solid #ddd", background:"#fff", cursor:"pointer", fontSize:14, color:"#333" }}>
                 Cerrar
               </button>
-              <button onClick={imprimirTicket} style={{ flex:2, padding:"10px 0", borderRadius:8, border:"none", background:"#1d4ed8", color:"#fff", cursor:"pointer", fontSize:14, fontWeight:500 }}>
+              <button onClick={imprimirTicket} style={{ flex:2, padding:"11px 0", borderRadius:8, border:"none", background:"#1d4ed8", color:"#fff", cursor:"pointer", fontSize:14, fontWeight:600 }}>
                 🖨️ Imprimir ticket
               </button>
             </div>
           </div>
         </div>
       )}
+
       {showModal && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:9998, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <div style={{ background:"#fff", borderRadius:16, padding:"24px 28px", maxWidth:340, width:"90%", boxShadow:"0 8px 32px rgba(0,0,0,0.2)" }}>
-            <h2 style={{ fontSize:18, fontWeight:500, marginBottom:16 }}>Confirmar venta</h2>
+            <h2 style={{ fontSize:18, fontWeight:500, marginBottom:16, color:"#111" }}>Confirmar venta</h2>
             <div style={{ fontSize:14, color:"#555", marginBottom:8 }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-                <span>Total</span>
-                <strong>${total.toFixed(2)}</strong>
+                <span>Total</span><strong>${total.toFixed(2)}</strong>
               </div>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-                <span>Método</span>
-                <span>{methodLabel[payment?.method ?? ""] ?? payment?.method}</span>
+                <span>Método</span><span>{METHOD_LABELS[payment?.method ?? ""] ?? payment?.method}</span>
               </div>
               <div style={{ display:"flex", justifyContent:"space-between" }}>
-                <span>Pagado</span>
-                <span>${(payment?.total_paid ?? 0).toFixed(2)}</span>
+                <span>Pagado</span><span>${(payment?.total_paid ?? 0).toFixed(2)}</span>
               </div>
               {(payment?.change ?? 0) > 0 && (
                 <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, color:"#059669", fontWeight:500 }}>
-                  <span>Vuelto</span>
-                  <span>${(payment?.change ?? 0).toFixed(2)}</span>
+                  <span>Vuelto</span><span>${(payment?.change ?? 0).toFixed(2)}</span>
                 </div>
               )}
             </div>
