@@ -68,13 +68,11 @@ export default function ConfirmSaleButton({ items, total, payment, onConfirmed, 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items, total, payment, store_id: storeId, register_id: registerId }),
       });
+      const json2 = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(txt || `HTTP ${res.status}`);
+        throw new Error(json2?.error ?? json2?.details ?? `HTTP ${res.status}`);
       }
-      const json2 = await res.clone().json().catch(() => ({}));
-      const saleId = json2?.saleId ?? null;
-      setLastSaleId(saleId);
+      setLastSaleId(json2?.saleId ?? null);
       setShowTicket(true);
       onConfirmed?.();
     } catch (e: any) {
