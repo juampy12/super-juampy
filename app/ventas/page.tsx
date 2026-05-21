@@ -240,6 +240,7 @@ export default function VentasPage() {
     change: number;
     items: number;
     at: number;
+    saleId?: string | null;
   }>(null);
 
   const confirmLockRef = useRef(false);
@@ -249,6 +250,7 @@ export default function VentasPage() {
     method: PaymentMethod;
     change: number;
     items: number;
+    saleId?: string | null;
   }) {
     setSaleFeedback({ ...payload, at: Date.now() });
     confirmLockRef.current = true;
@@ -902,6 +904,37 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
               <div className="mt-3 text-xs text-gray-500">
                 {quickMode ? "Modo cajero rápido" : "POS"}
               </div>
+              <div className="mt-4 flex gap-2">
+                <button
+                  className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                  onClick={() => setSaleFeedback(null)}
+                >
+                  Cerrar
+                </button>
+                <button
+                  className="flex-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white"
+                  onClick={async () => {
+                    const { exportReceiptPDF } = await import("@/app/_utils/receipt");
+                    await exportReceiptPDF({
+                      saleId: saleFeedback.saleId ?? undefined,
+                      storeName: stores.find(s => s.id === selectedStoreId)?.name ?? "Super Juampy",
+                      items: items.map(it => ({
+                        name: it.name,
+                        qty: it.qty,
+                        price: it.unit_price,
+                        subtotal: it.qty * it.unit_price,
+                      })),
+                      payMethod: saleFeedback.method,
+                      amount: saleFeedback.total,
+                      change: saleFeedback.change,
+                      total: saleFeedback.total,
+                    });
+                    setSaleFeedback(null);
+                  }}
+                >
+                  🖨️ Imprimir ticket
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1483,12 +1516,13 @@ onKeyDown={(e) => {
                     },
                     notes: notes || undefined,
                   }}
-                  onConfirmed={() => {
+                  onConfirmed={(saleId) => {
                     showSaleFeedback({
                       total,
                       method: paymentMethod,
                       change,
                       items: totalItems,
+                      saleId,
                     });
 
                     setItems([]);

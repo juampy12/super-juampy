@@ -29,7 +29,7 @@ type Props = {
   items: ConfirmItem[];
   total: number;
   payment?: PaymentInfo;
-  onConfirmed?: () => void;
+  onConfirmed?: (saleId?: string | null) => void;
   storeId?: string | null;
   registerId?: string | null;
   storeName?: string | null;
@@ -85,8 +85,9 @@ export default function ConfirmSaleButton({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? json?.details ?? `HTTP ${res.status}`);
-      setLastSaleId(json?.saleId ?? null);
-      onConfirmed?.();
+      const saleId = json?.saleId ?? null;
+      setLastSaleId(saleId);
+      onConfirmed?.(saleId);
       setShowTicket(true);
     } catch (e: any) {
       alert("Error al confirmar: " + (e?.message ?? "desconocido"));
