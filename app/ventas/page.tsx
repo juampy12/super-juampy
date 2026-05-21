@@ -305,6 +305,10 @@ export default function VentasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quickMode]);
 
+  // store_id fijo del empleado logueado (null = supervisor, ve todas)
+  const empStoreId = getPosEmployee()?.store_id ?? null;
+  const isSupervisorRole = (getPosEmployee()?.role ?? "") === "supervisor";
+
   // Cargar sucursales
   useEffect(() => {
     supabase
@@ -313,13 +317,15 @@ export default function VentasPage() {
       .order("name", { ascending: true })
       .then(({ data, error }) => {
         if (error) {
-          console.error(error);
           alert("Error cargando sucursales: " + error.message);
           return;
         }
         const list = (data ?? []) as Store[];
         setStores(list);
-        if (list.length > 0 && !selectedStoreId) setSelectedStoreId(list[0].id);
+        // Si el empleado tiene sucursal asignada, usar esa
+        // Si es supervisor (sin restricción), usar la primera
+        const defaultStore = empStoreId ?? list[0]?.id ?? null;
+        if (!selectedStoreId) setSelectedStoreId(defaultStore);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -953,17 +959,23 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
             <div className="text-sm font-medium mb-3">Sucursal y caja</div>
 
             <label className="block text-xs text-gray-600 mb-1">Sucursal</label>
-            <select
-              className="border rounded px-3 py-2 w-full mb-3"
-              value={selectedStoreId ?? ""}
-              onChange={(e) => setSelectedStoreId(e.target.value)}
-            >
-              {stores.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            {isSupervisorRole ? (
+              <select
+                className="border rounded px-3 py-2 w-full mb-3"
+                value={selectedStoreId ?? ""}
+                onChange={(e) => setSelectedStoreId(e.target.value)}
+              >
+                {stores.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="border rounded px-3 py-2 w-full mb-3 bg-gray-50 text-sm font-medium">
+                {stores.find(s => s.id === selectedStoreId)?.name ?? "Cargando..."}
+              </div>
+            )}
 
             {registers.length > 0 && (
               <>
