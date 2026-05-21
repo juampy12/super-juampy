@@ -108,8 +108,6 @@ export default function VentasPage() {
 
   // ================= ROLES POS =================
   type Role = "cajero" | "supervisor";
-  const SUPERVISOR_PIN =
-    process.env.NEXT_PUBLIC_SUPERJUAMPY_SUPERVISOR_PIN ?? "2580";
 
   const [role, setRole] = useState<Role>(() => {
     if (typeof window === "undefined") return "cajero";
@@ -131,15 +129,26 @@ export default function VentasPage() {
     setShowPin(true);
   }
 
-  function submitPin() {
-    if (pinInput === SUPERVISOR_PIN) {
-      setRole("supervisor");
-      setShowPin(false);
-      const fn = pendingActionRef.current;
-      pendingActionRef.current = null;
-      if (fn) fn();
-    } else {
-      alert("PIN incorrecto");
+  async function submitPin() {
+    try {
+      const res = await fetch("/api/employee/verify-supervisor-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: pinInput }),
+      });
+      const json = await res.json().catch(() => ({ ok: false }));
+      if (json.ok) {
+        setRole("supervisor");
+        setShowPin(false);
+        const fn = pendingActionRef.current;
+        pendingActionRef.current = null;
+        if (fn) fn();
+      } else {
+        alert("PIN incorrecto");
+        setPinInput("");
+      }
+    } catch {
+      alert("Error verificando PIN");
       setPinInput("");
     }
   }
