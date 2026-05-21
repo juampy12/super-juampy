@@ -5,6 +5,7 @@ import ConfirmSaleButton from "@/components/ConfirmSaleButton";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { getPosEmployee } from "@/lib/posSession";
+import { getHolds, saveHold, removeHold, type Hold } from "@/app/ventas/lib/hold";
 
 type Store = { id: string; name: string };
 
@@ -154,6 +155,45 @@ export default function VentasPage() {
     }
   }
 
+  function holdCart() {
+    if (items.length === 0) { alert("El carrito está vacío."); return; }
+    saveHold(items.map(it => ({
+      product_id: it.product_id,
+      name: it.name,
+      sku: it.sku,
+      qty: it.qty,
+      unit_price: it.unit_price,
+      is_weighted: it.is_weighted,
+    })), total);
+    setHolds(getHolds());
+    setItems([]);
+    setSearch("");
+    setResults([]);
+  }
+
+  function resumeHold(hold: Hold) {
+    if (items.length > 0) {
+      if (!window.confirm("Hay productos en el carrito. ¿Querés reemplazarlo con la venta en espera?")) return;
+    }
+    setItems(hold.items.map(it => ({
+      product_id: it.product_id,
+      name: it.name,
+      sku: it.sku,
+      qty: it.qty,
+      unit_price: it.unit_price,
+      base_unit_price: it.unit_price,
+      is_weighted: it.is_weighted ?? false,
+    })));
+    removeHold(hold.id);
+    setHolds(getHolds());
+    setShowHolds(false);
+  }
+
+  function deleteHold(id: string) {
+    removeHold(id);
+    setHolds(getHolds());
+  }
+
   function lockSupervisor() {
     setRole("cajero");
     if (typeof window !== "undefined") localStorage.removeItem("pos_role");
@@ -279,6 +319,12 @@ export default function VentasPage() {
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<ProductRow[]>([]);
   const [items, setItems] = useState<CartItem[]>([]);
+  const [holds, setHolds] = useState<Hold[]>([]);
+  const [showHolds, setShowHolds] = useState(false);
+
+  useEffect(() => {
+    setHolds(getHolds());
+  }, []);
 
   // Pago
   const [paymentMethod, setPaymentMethod] =
@@ -981,7 +1027,57 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
             <b>F9</b> confirmar
           </div>
         </div>
+        <div className="flex gap-2">
+          <button
+            onClick={holdCart}
+            className="rounded-lg border px-3 py-2 text-sm font-medium bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100"
+            title="Poner carrito en espera"
+          >
+            ⏸ En espera
+          </button>
+          {holds.length > 0 && (
+            <button
+              onClick={() => setShowHolds(true)}
+              className="rounded-lg border px-3 py-2 text-sm font-medium bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100"
+            >
+              📋 Retomar ({holds.length})
+            </button>
+          )}
+        </div>
       </div>
+
+      {showHolds && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+          <div className="w-[420px] rounded-2xl bg-white p-5 shadow-2xl border max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Ventas en espera</h2>
+              <button onClick={() => setShowHolds(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            {holds.length === 0 ? (
+              <p className="text-sm text-gray-500">No hay ventas en espera.</p>
+            ) : (
+              <div className="space-y-3">
+                {holds.map((h) => (
+                  <div key={h.id} className="border rounded-xl p-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium">${h.total.toFixed(2)} · {h.items.length} producto{h.items.length !== 1 ? "s" : ""}</div>
+                      <div className="text-xs text-gray-500">{new Date(h.savedAt).toLocaleTimeString("es-AR")}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => resumeHold(h)} className="rounded-lg bg-green-600 text-white px-3 py-1 text-sm font-medium hover:bg-green-700">
+                        Retomar
+                      </button>
+                      <button onClick={() => deleteHold(h.id)} className="rounded-lg border px-3 py-1 text-sm text-red-600 hover:bg-red-50">
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* IZQUIERDA */}
