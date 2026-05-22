@@ -9,6 +9,8 @@ import { Toaster } from "react-hot-toast";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  manifest: "/manifest.json",
+  themeColor: "#c1674a",
   title: "Super Juampy",
   description: "POS y reportes — Super Juampy",
 };

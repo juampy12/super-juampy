@@ -5,6 +5,8 @@ import ConfirmSaleButton from "@/components/ConfirmSaleButton";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { getPosEmployee } from "@/lib/posSession";
+import { addToQueue } from "@/lib/offlineQueue";
+import { useOnlineSync } from "@/lib/useOnlineSync";
 import { getHolds, saveHold, removeHold, type Hold } from "@/app/ventas/lib/hold";
 
 type Store = { id: string; name: string };
@@ -352,6 +354,7 @@ export default function VentasPage() {
   }, [quickMode]);
 
   // store_id fijo del empleado logueado (null = supervisor, ve todas)
+  const { isOnline, pendingCount, syncing, sync, updatePending } = useOnlineSync();
   const empStoreId = getPosEmployee()?.store_id ?? null;
   const isSupervisorRole = (getPosEmployee()?.role ?? "") === "supervisor";
 
@@ -1027,7 +1030,26 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
             <b>F9</b> confirmar
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {!isOnline && (
+            <div className="rounded-lg bg-red-100 border border-red-300 px-3 py-2 text-sm font-medium text-red-800 flex items-center gap-1">
+              📵 Sin conexión
+            </div>
+          )}
+          {isOnline && pendingCount > 0 && (
+            <button
+              onClick={sync}
+              disabled={syncing}
+              className="rounded-lg bg-orange-100 border border-orange-300 px-3 py-2 text-sm font-medium text-orange-800 hover:bg-orange-200"
+            >
+              {syncing ? "⏳ Sincronizando..." : `⚠️ ${pendingCount} pendiente${pendingCount > 1 ? "s" : ""}`}
+            </button>
+          )}
+          {isOnline && pendingCount === 0 && (
+            <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-700">
+              🟢 Online
+            </div>
+          )}
           <button
             onClick={holdCart}
             className="rounded-lg border px-3 py-2 text-sm font-medium bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100"
@@ -1635,6 +1657,8 @@ onKeyDown={(e) => {
                   }}
                   storeId={selectedStoreId}
                   storeName={stores.find(s => s.id === selectedStoreId)?.name ?? "Super Juampy"}
+                  isOnline={isOnline}
+                  onQueued={updatePending}
                   registerId={selectedRegisterId}
                 />
               </div>

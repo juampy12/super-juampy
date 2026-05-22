@@ -33,6 +33,8 @@ type Props = {
   storeId?: string | null;
   registerId?: string | null;
   storeName?: string | null;
+  isOnline?: boolean;
+  onQueued?: () => void;
 };
 
 const METHOD_LABELS: Record<string, string> = {
@@ -45,7 +47,7 @@ const METHOD_LABELS: Record<string, string> = {
 };
 
 export default function ConfirmSaleButton({
-  items, total, payment, onConfirmed, storeId, registerId, storeName,
+  items, total, payment, onConfirmed, storeId, registerId, storeName, isOnline = true, onQueued,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -77,6 +79,23 @@ export default function ConfirmSaleButton({
     setSavedItems([...items]);
     setSavedTotal(total);
     setSavedPayment(payment ?? null);
+
+    // Sin conexión: guardar en cola offline
+    if (!isOnline) {
+      const { addToQueue } = await import("@/lib/offlineQueue");
+      addToQueue({
+        items, total, payment,
+        store_id: storeId ?? "",
+        register_id: registerId ?? null,
+      });
+      onConfirmed?.(null);
+      onQueued?.();
+      setShowTicket(true);
+      setLoading(false);
+      inFlightRef.current = false;
+      return;
+    }
+
     try {
       const res = await fetch("/api/pos/confirm", {
         method: "POST",
@@ -90,7 +109,20 @@ export default function ConfirmSaleButton({
       onConfirmed?.(saleId);
       setShowTicket(true);
     } catch (e: any) {
-      alert("Error al confirmar: " + (e?.message ?? "desconocido"));
+      // Si falla por red, guardar en cola
+      if (!navigator.onLine) {
+        const { addToQueue } = await import("@/lib/offlineQueue");
+        addToQueue({
+          items, total, payment,
+          store_id: storeId ?? "",
+          register_id: registerId ?? null,
+        });
+        onConfirmed?.(null);
+        onQueued?.();
+        setShowTicket(true);
+      } else {
+        alert("Error al confirmar: " + (e?.message ?? "desconocido"));
+      }
     } finally {
       setLoading(false);
       inFlightRef.current = false;
