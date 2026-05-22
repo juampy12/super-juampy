@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { getPosEmployee } from "@/lib/posSession";
 import { addToQueue } from "@/lib/offlineQueue";
+import { warmCache, searchCachedProducts } from "@/lib/productCache";
 import { useOnlineSync } from "@/lib/useOnlineSync";
 import { getHolds, saveHold, removeHold, type Hold } from "@/app/ventas/lib/hold";
 
@@ -386,6 +387,8 @@ export default function VentasPage() {
       setSelectedRegisterId(null);
       return;
     }
+    // Calentar cache de productos para uso offline
+    if (navigator.onLine) warmCache(supabase, selectedStoreId);
 
     supabase
       .from("registers")
