@@ -388,7 +388,7 @@ export default function VentasPage() {
       return;
     }
     // Calentar cache de productos para uso offline
-    if (navigator.onLine) warmCache(supabase, selectedStoreId);
+    if (isOnline) warmCache(supabase, selectedStoreId);
 
     supabase
       .from("registers")
