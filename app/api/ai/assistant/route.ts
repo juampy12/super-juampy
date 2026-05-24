@@ -165,40 +165,6 @@ async function getBusinessData() {
     sucursales: Object.values(storeMap),
   };
 }
-    fecha_hoy: todayAR,
-    ventas: {
-      hoy: {
-        total: totalHoy,
-        tickets: ticketsHoy,
-        ticket_promedio: ticketPromHoy,
-        por_sucursal: porSucursalHoy,
-      },
-      semana: {
-        total: totalSemana,
-        tickets: weekSales.length,
-        por_sucursal: porSucursalSemana,
-      },
-      mes: {
-        total: totalMes,
-        tickets: monthSales.length,
-      },
-    },
-    top_productos_semana: (topProducts.data ?? []).map((p: any) => ({
-      nombre: p.name,
-      sku: p.sku,
-      unidades: Number(p.qty_sold),
-      facturacion: Number(p.total_amount),
-      stock: Number(p.stock),
-    })),
-    stock_bajo: (lowStock.data ?? []).map((p: any) => ({
-      producto: (p.products as any)?.name ?? p.product_id,
-      stock_actual: (p.product_stocks as any)?.stock ?? 0,
-      stock_minimo: p.min_stock,
-      sucursal: storeMap[p.store_id] ?? p.store_id,
-    })),
-    sucursales: Object.values(storeMap),
-  };
-}
 
 export async function POST(req: Request) {
   try {
