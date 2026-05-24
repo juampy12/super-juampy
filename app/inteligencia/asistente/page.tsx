@@ -91,7 +91,7 @@ export default function AsistentePage() {
                 </div>
               )}
               {msg.role === "assistant"
-                ? <ReactMarkdown className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0">{msg.content}</ReactMarkdown>
+                ? <ReactMarkdown>{msg.content}</ReactMarkdown>
                 : msg.content}
             </div>
           </div>
