@@ -42,7 +42,7 @@ export function searchCachedProducts(storeId: string, term: string): CachedProdu
   if (!products) return [];
   const t = term.toLowerCase().trim();
   return products
-    .filter(p => p.active && (
+    .filter(p => p.active !== false && (
       p.name.toLowerCase().includes(t) ||
       (p.sku ?? "").toLowerCase().includes(t)
     ))
