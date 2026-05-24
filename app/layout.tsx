@@ -1,5 +1,6 @@
 import JsonLd from "./seo-jsonld";
 import "./globals.css";
+import AIChat from "@/app/_components/AIChat";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import HeaderNav from "./_components/HeaderNav";
@@ -40,7 +41,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 
         </div>
-      </body>
+            <AIChat />
+    </body>
     </html>
   );
 }
