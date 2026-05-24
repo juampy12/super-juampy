@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
 import { getPosEmployee } from "@/lib/posSession";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -119,7 +120,9 @@ export default function AIChat() {
                     ? "bg-[#c1674a] text-white rounded-br-sm"
                     : "bg-white border rounded-bl-sm shadow-sm text-gray-800"
                 }`}>
-                  {msg.content}
+                  {msg.role === "assistant"
+                    ? <ReactMarkdown className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0">{msg.content}</ReactMarkdown>
+                    : msg.content}
                 </div>
               </div>
             ))}

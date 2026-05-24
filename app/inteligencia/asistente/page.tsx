@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { getPosEmployee } from "@/lib/posSession";
 
 type Message = {
@@ -89,7 +90,9 @@ export default function AsistentePage() {
                   🤖 Asistente
                 </div>
               )}
-              {msg.content}
+              {msg.role === "assistant"
+                ? <ReactMarkdown className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0">{msg.content}</ReactMarkdown>
+                : msg.content}
             </div>
           </div>
         ))}
