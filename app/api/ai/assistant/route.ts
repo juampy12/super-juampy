@@ -164,11 +164,20 @@ Reglas:
 - Fecha actual: ${data.fecha_hoy}
 - Las sucursales son: ${data.sucursales.join(", ")}`;
 
+    const history = Array.isArray(body.history) ? body.history : [];
+    const conversationMessages = [
+      ...history.map((m: any) => ({
+        role: m.role as "user" | "assistant",
+        content: String(m.content),
+      })),
+      { role: "user" as const, content: question },
+    ];
+
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-5",
       max_tokens: 1024,
       system: systemPrompt,
-      messages: [{ role: "user", content: question }],
+      messages: conversationMessages,
     });
 
     const response =

@@ -74,10 +74,11 @@ export default function AIChat() {
     setInput("");
     setLoading(true);
     try {
+      const history = messages.slice(-10); // últimos 10 mensajes como contexto
       const res = await fetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, history }),
       });
       const json = await res.json();
       setMessages(prev => [...prev, {

@@ -38,10 +38,11 @@ export default function AsistentePage() {
     setInput("");
     setLoading(true);
     try {
+      const history = messages.slice(-10);
       const res = await fetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, history }),
       });
       const json = await res.json();
       const assistantMsg: Message = {
