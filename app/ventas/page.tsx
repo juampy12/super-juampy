@@ -571,7 +571,7 @@ let activeList = list;
 try {
   const ids = list.map((p) => p.id).filter(Boolean);
 
-  if (ids.length) {
+  if (ids.length && navigator.onLine) {
     const { data: actRows, error: actErr } = await supabase
       .from("products")
       .select("id, active")
