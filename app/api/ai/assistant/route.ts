@@ -17,93 +17,154 @@ const supabase = createClient(
 
 async function getBusinessData() {
   const now = new Date();
-  const todayAR = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Argentina/Cordoba",
-  }).format(now);
+  const tz = "America/Argentina/Cordoba";
+  const todayAR = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(now);
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const weekAgoAR = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Argentina/Cordoba",
-  }).format(weekAgo);
+  const weekAgoAR = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(weekAgo);
   const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const monthAgoAR = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(monthAgo);
+  const twoMonthsAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+  const yesterdayAR = new Intl.DateTimeFormat("en-CA", { timeZone: tz })
+    .format(new Date(now.getTime() - 24 * 60 * 60 * 1000));
 
-  const [salesToday, salesWeek, salesMonth, topProducts, lowStock, stores] =
-    await Promise.all([
-      // Ventas de hoy
-      supabase
-        .from("sales")
-        .select("total, store_id, created_at")
-        .eq("status", "confirmed")
-        .gte("created_at", `${todayAR}T00:00:00-03:00`)
-        .lte("created_at", `${todayAR}T23:59:59-03:00`),
-
-      // Ventas de la semana
-      supabase
-        .from("sales")
-        .select("total, store_id, created_at")
-        .eq("status", "confirmed")
-        .gte("created_at", weekAgo.toISOString()),
-
-      // Ventas del mes
-      supabase
-        .from("sales")
-        .select("total, store_id")
-        .eq("status", "confirmed")
-        .gte("created_at", monthAgo.toISOString()),
-
-      // Top productos de la semana
-      supabase.rpc("fn_top_products_range_all", {
-        p_from: weekAgoAR,
-        p_to: todayAR,
-        p_limit: 10,
-      }),
-
-      // Stock bajo
-      supabase
-        .from("product_min_stock")
-        .select(`
-          product_id,
-          min_stock,
-          store_id,
-          products(name, sku),
-          product_stocks(stock)
-        `)
-        .limit(20),
-
-      // Sucursales
-      supabase.from("stores").select("id, name"),
-    ]);
+  const [
+    salesToday, salesYesterday, salesWeek, salesMonth,
+    salesPrevMonth, topWeek, topMonth, lowStock,
+    stores, allProducts, closures
+  ] = await Promise.all([
+    supabase.from("sales").select("total, store_id, created_at, payment")
+      .eq("status", "confirmed")
+      .gte("created_at", `${todayAR}T00:00:00-03:00`)
+      .lte("created_at", `${todayAR}T23:59:59-03:00`),
+    supabase.from("sales").select("total, store_id")
+      .eq("status", "confirmed")
+      .gte("created_at", `${yesterdayAR}T00:00:00-03:00`)
+      .lte("created_at", `${yesterdayAR}T23:59:59-03:00`),
+    supabase.from("sales").select("total, store_id, created_at")
+      .eq("status", "confirmed")
+      .gte("created_at", weekAgo.toISOString()),
+    supabase.from("sales").select("total, store_id, created_at")
+      .eq("status", "confirmed")
+      .gte("created_at", monthAgo.toISOString()),
+    supabase.from("sales").select("total, store_id")
+      .eq("status", "confirmed")
+      .gte("created_at", twoMonthsAgo.toISOString())
+      .lte("created_at", monthAgo.toISOString()),
+    supabase.rpc("fn_top_products_range_all", { p_from: weekAgoAR, p_to: todayAR, p_limit: 10 }),
+    supabase.rpc("fn_top_products_range_all", { p_from: monthAgoAR, p_to: todayAR, p_limit: 10 }),
+    supabase.from("product_min_stock").select("product_id, min_stock, store_id, products(name, sku), product_stocks(stock)").limit(20),
+    supabase.from("stores").select("id, name"),
+    supabase.from("products").select("id, name, price, cost_net, markup_rate, active").eq("active", true).limit(200),
+    supabase.from("cash_closures").select("store_id, date, total_sales, total_cash, total_tickets").order("date", { ascending: false }).limit(10),
+  ]);
 
   const storeMap: Record<string, string> = {};
-  (stores.data ?? []).forEach((s: any) => {
-    storeMap[s.id] = s.name;
-  });
+  (stores.data ?? []).forEach((s: any) => { storeMap[s.id] = s.name; });
 
   const todaySales = salesToday.data ?? [];
+  const yesterdaySales = salesYesterday.data ?? [];
   const weekSales = salesWeek.data ?? [];
   const monthSales = salesMonth.data ?? [];
+  const prevMonthSales = salesPrevMonth.data ?? [];
 
-  const totalHoy = todaySales.reduce((a, s) => a + Number(s.total), 0);
-  const totalSemana = weekSales.reduce((a, s) => a + Number(s.total), 0);
-  const totalMes = monthSales.reduce((a, s) => a + Number(s.total), 0);
-  const ticketsHoy = todaySales.length;
-  const ticketPromHoy = ticketsHoy > 0 ? totalHoy / ticketsHoy : 0;
+  const totalHoy = todaySales.reduce((a: number, s: any) => a + Number(s.total), 0);
+  const totalAyer = yesterdaySales.reduce((a: number, s: any) => a + Number(s.total), 0);
+  const totalSemana = weekSales.reduce((a: number, s: any) => a + Number(s.total), 0);
+  const totalMes = monthSales.reduce((a: number, s: any) => a + Number(s.total), 0);
+  const totalMesAnterior = prevMonthSales.reduce((a: number, s: any) => a + Number(s.total), 0);
 
-  // Ventas por sucursal hoy
+  // Ventas por sucursal
   const porSucursalHoy: Record<string, number> = {};
   todaySales.forEach((s: any) => {
-    const nombre = storeMap[s.store_id] ?? s.store_id;
-    porSucursalHoy[nombre] = (porSucursalHoy[nombre] ?? 0) + Number(s.total);
+    const n = storeMap[s.store_id] ?? s.store_id;
+    porSucursalHoy[n] = (porSucursalHoy[n] ?? 0) + Number(s.total);
   });
-
-  // Ventas por sucursal semana
   const porSucursalSemana: Record<string, number> = {};
   weekSales.forEach((s: any) => {
-    const nombre = storeMap[s.store_id] ?? s.store_id;
-    porSucursalSemana[nombre] =
-      (porSucursalSemana[nombre] ?? 0) + Number(s.total);
+    const n = storeMap[s.store_id] ?? s.store_id;
+    porSucursalSemana[n] = (porSucursalSemana[n] ?? 0) + Number(s.total);
   });
 
+  // Ventas por día de la semana
+  const porDia: Record<string, { total: number; tickets: number }> = {};
+  weekSales.forEach((s: any) => {
+    const dia = new Intl.DateTimeFormat("es-AR", { weekday: "long", timeZone: tz }).format(new Date(s.created_at));
+    if (!porDia[dia]) porDia[dia] = { total: 0, tickets: 0 };
+    porDia[dia].total += Number(s.total);
+    porDia[dia].tickets += 1;
+  });
+
+  // Métodos de pago hoy
+  const metodosPago: Record<string, number> = {};
+  todaySales.forEach((s: any) => {
+    const method = (s.payment as any)?.method ?? "efectivo";
+    metodosPago[method] = (metodosPago[method] ?? 0) + Number(s.total);
+  });
+
+  // Variación mes a mes
+  const variacionMes = totalMesAnterior > 0
+    ? ((totalMes - totalMesAnterior) / totalMesAnterior * 100).toFixed(1)
+    : null;
+
+  // Productos con margen calculado
+  const productosConMargen = (allProducts.data ?? [])
+    .filter((p: any) => p.price > 0 && p.cost_net > 0)
+    .map((p: any) => ({
+      nombre: p.name,
+      precio: Number(p.price),
+      costo: Number(p.cost_net),
+      margen_pct: Number((((p.price - p.cost_net) / p.price) * 100).toFixed(1)),
+    }))
+    .sort((a: any, b: any) => b.margen_pct - a.margen_pct);
+
   return {
+    fecha_hoy: todayAR,
+    ventas: {
+      hoy: {
+        total: totalHoy,
+        tickets: todaySales.length,
+        ticket_promedio: todaySales.length > 0 ? totalHoy / todaySales.length : 0,
+        por_sucursal: porSucursalHoy,
+        metodos_pago: metodosPago,
+        vs_ayer: totalAyer > 0 ? ((totalHoy - totalAyer) / totalAyer * 100).toFixed(1) + "%" : "sin datos de ayer",
+      },
+      ayer: { total: totalAyer, tickets: yesterdaySales.length },
+      semana: {
+        total: totalSemana,
+        tickets: weekSales.length,
+        ticket_promedio: weekSales.length > 0 ? totalSemana / weekSales.length : 0,
+        por_sucursal: porSucursalSemana,
+        por_dia: porDia,
+      },
+      mes: {
+        total: totalMes,
+        tickets: monthSales.length,
+        ticket_promedio: monthSales.length > 0 ? totalMes / monthSales.length : 0,
+        variacion_vs_mes_anterior: variacionMes ? variacionMes + "%" : "sin datos",
+      },
+    },
+    top_productos_semana: (topWeek.data ?? []).map((p: any) => ({
+      nombre: p.name, sku: p.sku,
+      unidades: Number(p.qty_sold), facturacion: Number(p.total_amount), stock: Number(p.stock),
+    })),
+    top_productos_mes: (topMonth.data ?? []).map((p: any) => ({
+      nombre: p.name, unidades: Number(p.qty_sold), facturacion: Number(p.total_amount),
+    })),
+    stock_bajo: (lowStock.data ?? []).map((p: any) => ({
+      producto: (p.products as any)?.name ?? p.product_id,
+      stock_actual: (p.product_stocks as any)?.stock ?? 0,
+      stock_minimo: p.min_stock,
+      sucursal: storeMap[p.store_id] ?? p.store_id,
+    })),
+    productos_mejor_margen: productosConMargen.slice(0, 10),
+    productos_peor_margen: productosConMargen.slice(-10).reverse(),
+    ultimos_cierres: (closures.data ?? []).map((c: any) => ({
+      fecha: c.date, sucursal: storeMap[c.store_id] ?? c.store_id,
+      ventas: Number(c.total_sales), efectivo: Number(c.total_cash), tickets: c.total_tickets,
+    })),
+    sucursales: Object.values(storeMap),
+  };
+}
     fecha_hoy: todayAR,
     ventas: {
       hoy: {
