@@ -356,6 +356,8 @@ export default function VentasPage() {
 
   // store_id fijo del empleado logueado (null = supervisor, ve todas)
   const { isOnline, pendingCount, syncing, sync, updatePending } = useOnlineSync();
+  const isOnlineRef = useRef(true);
+  useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
   const empStoreId = getPosEmployee()?.store_id ?? null;
   const isSupervisorRole = (getPosEmployee()?.role ?? "") === "supervisor";
 

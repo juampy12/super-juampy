@@ -44,6 +44,7 @@ const navLinks = [
 
   // ✅ IA Margen
   { href: '/inteligencia/margen', label: 'IA Margen', icon: TrendingUp },
+  { href: '/inteligencia/asistente', label: '🤖 Asistente IA', icon: Shield },
 ];
 
 // ❗️ SOLO lo que el CAJERO puede ver
