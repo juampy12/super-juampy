@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import { getPosEmployee } from "@/lib/posSession";
 
 type Message = {
   role: "user" | "assistant";
@@ -42,7 +43,7 @@ export default function AsistentePage() {
       const res = await fetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, history }),
+        body: JSON.stringify({ question, history, role: getPosEmployee()?.role ?? "cashier" }),
       });
       const json = await res.json();
       const assistantMsg: Message = {

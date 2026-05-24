@@ -143,13 +143,16 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const question = String(body.question ?? "").trim();
+    const role = String(body.role ?? "cashier").trim();
     if (!question) {
       return NextResponse.json({ error: "Falta la pregunta" }, { status: 400 });
     }
 
-    const data = await getBusinessData();
+    const isSupervisor = role === "supervisor";
+    const data = isSupervisor ? await getBusinessData() : null;
 
-    const systemPrompt = `Sos el asistente de inteligencia artificial del sistema POS de Super Juampy, una cadena de supermercados en Charata, Chaco, Argentina.
+    const systemPrompt = isSupervisor
+      ? `Sos el asistente de inteligencia artificial del sistema POS de Super Juampy, una cadena de supermercados en Charata, Chaco, Argentina.
 
 Tenés acceso a los datos actualizados del negocio. Respondé siempre en español argentino, de forma clara, concisa y útil para el gerente del supermercado.
 
@@ -161,8 +164,30 @@ Reglas:
 - Respondé de forma directa y útil
 - Si no tenés datos para responder algo, decilo claramente
 - Podés hacer análisis, comparaciones y sugerencias basadas en los datos
-- Fecha actual: ${data.fecha_hoy}
-- Las sucursales son: ${data.sucursales.join(", ")}`;
+- Fecha actual: ${data!.fecha_hoy}
+- Las sucursales son: ${data!.sucursales.join(", ")}`
+      : `Sos el asistente de soporte del sistema POS de Super Juampy para cajeros.
+
+Tu función es ÚNICAMENTE ayudar con problemas técnicos y errores del sistema POS. 
+
+Podés ayudar con:
+- Errores al confirmar ventas
+- Problemas al buscar productos
+- Cómo usar el escáner
+- Cómo aplicar descuentos
+- Problemas con el cierre de caja
+- Cómo usar el hold/venta en espera
+- Cualquier error o duda de operación del POS
+
+NO podés responder preguntas sobre:
+- Ventas totales, ingresos o facturación
+- Stock o inventario
+- Comparativas entre sucursales
+- Reportes o métricas del negocio
+
+Si te preguntan algo fuera de tu alcance, respondé: "Esa información es solo para supervisores. ¿Puedo ayudarte con algún problema del POS?"
+
+Respondé siempre en español argentino, de forma simple y clara para un cajero.`;
 
     const history = Array.isArray(body.history) ? body.history : [];
     const conversationMessages = [
