@@ -50,7 +50,7 @@ export default function AIChat() {
     <>
       {/* Panel de chat */}
       {open && (
-        <div className="fixed bottom-20 right-4 z-[9999] w-[350px] max-h-[500px] bg-white rounded-2xl shadow-2xl border flex flex-col overflow-hidden">
+        <div className="fixed bottom-36 right-4 z-[9999] w-[350px] max-h-[500px] bg-white rounded-2xl shadow-2xl border flex flex-col overflow-hidden">
           {/* Header */}
           <div className="bg-[#c1674a] text-white px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -120,7 +120,7 @@ export default function AIChat() {
       {/* Botón flotante */}
       <button
         onClick={() => setOpen(prev => !prev)}
-        className="fixed bottom-4 right-4 z-[9999] w-14 h-14 bg-[#c1674a] text-white rounded-full shadow-2xl flex items-center justify-center text-2xl hover:bg-[#a85540] transition-transform hover:scale-110"
+        className="fixed bottom-24 right-4 z-[9999] w-14 h-14 bg-[#c1674a] text-white rounded-full shadow-2xl flex items-center justify-center text-2xl hover:bg-[#a85540] transition-transform hover:scale-110"
         title="Asistente IA"
       >
         {open ? "✕" : "🤖"}
