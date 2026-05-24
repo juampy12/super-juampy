@@ -24,7 +24,7 @@ export default function AIChat() {
       if (saved) {
         setPos(JSON.parse(saved));
       } else {
-        setPos({ x: window.innerWidth - 80, y: window.innerHeight - 80 });
+        setPos({ x: window.innerWidth - 80, y: window.innerHeight - 100 });
       }
       initialized.current = true;
     }
@@ -50,8 +50,8 @@ export default function AIChat() {
   useEffect(() => {
     if (!dragging) return;
     function onMouseMove(e: MouseEvent) {
-      const newX = Math.max(0, Math.min(window.innerWidth - 56, e.clientX - dragOffset.current.x));
-      const newY = Math.max(0, Math.min(window.innerHeight - 56, e.clientY - dragOffset.current.y));
+      const newX = Math.max(8, Math.min(window.innerWidth - 64, e.clientX - dragOffset.current.x));
+      const newY = Math.max(80, Math.min(window.innerHeight - 64, e.clientY - dragOffset.current.y));
       setPos({ x: newX, y: newY });
     }
     function onMouseUp() {
