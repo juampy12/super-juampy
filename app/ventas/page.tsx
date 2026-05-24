@@ -541,15 +541,27 @@ async function handleSearch(opts?: {
 
     setSearching(true);
     try {
-      const { data, error } = await supabase.rpc("products_with_stock", {
-        p_store: selectedStoreId,
-        p_query: term || null,
-        p_limit: 100,
-      });
-
-      if (error) {
-        console.error(error);
-        alert("Error buscando productos: " + error.message);
+      let data: any[] | null = null;
+      let fetchError: any = null;
+      try {
+        const resp = await supabase.rpc("products_with_stock", {
+          p_store: selectedStoreId,
+          p_query: term || null,
+          p_limit: 100,
+        });
+        data = resp.data;
+        fetchError = resp.error;
+      } catch {
+        fetchError = { message: "Sin conexión" };
+      }
+      if (fetchError) {
+        const cached = searchCachedProducts(selectedStoreId, term);
+        if (cached.length > 0) {
+          setResults(cached as any);
+          setSearching(false);
+          return;
+        }
+        alert("Error buscando productos: " + fetchError.message);
         return;
       }
 const list = (data ?? []) as ProductRow[];
