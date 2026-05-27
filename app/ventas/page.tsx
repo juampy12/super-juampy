@@ -868,20 +868,20 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
 
       if (isTyping) return;
 
-      if (e.key === "F3" || e.code === "F3") {
+      if (e.key === "/" || e.key === "F3" || e.code === "F3") {
         e.preventDefault();
         setTimeout(() => searchInputRef.current?.focus(), 0);
         return;
       }
 
-      if (e.key === "F5") {
+      if (e.key === "F2") {
         e.preventDefault();
         setPaymentMethod("efectivo");
         setTimeout(() => cashInputRef.current?.focus(), 0);
         return;
       }
 
-      if (e.key === "F6") {
+      if (e.key === "F6" || e.key === "F2" && e.shiftKey) {
         e.preventDefault();
         if (items.length === 0) return;
         setShowCancelConfirm(true);
@@ -1070,9 +1070,7 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
         <div>
           <h1 className="text-xl font-semibold">POS — Nueva venta</h1>
           <div className="text-xs text-gray-500 hidden md:block">
-            Atajos: <b>Enter</b> confirmar · <b>Ctrl+Enter</b> confirmar ·{" "}
-            <b>F3</b> buscar · <b>F5</b> efectivo · <b>F6</b> cancelar ·{" "}
-            <b>F9</b> confirmar
+            Atajos: <b>/</b> buscar · <b>F2</b> efectivo · <b>Escape</b> cancelar · <b>Ctrl+Enter</b> confirmar
           </div>
         </div>
         <div className="flex gap-2 items-center">
