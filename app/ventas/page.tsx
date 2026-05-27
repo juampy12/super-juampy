@@ -359,6 +359,7 @@ export default function VentasPage() {
   const isOnlineRef = useRef(true);
   useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
   const empStoreId = getPosEmployee()?.store_id ?? null;
+  const empRegisterId = getPosEmployee()?.register_id ?? null;
   const isSupervisorRole = (getPosEmployee()?.role ?? "") === "supervisor";
 
   // Cargar sucursales
@@ -407,7 +408,9 @@ export default function VentasPage() {
 
         const list = (data ?? []) as { id: string; name: string }[];
         setRegisters(list);
-        setSelectedRegisterId(list.length ? list[0].id : null);
+        // Si el empleado tiene caja asignada y existe en esta sucursal, usarla
+        const matchedRegister = empRegisterId ? list.find(r => r.id === empRegisterId) : null;
+        setSelectedRegisterId(matchedRegister?.id ?? (list.length ? list[0].id : null));
       });
   }, [selectedStoreId]);
 
@@ -1146,17 +1149,23 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
             {registers.length > 0 && (
               <>
                 <label className="block text-xs text-gray-600 mb-1">Caja</label>
-                <select
-                  className="border rounded px-3 py-2 w-full"
-                  value={selectedRegisterId ?? ""}
-                  onChange={(e) => setSelectedRegisterId(e.target.value)}
-                >
-                  {registers.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
+                {isSupervisorRole ? (
+                  <select
+                    className="border rounded px-3 py-2 w-full"
+                    value={selectedRegisterId ?? ""}
+                    onChange={(e) => setSelectedRegisterId(e.target.value)}
+                  >
+                    {registers.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="border rounded px-3 py-2 w-full bg-gray-50 text-sm font-medium">
+                    {registers.find(r => r.id === selectedRegisterId)?.name ?? "Cargando..."}
+                  </div>
+                )}
               </>
             )}
           </div>

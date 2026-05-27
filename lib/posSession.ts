@@ -3,6 +3,7 @@ export type PosEmployee = {
   name: string;
   role: string;
   store_id: string | null;
+  register_id: string | null;
 };
 const KEY = "sj_pos_employee";
 const KEY_ROLE = "pos_role";

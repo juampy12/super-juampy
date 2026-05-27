@@ -32,6 +32,7 @@ export async function POST(req: Request) {
         name: emp.name,
         role: emp.role,
         store_id: emp.store_id ?? null,
+        register_id: emp.register_id ?? null,
       },
     });
 
