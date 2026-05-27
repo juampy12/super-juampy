@@ -158,6 +158,21 @@ export default function VentasPage() {
     }
   }
 
+  function cancelSale() {
+    setItems([]);
+    setSearch("");
+    setResults([]);
+    setPaymentMethod("efectivo");
+    setCashGivenStr("0");
+    setDebitAmount(0);
+    setCreditAmount(0);
+    setMpAmount(0);
+    setAccountAmount(0);
+    setNotes("");
+    setShowCancelConfirm(false);
+    setTimeout(() => searchInputRef.current?.focus(), 0);
+  }
+
   function holdCart() {
     if (items.length === 0) { alert("El carrito está vacío."); return; }
     saveHold(items.map(it => ({
@@ -324,6 +339,7 @@ export default function VentasPage() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [holds, setHolds] = useState<Hold[]>([]);
   const [showHolds, setShowHolds] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   useEffect(() => {
     setHolds(getHolds());
@@ -867,22 +883,8 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
 
       if (e.key === "F6") {
         e.preventDefault();
-        const ok = window.confirm("¿Cancelar venta y limpiar todo?");
-        if (!ok) return;
-
-        setItems([]);
-        setSearch("");
-        setResults([]);
-
-        setPaymentMethod("efectivo");
-        setCashGivenStr("0");
-        setDebitAmount(0);
-        setCreditAmount(0);
-        setMpAmount(0);
-        setAccountAmount(0);
-        setNotes("");
-
-        setTimeout(() => searchInputRef.current?.focus(), 0);
+        if (items.length === 0) return;
+        setShowCancelConfirm(true);
         return;
       }
 
@@ -1002,6 +1004,29 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                   🖨️ Imprimir ticket
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+          <div className="w-[340px] rounded-2xl bg-white p-6 shadow-2xl border">
+            <h2 className="text-lg font-semibold mb-2">¿Cancelar venta?</h2>
+            <p className="text-sm text-gray-500 mb-6">Se va a limpiar el carrito y todos los datos del pago.</p>
+            <div className="flex gap-3">
+              <button
+                className="flex-1 rounded-lg border px-4 py-2 text-sm"
+                onClick={() => setShowCancelConfirm(false)}
+              >
+                Volver
+              </button>
+              <button
+                className="flex-2 rounded-lg bg-red-600 text-white px-4 py-2 text-sm font-medium hover:bg-red-700"
+                onClick={cancelSale}
+              >
+                Sí, cancelar
+              </button>
             </div>
           </div>
         </div>
