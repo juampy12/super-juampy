@@ -3,9 +3,9 @@
 /* ====== Marca / Theme base ====== */
 :root{
   /* Marca (fallback, luego se pueden recalcular desde BrandTheme) */
-  --brand: 0 122 255;
-  --brand-600: 0 100 210;
-  --brand-700: 0 80 170;
+  --brand: 204 32 32;
+  --brand-600: 180 20 20;
+  --brand-700: 150 10 10;
   --brand-fg: 255 255 255;
 
   /* Theme base claro */
