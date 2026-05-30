@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { getPosEmployee } from "@/lib/posSession";
 import { addToQueue } from "@/lib/offlineQueue";
-import { warmCache, searchCachedProducts } from "@/lib/productCache";
+import { warmCache, searchCachedProducts, mergeIntoCachedProducts } from "@/lib/productCache";
 import { useOnlineSync } from "@/lib/useOnlineSync";
 import { getHolds, saveHold, removeHold, type Hold } from "@/app/ventas/lib/hold";
 
@@ -622,6 +622,8 @@ try {
 
 const ordered = sortResultsForTerm(activeList, term);
 setResults(ordered);
+// Guardar resultados en cache para uso offline
+if (selectedStoreId) mergeIntoCachedProducts(selectedStoreId, activeList as any);
 
 if (opts?.autoAddFirst && ordered.length >= 1) {
   const is4Digits = /^\d{4}$/.test(term);

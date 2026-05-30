@@ -54,9 +54,19 @@ export async function warmCache(supabase: SupabaseClient, storeId: string) {
     const { data, error } = await supabase.rpc("products_with_stock", {
       p_store: storeId,
       p_query: null,
-      p_limit: 500,
+      p_limit: 2000,
     });
     if (error || !data) return;
     setCachedProducts(storeId, data);
+  } catch { }
+}
+
+export function mergeIntoCachedProducts(storeId: string, newProducts: CachedProduct[]) {
+  if (typeof window === "undefined" || !newProducts.length) return;
+  try {
+    const existing = getCachedProducts(storeId) ?? [];
+    const map = new Map(existing.map(p => [p.id, p]));
+    for (const p of newProducts) map.set(p.id, p);
+    setCachedProducts(storeId, Array.from(map.values()));
   } catch { }
 }
