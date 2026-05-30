@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { getPosEmployee } from "@/lib/posSession";
+import toast from "react-hot-toast";
 
 type Store = { id: string; name: string };
 
@@ -43,6 +46,7 @@ function isoLocalInput(dt?: Date) {
 }
 
 export default function OfertasPage() {
+  const router = useRouter();
   const [stores, setStores] = useState<Store[]>([]);
   const [storeId, setStoreId] = useState<string>("");
   const [isGlobal, setIsGlobal] = useState<boolean>(false);
@@ -87,8 +91,7 @@ export default function OfertasPage() {
   async function searchProducts() {
     if (!effectiveStoreId) return;
     setLoading(true);
-    setMsg("");
-    try {
+        try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/products_with_stock`,
         {
@@ -121,7 +124,7 @@ export default function OfertasPage() {
       // ✅ si el seleccionado quedó desactivado/no aparece, lo limpiamos
       if (selected && (selected as any)?.active === false) setSelected(null);
     } catch (e: any) {
-      setMsg(e?.message || "Error buscando productos");
+      toast.error(e?.message || "Error buscando productos");
     } finally {
       setLoading(false);
     }
@@ -141,58 +144,34 @@ export default function OfertasPage() {
   async function loadOffers() {
     if (!storeId) return;
 
-    // 1) intentamos por sucursal
-    const byStore = await fetchOffers(
-      `/api/offers?store_id=${encodeURIComponent(storeId)}`
-    );
+    const list = await fetchOffers(`/api/offers?store_id=${encodeURIComponent(storeId)}`);
+    setOffers(list);
 
-    // 2) intentamos traer todas (por si /api/offers por store no incluye globales)
-    const all = await fetchOffers(`/api/offers`);
-
-    // merge sin duplicados y filtrando global + store actual
-    const map = new Map<string, Offer>();
-
-    for (const o of byStore) map.set(o.id, o);
-
-    for (const o of all) {
-      if (o.store_id === null || o.store_id === storeId) {
-        map.set(o.id, o);
-      }
-    }
-
-    const merged = Array.from(map.values());
-    setOffers(merged);
-
-    // traer info de productos para lo que falte en el map (por REST, sin RPC)
-    const missing = merged
-      .map((o) => o.product_id)
-      .filter((id) => !productMap[id]);
-
-    const uniq = Array.from(new Set(missing));
+    // traer nombres de productos que no estén en el map todavía
+    const missing = list
+      .map((o: Offer) => o.product_id)
+      .filter((id: string) => !productMap[id]);
+    const uniq: string[] = Array.from(new Set(missing));
     if (uniq.length) {
-      const ids = uniq
-        .slice(0, 100)
-        .map((id) => `"${id}"`)
-        .join(",");
-
-      // ✅ pedimos active también (si existe y RLS lo permite)
-      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/products?select=id,name,sku,active&id=in.(${ids})`;
-      const r = await fetch(url, {
-        headers: {
-          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
-        },
-      });
-      const prod = await r.json();
-      if (Array.isArray(prod)) {
-        const add: Record<string, { name: string; sku: string; active?: boolean | null }> = {};
-        for (const p of prod) add[p.id] = { name: p.name, sku: p.sku, active: (p as any)?.active ?? null };
-        setProductMap((prev) => ({ ...prev, ...add }));
-      }
+      try {
+        const res = await fetch("/api/pos/products-by-ids", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: uniq }),
+        });
+        const json = await res.json();
+        if (Array.isArray(json.products)) {
+          const add: Record<string, { name: string; sku: string; active?: boolean | null }> = {};
+          for (const p of json.products) add[p.id] = { name: p.name, sku: p.sku, active: p.active ?? null };
+          setProductMap((prev) => ({ ...prev, ...add }));
+        }
+      } catch { }
     }
   }
 
   useEffect(() => {
+    const emp = getPosEmployee();
+    if (emp?.role !== "supervisor") { router.replace("/ventas"); return; }
     loadStores();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -204,18 +183,17 @@ export default function OfertasPage() {
 
   // ✅ SIN PIN
   async function createOffer() {
-    if (!selected) return setMsg("Seleccioná un producto");
-    if (!storeId) return setMsg("Seleccioná una sucursal");
-    if (!value || value <= 0) return setMsg("Valor inválido");
+    if (!selected) return void toast("Seleccioná un producto");
+    if (!storeId) return void toast("Seleccioná una sucursal");
+    if (!value || value <= 0) return void toast.error("Valor inválido");
 
     // ✅ seguridad extra: no permitir crear oferta a desactivados
     if ((selected as any)?.active === false) {
-      return setMsg("Ese producto está desactivado. Reactivalo en Catálogo si querés hacer oferta.");
+      return void toast.error("Ese producto está desactivado. Reactivalo en Catálogo.");
     }
 
     setLoading(true);
-    setMsg("");
-
+    
     const payload = {
       product_id: selected.id,
       store_id: isGlobal ? null : storeId,
@@ -235,9 +213,9 @@ export default function OfertasPage() {
 
     const data = await res.json();
     if (!res.ok) {
-      setMsg(data?.error || "Error creando oferta");
+      toast.error(data?.error || "Error creando oferta");
     } else {
-      setMsg("Oferta creada ✅");
+      toast.success("Oferta creada");
       await loadOffers();
       await searchProducts();
     }
@@ -247,8 +225,7 @@ export default function OfertasPage() {
   // ✅ SIN PIN
   async function deactivateOffer(id: string) {
     setLoading(true);
-    setMsg("");
-
+    
     const res = await fetch("/api/offers", {
       method: "PATCH",
       headers: {
@@ -259,9 +236,9 @@ export default function OfertasPage() {
 
     const data = await res.json();
     if (!res.ok) {
-      setMsg(data?.error || "Error desactivando oferta");
+      toast.error(data?.error || "Error desactivando oferta");
     } else {
-      setMsg("Oferta desactivada ✅");
+      toast.success("Oferta desactivada");
       await loadOffers();
       await searchProducts();
     }
@@ -308,7 +285,7 @@ export default function OfertasPage() {
           Global (todas las sucursales)
         </label>
 
-        {msg && <div className="text-sm ml-auto">{msg}</div>}
+
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -406,6 +383,14 @@ export default function OfertasPage() {
                 onChange={(e) => setValue(Number(e.target.value))}
                 placeholder={type === "fixed_price" ? "Ej: 2999" : "Ej: 20"}
               />
+              {selected && value > 0 && (
+                <span className="text-xs text-emerald-600 mt-1 block">
+                  {type === "fixed_price"
+                    ? `Precio normal $${Number(selected.price).toFixed(2)} → oferta $${Number(value).toFixed(2)}`
+                    : `Precio normal $${Number(selected.price).toFixed(2)} → oferta $${(Number(selected.price) * (1 - value / 100)).toFixed(2)} (-${value}%)`
+                  }
+                </span>
+              )}
             </label>
 
             <label className="text-sm">
