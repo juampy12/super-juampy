@@ -56,7 +56,7 @@ export default function EmpleadosPage() {
       const empJson = await empRes.json();
       const storeJson = await storeRes.json();
       const regJson = await regRes.json();
-      setEmployees(empJson.employees ?? []);
+      setEmployees((empJson.employees ?? []).map((e: any) => ({ ...e, active: e.is_active })));
       setStores(storeJson.stores ?? []);
       setRegisters(regJson.registers ?? []);
     } catch { toast.error("Error cargando datos"); }

@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
       .from("employees")
-      .select("id, code, name, role, store_id, register_id, active, stores(name), registers(name)")
+      .select("id, code, name, role, store_id, register_id, is_active, stores(name), registers(name)")
       .order("name", { ascending: true });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -66,7 +66,7 @@ export async function PATCH(req: Request) {
     if (body?.role !== undefined) updates.role = String(body.role).trim();
     if (body?.store_id !== undefined) updates.store_id = body.store_id;
     if (body?.register_id !== undefined) updates.register_id = body.register_id;
-    if (body?.active !== undefined) updates.active = Boolean(body.active);
+    if (body?.active !== undefined) updates.is_active = Boolean(body.active);
 
     // Si viene nuevo PIN, actualizarlo via RPC
     if (body?.pin) {
