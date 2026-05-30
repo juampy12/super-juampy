@@ -560,6 +560,17 @@ async function handleSearch(opts?: {
       return;
     }
 
+    if (!isOnlineRef.current) {
+      const cached = searchCachedProducts(selectedStoreId, term);
+      if (cached.length > 0) {
+        setResults(cached as any);
+      } else {
+        alert("Sin conexión. No hay productos en cache. Conectate a internet y buscá al menos un producto para cargar el cache offline.");
+      }
+      setSearching(false);
+      return;
+    }
+
     setSearching(true);
     try {
       let data: any[] | null = null;
@@ -582,7 +593,7 @@ async function handleSearch(opts?: {
           setSearching(false);
           return;
         }
-        alert("Error buscando productos: " + fetchError.message);
+        alert("Sin conexión y sin cache disponible. Conectate a internet para buscar productos.");
         return;
       }
 const list = (data ?? []) as ProductRow[];

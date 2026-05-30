@@ -13,9 +13,10 @@ export async function GET() {
 
   try {
     if (url && (service || anon)) {
-      const supabase = createClient(url, service ?? anon ?? '', { auth: { persistSession: false } });
+      const supabase = createClient(url, service ?? anon ?? "", {
+        auth: { persistSession: false },
+      });
 
-      // 1) Intento RPC 'now'; si no existe, caemos a un SELECT head:true
       const { error: rpcErr } = await supabase.rpc("now");
       if (rpcErr) {
         const { error: tblErr } = await supabase
@@ -24,9 +25,10 @@ export async function GET() {
         if (tblErr) issues.push(`DB ping failed: ${tblErr.message}`);
       }
 
-      // 2) Chequeo básico de tablas
-      for (const table of ["products","branches","sales","sale_items"]) {
-        const { error } = await supabase.from(table).select("id", { head: true, count: "exact" });
+      for (const table of ["products", "stores", "sales", "sale_items"]) {
+        const { error } = await supabase
+          .from(table)
+          .select("id", { head: true, count: "exact" });
         if (error) issues.push(`Missing or inaccessible table: ${table}`);
       }
     }
@@ -36,7 +38,11 @@ export async function GET() {
 
   const status = issues.length === 0 ? "ok" : "degraded";
   return NextResponse.json(
-    { status, issues, env: { hasUrl: !!url, hasAnon: !!anon, hasServiceKey: !!service } },
+    {
+      status,
+      issues,
+      env: { hasUrl: !!url, hasAnon: !!anon, hasServiceKey: !!service },
+    },
     { status: status === "ok" ? 200 : 500 }
   );
 }
