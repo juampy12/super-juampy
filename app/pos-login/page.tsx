@@ -33,12 +33,22 @@ export default function PosLoginPage() {
       {/* Header rojo */}
       <div style={{
         background: "#CC2020", borderBottom: "4px solid #1A5FA8",
-        padding: "20px 24px", display: "flex", flexDirection: "column",
-        alignItems: "center", gap: "8px",
+        padding: "24px", display: "flex", flexDirection: "column",
+        alignItems: "center", gap: "4px",
       }}>
-        <img src="/logo-super-juampy.png" alt="Super Juampy"
-          style={{ height: "120px", width: "auto", filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.25))" }} />
-        <p style={{ color: "rgba(255,255,255,0.85)", fontSize: "13px", margin: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{
+            width: "48px", height: "48px", borderRadius: "50%",
+            background: "#1A5FA8", border: "3px solid white",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: "20px", fontWeight: "700", color: "white",
+          }}>SJ</div>
+          <div>
+            <div style={{ color: "white", fontSize: "22px", fontWeight: "700", lineHeight: 1 }}>SUPER</div>
+            <div style={{ color: "#A8C62A", fontSize: "26px", fontWeight: "700", lineHeight: 1 }}>Juampy</div>
+          </div>
+        </div>
+        <p style={{ color: "rgba(255,255,255,0.75)", fontSize: "12px", margin: "8px 0 0" }}>
           Sistema de gestion de caja
         </p>
       </div>
