@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { setPosEmployee } from "@/lib/posSession";
 import toast from "react-hot-toast";
 
@@ -36,8 +37,8 @@ export default function PosLoginPage() {
         padding: "28px 24px 32px", display: "flex", flexDirection: "column",
         alignItems: "center", gap: "12px",
       }}>
-        <img src="/logo-super-juampy.png" alt="Super Juampy"
-          style={{ height: "100px", width: "auto", filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.25))" }} />
+        <Image src="/logo-super-juampy.png" alt="Super Juampy"
+          width={200} height={130} style={{ filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.25))", objectFit: "contain" }} priority />
         <p style={{ color: "rgba(255,255,255,0.85)", fontSize: "13px", margin: 0 }}>
           Sistema de gestion de caja
         </p>
