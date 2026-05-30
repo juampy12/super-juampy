@@ -3,13 +3,28 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function GET() {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("employees")
-      .select("id, code, name, role, store_id, register_id, is_active, stores(name), registers(name)")
-      .order("name", { ascending: true });
+    const [empRes, storeRes, regRes] = await Promise.all([
+      supabaseAdmin.from("employees").select("id, code, name, role, store_id, register_id, is_active").order("name", { ascending: true }),
+      supabaseAdmin.from("stores").select("id, name"),
+      supabaseAdmin.from("registers").select("id, name"),
+    ]);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ employees: data ?? [] });
+    if (empRes.error) return NextResponse.json({ error: empRes.error.message }, { status: 500 });
+
+    const storeMap: Record<string, string> = {};
+    (storeRes.data ?? []).forEach((s: any) => { storeMap[s.id] = s.name; });
+
+    const regMap: Record<string, string> = {};
+    (regRes.data ?? []).forEach((r: any) => { regMap[r.id] = r.name; });
+
+    const employees = (empRes.data ?? []).map((e: any) => ({
+      ...e,
+      active: e.is_active,
+      stores: e.store_id ? { name: storeMap[e.store_id] ?? "—" } : null,
+      registers: e.register_id ? { name: regMap[e.register_id] ?? "—" } : null,
+    }));
+
+    return NextResponse.json({ employees });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Error" }, { status: 500 });
   }
