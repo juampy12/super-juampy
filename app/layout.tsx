@@ -20,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es">
       <head>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
         <meta
           name="description"
           content="Super Juampy ofrece panificados frescos, fiambrería y productos de supermercado en Charata, Chaco."
