@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import toast from "react-hot-toast";
 import ConfirmSaleButton from "@/components/ConfirmSaleButton";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
@@ -149,11 +150,11 @@ export default function VentasPage() {
         pendingActionRef.current = null;
         if (fn) fn();
       } else {
-        alert("PIN incorrecto");
+        toast.error("PIN incorrecto");
         setPinInput("");
       }
     } catch {
-      alert("Error verificando PIN");
+      toast.error("Error verificando PIN");
       setPinInput("");
     }
   }
@@ -174,7 +175,7 @@ export default function VentasPage() {
   }
 
   function holdCart() {
-    if (items.length === 0) { alert("El carrito está vacío."); return; }
+    if (items.length === 0) { toast.error("El carrito está vacío."); return; }
     saveHold(items.map(it => ({
       product_id: it.product_id,
       name: it.name,
@@ -386,7 +387,7 @@ export default function VentasPage() {
       .order("name", { ascending: true })
       .then(({ data, error }) => {
         if (error) {
-          alert("Error cargando sucursales: " + error.message);
+          toast.error("Error cargando sucursales: " + error.message);
           return;
         }
         const list = (data ?? []) as Store[];
@@ -418,7 +419,7 @@ export default function VentasPage() {
       .then(({ data, error }) => {
         if (error) {
           console.error(error);
-          alert("Error cargando cajas: " + error.message);
+          toast.error("Error cargando cajas: " + error.message);
           return;
         }
 
@@ -552,11 +553,11 @@ async function handleSearch(opts?: {
     const term = (opts?.term ?? search).trim();
 
     if (!term) {
-      alert("Escribí nombre o SKU para buscar.");
+      toast("Escribí nombre o SKU para buscar.");
       return;
     }
     if (!selectedStoreId) {
-      alert("Elegí una sucursal antes de buscar.");
+      toast("Elegí una sucursal antes de buscar.");
       return;
     }
 
@@ -565,7 +566,7 @@ async function handleSearch(opts?: {
       if (cached.length > 0) {
         setResults(cached as any);
       } else {
-        alert("Sin conexión. No hay productos en cache. Conectate a internet y buscá al menos un producto para cargar el cache offline.");
+        toast.error("Sin conexión. No hay productos en cache. Conectate a internet primero para cargar el cache.");
       }
       setSearching(false);
       return;
@@ -593,7 +594,7 @@ async function handleSearch(opts?: {
           setSearching(false);
           return;
         }
-        alert("Sin conexión y sin cache disponible. Conectate a internet para buscar productos.");
+        toast.error("Sin conexión y sin cache disponible. Conectate a internet para buscar productos.");
         return;
       }
 const list = (data ?? []) as ProductRow[];
@@ -675,7 +676,7 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
 
       const grams = Number(String(gramsStr).replace(",", "."));
       if (!Number.isFinite(grams) || grams <= 0) {
-        alert("Gramos inválidos");
+        toast.error("Gramos inválidos");
         return;
       }
 
@@ -737,7 +738,7 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
 
         const grams = Number(String(gramsStr).replace(",", "."));
         if (!Number.isFinite(grams) || grams <= 0) {
-          alert("Gramos inválidos");
+          toast.error("Gramos inválidos");
           return prev;
         }
 
