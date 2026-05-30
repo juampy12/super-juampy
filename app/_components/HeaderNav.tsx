@@ -79,6 +79,7 @@ export default function HeaderNav() {
   }, []);
 
   if (!ready) return null;
+  if (pathname === '/pos-login') return null;
 
   const isSupervisor = emp?.role === 'supervisor';
   const empName = emp?.name ?? '';
