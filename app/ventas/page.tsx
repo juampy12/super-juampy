@@ -69,7 +69,7 @@ function HighlightText({ text, query }: { text: string; query: string }) {
         const isHit = re.test(p);
         re.lastIndex = 0;
         return isHit ? (
-          <mark key={i} className="rounded px-1 bg-yellow-200">
+          <mark key={i} className="rounded px-1 bg-red-100 text-red-900">
             {p}
           </mark>
         ) : (
@@ -1070,7 +1070,7 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                 Cancelar
               </button>
               <button
-                className="px-3 py-2 rounded bg-black text-white"
+                className="px-3 py-2 rounded text-white" style={{background:"#CC2020"}}
                 onClick={submitPin}
               >
                 Confirmar
@@ -1109,7 +1109,7 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
           )}
           <button
             onClick={holdCart}
-            className="rounded-lg border px-3 py-2 text-sm font-medium bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100"
+            className="rounded-lg border px-3 py-2 text-sm font-medium bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100"
             title="Poner carrito en espera"
           >
             ⏸ En espera
@@ -1243,7 +1243,7 @@ onKeyDown={(e) => {
                   })
                 }
                 disabled={searching}
-                className="rounded bg-black px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                className="rounded px-3 py-2 text-sm font-medium text-white disabled:opacity-60" style={{background:"#CC2020"}}
               >
                 {searching ? "..." : "Buscar"}
               </button>
@@ -1328,7 +1328,7 @@ onKeyDown={(e) => {
                 )}
               </h2>
 
-              <div className="inline-flex items-baseline gap-2 rounded-lg bg-neutral-900 text-white px-3 py-2">
+              <div className="inline-flex items-baseline gap-2 rounded-lg text-white px-3 py-2" style={{background:"#1A5FA8"}}>
                 <span className="text-xs font-medium">TOTAL</span>
                 <span className="text-xl font-bold">${formattedTotal}</span>
               </div>
