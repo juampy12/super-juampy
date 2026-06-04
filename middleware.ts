@@ -6,6 +6,9 @@ const PUBLIC_PATHS = [
   "/api/health",
   "/_next",
   "/favicon.ico",
+  "/sw.js",
+  "/workbox-",
+  "/manifest.json",
 ];
 
 export function middleware(req: NextRequest) {
@@ -27,6 +30,6 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/employee/login|api/health).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sw.js|workbox-|manifest.json|api/employee/login|api/health).*)",
   ],
 };

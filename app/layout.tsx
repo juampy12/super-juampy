@@ -1,7 +1,8 @@
 import JsonLd from "./seo-jsonld";
 import "./globals.css";
 import AIChat from "@/app/_components/AIChat";
-import type { Metadata } from "next";
+import ServiceWorker from "@/app/_components/ServiceWorker";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import HeaderNav from "./_components/HeaderNav";
 import BrandTheme from "./_components/BrandTheme";
@@ -11,9 +12,12 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   manifest: "/manifest.json",
-  themeColor: "#c1674a",
   title: "Super Juampy",
   description: "POS y reportes — Super Juampy",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#CC2020",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -42,7 +46,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 
         </div>
-            <AIChat />
+        <AIChat />
+        <ServiceWorker />
     </body>
     </html>
   );

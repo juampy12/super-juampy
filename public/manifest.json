@@ -1,22 +1,25 @@
 {
   "name": "Super Juampy POS",
-  "short_name": "SuperJuampy",
-  "description": "Sistema POS para Super Juampy - Charata, Chaco",
+  "short_name": "SJ POS",
+  "description": "Sistema POS para Super Juampy — Charata, Chaco",
   "start_url": "/ventas",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#c1674a",
+  "theme_color": "#CC2020",
   "orientation": "landscape",
   "icons": [
     {
       "src": "/logo-super-juampy.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/logo-super-juampy.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
