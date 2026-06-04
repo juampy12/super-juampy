@@ -4,7 +4,6 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -226,39 +225,17 @@ Respondé siempre en español argentino, de forma simple y clara para un cajero.
       { role: "user" as const, content: question },
     ];
 
-    const encoder = new TextEncoder();
-    const stream = anthropic.messages.stream({
+    const message = await anthropic.messages.create({
       model: "claude-sonnet-4-5",
       max_tokens: 1024,
       system: systemPrompt,
       messages: conversationMessages,
     });
 
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
+    const response =
+      message.content[0].type === "text" ? message.content[0].text : "";
 
-    stream.on("text", (text) => {
-      writer.write(encoder.encode(text)).catch(() => {});
-    });
-    stream.once("finalMessage", () => {
-      writer.close().catch(() => {});
-    });
-    stream.once("error", (err: any) => {
-      console.error("AI stream error:", err);
-      writer.write(encoder.encode(`\n\n⚠️ Error: ${err?.message ?? "Error del asistente"}`))
-        .catch(() => {})
-        .finally(() => writer.close().catch(() => {}));
-    });
-    stream.once("abort", () => {
-      writer.close().catch(() => {});
-    });
-
-    return new Response(readable, {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+    return NextResponse.json({ response });
   } catch (e: any) {
     console.error("AI error:", e);
     return NextResponse.json(
