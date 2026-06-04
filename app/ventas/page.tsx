@@ -372,9 +372,13 @@ export default function VentasPage() {
   }, [quickMode]);
 
   // store_id fijo del empleado logueado (null = supervisor, ve todas)
-  const { isOnline, pendingCount, syncing, sync, updatePending } = useOnlineSync();
+  const selectedStoreIdRef = useRef<string | null>(null);
+  const { isOnline, pendingCount, syncing, sync, updatePending } = useOnlineSync(() => {
+    if (selectedStoreIdRef.current) warmCache(supabase, selectedStoreIdRef.current);
+  });
   const isOnlineRef = useRef(true);
   useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
+  useEffect(() => { selectedStoreIdRef.current = selectedStoreId; }, [selectedStoreId]);
   const empStoreId = getPosEmployee()?.store_id ?? null;
   const empRegisterId = getPosEmployee()?.register_id ?? null;
   const isSupervisorRole = (getPosEmployee()?.role ?? "") === "supervisor";

@@ -1,11 +1,13 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { getQueue, syncQueue } from "./offlineQueue";
 
-export function useOnlineSync() {
+export function useOnlineSync(onReconnect?: () => void) {
   const [isOnline, setIsOnline] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const onReconnectRef = useRef(onReconnect);
+  useEffect(() => { onReconnectRef.current = onReconnect; }, [onReconnect]);
 
   const updatePending = useCallback(() => {
     setPendingCount(getQueue().length);
@@ -37,6 +39,7 @@ export function useOnlineSync() {
     const handleOnline = () => {
       setIsOnline(true);
       sync();
+      onReconnectRef.current?.();
     };
     const handleOffline = () => setIsOnline(false);
 
