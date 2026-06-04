@@ -241,12 +241,15 @@ Respondé siempre en español argentino, de forma simple y clara para un cajero.
     ];
 
     const encoder = new TextEncoder();
-    const stream = anthropic.messages.stream({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1024,
-      system: systemBlocks,
-      messages: conversationMessages,
-    });
+    const stream = anthropic.messages.stream(
+      {
+        model: "claude-sonnet-4-6",
+        max_tokens: 1024,
+        system: systemBlocks,
+        messages: conversationMessages,
+      },
+      { headers: { "anthropic-beta": "prompt-caching-2024-07-31" } },
+    );
 
     const readable = new ReadableStream({
       async start(controller) {
@@ -259,7 +262,14 @@ Respondé siempre en español argentino, de forma simple y clara para un cajero.
               controller.enqueue(encoder.encode(event.delta.text));
             }
           }
-        } finally {
+          controller.close();
+        } catch (e: any) {
+          console.error("AI stream error:", e);
+          try {
+            controller.enqueue(
+              encoder.encode(`\n\n⚠️ Error del asistente: ${e?.message ?? "Error desconocido"}`)
+            );
+          } catch {}
           controller.close();
         }
       },
