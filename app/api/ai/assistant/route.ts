@@ -9,6 +9,31 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
+// ── Cache en memoria del servidor ─────────────────────────────────────────
+// Clave: store_id o "all". TTL: 2 minutos. Evita repetir las 11 queries
+// de Supabase cuando el supervisor hace preguntas seguidas.
+type BusinessDataCache = {
+  data: Awaited<ReturnType<typeof getBusinessData>>;
+  expiresAt: number;
+};
+const businessCache = new Map<string, BusinessDataCache>();
+const CACHE_TTL = 2 * 60 * 1000; // 2 minutos en ms
+
+async function getBusinessDataCached(cacheKey: string) {
+  const hit = businessCache.get(cacheKey);
+  if (hit && Date.now() < hit.expiresAt) return hit.data;
+
+  // Limpiar entradas expiradas para no acumular memoria
+  for (const [k, v] of businessCache) {
+    if (Date.now() >= v.expiresAt) businessCache.delete(k);
+  }
+
+  const data = await getBusinessData();
+  businessCache.set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL });
+  return data;
+}
+// ─────────────────────────────────────────────────────────────────────────
+
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -176,7 +201,8 @@ export async function POST(req: Request) {
     }
 
     const isSupervisor = role === "supervisor";
-    const data = isSupervisor ? await getBusinessData() : null;
+    const storeId = String(body.store_id ?? "").trim() || "all";
+    const data = isSupervisor ? await getBusinessDataCached(storeId) : null;
 
     const systemPrompt = isSupervisor
       ? `Sos el asistente de inteligencia artificial del sistema POS de Super Juampy, una cadena de supermercados en Charata, Chaco, Argentina.
