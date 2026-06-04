@@ -251,27 +251,24 @@ Respondé siempre en español argentino, de forma simple y clara para un cajero.
       { headers: { "anthropic-beta": "prompt-caching-2024-07-31" } },
     );
 
+    // start() sincrónico: nunca puede rechazar, por lo que el ReadableStream
+    // nunca entra en estado de error. Errores de la API se escriben como texto.
     const readable = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const event of stream) {
-            if (
-              event.type === "content_block_delta" &&
-              event.delta.type === "text_delta"
-            ) {
-              controller.enqueue(encoder.encode(event.delta.text));
-            }
-          }
-          controller.close();
-        } catch (e: any) {
-          console.error("AI stream error:", e);
-          try {
-            controller.enqueue(
-              encoder.encode(`\n\n⚠️ Error del asistente: ${e?.message ?? "Error desconocido"}`)
-            );
-          } catch {}
-          controller.close();
-        }
+      start(controller) {
+        stream.on("text", (text) => {
+          try { controller.enqueue(encoder.encode(text)); } catch {}
+        });
+        stream.once("finalMessage", () => {
+          try { controller.close(); } catch {}
+        });
+        stream.once("error", (err: any) => {
+          console.error("AI stream error:", err);
+          try { controller.enqueue(encoder.encode(`\n\n⚠️ Error: ${err?.message ?? "Error del asistente"}`)); } catch {}
+          try { controller.close(); } catch {}
+        });
+        stream.once("abort", () => {
+          try { controller.close(); } catch {}
+        });
       },
     });
 
