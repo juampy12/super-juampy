@@ -178,34 +178,22 @@ export async function POST(req: Request) {
     const isSupervisor = role === "supervisor";
     const data = isSupervisor ? await getBusinessData() : null;
 
-    const systemBlocks: Anthropic.Messages.TextBlockParam[] = isSupervisor
-      ? [
-          {
-            type: "text",
-            text: `Sos el asistente de inteligencia artificial del sistema POS de Super Juampy, una cadena de supermercados en Charata, Chaco, Argentina.
+    const systemPrompt = isSupervisor
+      ? `Sos el asistente de inteligencia artificial del sistema POS de Super Juampy, una cadena de supermercados en Charata, Chaco, Argentina.
 
 Tenés acceso a los datos actualizados del negocio. Respondé siempre en español argentino, de forma clara, concisa y útil para el gerente del supermercado.
+
+Datos actuales del negocio:
+${JSON.stringify(data, null, 2)}
 
 Reglas:
 - Usá pesos argentinos (ARS) con formato $X.XXX,XX
 - Respondé de forma directa y útil
 - Si no tenés datos para responder algo, decilo claramente
-- Podés hacer análisis, comparaciones y sugerencias basadas en los datos`,
-            cache_control: { type: "ephemeral" },
-          },
-          {
-            type: "text",
-            text: `Fecha actual: ${data!.fecha_hoy}
-Sucursales: ${data!.sucursales.join(", ")}
-
-Datos actuales del negocio:
-${JSON.stringify(data, null, 2)}`,
-          },
-        ]
-      : [
-          {
-            type: "text",
-            text: `Sos el asistente de soporte del sistema POS de Super Juampy para cajeros.
+- Podés hacer análisis, comparaciones y sugerencias basadas en los datos
+- Fecha actual: ${data!.fecha_hoy}
+- Las sucursales son: ${data!.sucursales.join(", ")}`
+      : `Sos el asistente de soporte del sistema POS de Super Juampy para cajeros.
 
 Tu función es ÚNICAMENTE ayudar con problemas técnicos y errores del sistema POS.
 
@@ -226,10 +214,7 @@ NO podés responder preguntas sobre:
 
 Si te preguntan algo fuera de tu alcance, respondé: "Esa información es solo para supervisores. ¿Puedo ayudarte con algún problema del POS?"
 
-Respondé siempre en español argentino, de forma simple y clara para un cajero.`,
-            cache_control: { type: "ephemeral" },
-          },
-        ];
+Respondé siempre en español argentino, de forma simple y clara para un cajero.`;
 
     const history = Array.isArray(body.history) ? body.history : [];
     const conversationMessages = [
@@ -240,41 +225,17 @@ Respondé siempre en español argentino, de forma simple y clara para un cajero.
       { role: "user" as const, content: question },
     ];
 
-    const encoder = new TextEncoder();
-    const stream = anthropic.messages.stream(
-      {
-        model: "claude-sonnet-4-6",
-        max_tokens: 1024,
-        system: systemBlocks,
-        messages: conversationMessages,
-      },
-      { headers: { "anthropic-beta": "prompt-caching-2024-07-31" } },
-    );
-
-    // start() sincrónico: nunca puede rechazar, por lo que el ReadableStream
-    // nunca entra en estado de error. Errores de la API se escriben como texto.
-    const readable = new ReadableStream({
-      start(controller) {
-        stream.on("text", (text) => {
-          try { controller.enqueue(encoder.encode(text)); } catch {}
-        });
-        stream.once("finalMessage", () => {
-          try { controller.close(); } catch {}
-        });
-        stream.once("error", (err: any) => {
-          console.error("AI stream error:", err);
-          try { controller.enqueue(encoder.encode(`\n\n⚠️ Error: ${err?.message ?? "Error del asistente"}`)); } catch {}
-          try { controller.close(); } catch {}
-        });
-        stream.once("abort", () => {
-          try { controller.close(); } catch {}
-        });
-      },
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-5",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: conversationMessages,
     });
 
-    return new Response(readable, {
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
-    });
+    const response =
+      message.content[0].type === "text" ? message.content[0].text : "";
+
+    return NextResponse.json({ response });
   } catch (e: any) {
     console.error("AI error:", e);
     return NextResponse.json(

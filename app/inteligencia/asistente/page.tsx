@@ -46,31 +46,12 @@ export default function AsistentePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question, history, role: getPosEmployee()?.role ?? "cashier" }),
       });
-
-      if (!res.ok || !res.body) {
-        const json = await res.json().catch(() => ({}));
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: json.error ?? "Error al procesar la consulta.",
-        }]);
-        return;
-      }
-
-      // Agrega mensaje vacío y oculta el indicador de escritura
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-      setLoading(false);
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          return [...prev.slice(0, -1), { ...last, content: last.content + chunk }];
-        });
-      }
+      const json = await res.json();
+      const assistantMsg: Message = {
+        role: "assistant",
+        content: json.response ?? json.error ?? "Error al procesar la consulta.",
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
     } catch {
       setMessages((prev) => [
         ...prev,
