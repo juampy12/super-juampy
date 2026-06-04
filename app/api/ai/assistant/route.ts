@@ -225,17 +225,36 @@ Respondé siempre en español argentino, de forma simple y clara para un cajero.
       { role: "user" as const, content: question },
     ];
 
-    const message = await anthropic.messages.create({
+    const encoder = new TextEncoder();
+    const stream = anthropic.messages.stream({
       model: "claude-sonnet-4-5",
       max_tokens: 1024,
       system: systemPrompt,
       messages: conversationMessages,
     });
 
-    const response =
-      message.content[0].type === "text" ? message.content[0].text : "";
+    const readable = new ReadableStream({
+      start(controller) {
+        stream.on("text", (text) => {
+          try { controller.enqueue(encoder.encode(text)); } catch {}
+        });
+        stream.once("finalMessage", () => {
+          try { controller.close(); } catch {}
+        });
+        stream.once("error", (err: any) => {
+          console.error("AI stream error:", err);
+          try { controller.enqueue(encoder.encode(`\n\n⚠️ Error: ${err?.message ?? "Error del asistente"}`)); } catch {}
+          try { controller.close(); } catch {}
+        });
+        stream.once("abort", () => {
+          try { controller.close(); } catch {}
+        });
+      },
+    });
 
-    return NextResponse.json({ response });
+    return new Response(readable, {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
   } catch (e: any) {
     console.error("AI error:", e);
     return NextResponse.json(
