@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
+import toast from "react-hot-toast";
 import { getQueue, syncQueue } from "./offlineQueue";
 
 export function useOnlineSync(onReconnect?: () => void) {
@@ -22,10 +23,10 @@ export function useOnlineSync(onReconnect?: () => void) {
       const { synced, failed } = await syncQueue();
       updatePending();
       if (synced > 0) {
-        alert(`✅ ${synced} venta${synced > 1 ? "s" : ""} sincronizada${synced > 1 ? "s" : ""} correctamente.`);
+        toast.success(`${synced} venta${synced > 1 ? "s" : ""} sincronizada${synced > 1 ? "s" : ""} correctamente.`);
       }
       if (failed > 0) {
-        alert(`⚠️ ${failed} venta${failed > 1 ? "s" : ""} no se pudo${failed > 1 ? "n" : ""} sincronizar. Revisá la conexión.`);
+        toast.error(`${failed} venta${failed > 1 ? "s" : ""} no se pudo${failed > 1 ? "n" : ""} sincronizar. Revisá la conexión.`);
       }
     } finally {
       setSyncing(false);
