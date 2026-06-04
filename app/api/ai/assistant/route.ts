@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -233,23 +234,23 @@ Respondé siempre en español argentino, de forma simple y clara para un cajero.
       messages: conversationMessages,
     });
 
-    const readable = new ReadableStream({
-      start(controller) {
-        stream.on("text", (text) => {
-          try { controller.enqueue(encoder.encode(text)); } catch {}
-        });
-        stream.once("finalMessage", () => {
-          try { controller.close(); } catch {}
-        });
-        stream.once("error", (err: any) => {
-          console.error("AI stream error:", err);
-          try { controller.enqueue(encoder.encode(`\n\n⚠️ Error: ${err?.message ?? "Error del asistente"}`)); } catch {}
-          try { controller.close(); } catch {}
-        });
-        stream.once("abort", () => {
-          try { controller.close(); } catch {}
-        });
-      },
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+
+    stream.on("text", (text) => {
+      writer.write(encoder.encode(text)).catch(() => {});
+    });
+    stream.once("finalMessage", () => {
+      writer.close().catch(() => {});
+    });
+    stream.once("error", (err: any) => {
+      console.error("AI stream error:", err);
+      writer.write(encoder.encode(`\n\n⚠️ Error: ${err?.message ?? "Error del asistente"}`))
+        .catch(() => {})
+        .finally(() => writer.close().catch(() => {}));
+    });
+    stream.once("abort", () => {
+      writer.close().catch(() => {});
     });
 
     return new Response(readable, {
