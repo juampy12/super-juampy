@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { getPosEmployee } from "@/lib/posSession";
 import { addToQueue } from "@/lib/offlineQueue";
-import { warmCache, searchCachedProducts, mergeIntoCachedProducts } from "@/lib/productCache";
+import { warmCache, searchCachedProducts, mergeIntoCachedProducts, initProductCache, getCacheSavedAt } from "@/lib/productCache";
 import { useOnlineSync } from "@/lib/useOnlineSync";
 import { getHolds, saveHold, removeHold, type Hold } from "@/app/ventas/lib/hold";
 
@@ -373,8 +373,14 @@ export default function VentasPage() {
 
   // store_id fijo del empleado logueado (null = supervisor, ve todas)
   const selectedStoreIdRef = useRef<string | null>(null);
+  const [cacheSyncedAt, setCacheSyncedAt] = useState<number | null>(null);
   const { isOnline, pendingCount, syncing, sync, updatePending } = useOnlineSync(() => {
-    if (selectedStoreIdRef.current) warmCache(supabase, selectedStoreIdRef.current);
+    if (selectedStoreIdRef.current) {
+      void warmCache(supabase, selectedStoreIdRef.current).then(() => {
+        const sid = selectedStoreIdRef.current;
+        if (sid) setCacheSyncedAt(getCacheSavedAt(sid));
+      });
+    }
   });
   const isOnlineRef = useRef(true);
   useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
@@ -411,8 +417,17 @@ export default function VentasPage() {
       setSelectedRegisterId(null);
       return;
     }
-    // Calentar cache de productos para uso offline
-    if (isOnline) warmCache(supabase, selectedStoreId);
+    // Cargar IDB en memoria (funciona offline también)
+    setCacheSyncedAt(null);
+    void initProductCache(selectedStoreId).then(() => {
+      setCacheSyncedAt(getCacheSavedAt(selectedStoreId));
+    });
+    // Actualizar cache desde Supabase cuando hay conexión
+    if (isOnline) {
+      void warmCache(supabase, selectedStoreId).then(() => {
+        setCacheSyncedAt(getCacheSavedAt(selectedStoreId));
+      });
+    }
 
     supabase
       .from("registers")
@@ -1094,7 +1109,9 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
         <div className="flex gap-2 items-center">
           {!isOnline && (
             <div className="rounded-lg bg-red-100 border border-red-300 px-3 py-2 text-sm font-medium text-red-800 flex items-center gap-1">
-              📵 Sin conexión
+              📵 Sin conexión{cacheSyncedAt && selectedStoreId
+                ? ` — productos del ${new Date(cacheSyncedAt).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
+                : ""}
             </div>
           )}
           {isOnline && pendingCount > 0 && (
