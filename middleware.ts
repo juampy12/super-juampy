@@ -30,6 +30,7 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|sw.js|workbox-|manifest.json|api/employee/login|api/health).*)",
+    // Excluye assets estáticos, SW, manifest e íconos PNG del guard de auth
+    "/((?!_next/static|_next/image|favicon.ico|favicon.svg|sw.js|workbox-|manifest.json|icon-192.png|icon-512.png|logo.*\\.png|logo.*\\.svg|api/employee/login|api/health).*)",
   ],
 };
