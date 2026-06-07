@@ -30,6 +30,7 @@ type ProductRow = {
 
   // (opcional) si el RPC devuelve stock
   stock?: number | null;
+  active?: boolean | null;
 };
 
 type CartItem = {
@@ -617,28 +618,7 @@ async function handleSearch(opts?: {
         return;
       }
 const list = (data ?? []) as ProductRow[];
-// ✅ Filtrar productos desactivados (active=false)
-let activeList = list;
-
-try {
-  const ids = list.map((p) => p.id).filter(Boolean);
-
-  if (ids.length && navigator.onLine) {
-    const { data: actRows, error: actErr } = await supabase
-      .from("products")
-      .select("id, active")
-      .in("id", ids);
-
-    if (!actErr) {
-      const activeSet = new Set(
-        (actRows ?? []).filter((r: any) => r?.active).map((r: any) => r.id)
-      );
-      activeList = list.filter((p) => activeSet.has(p.id));
-    }
-  }
-} catch {
-  // si falla, no rompemos nada
-}
+const activeList = list.filter((p) => p.active !== false);
 
 const ordered = sortResultsForTerm(activeList, term);
 setResults(ordered);
