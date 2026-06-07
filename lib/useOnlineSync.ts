@@ -20,10 +20,13 @@ export function useOnlineSync(onReconnect?: () => void) {
     if (count === 0) return;
     setSyncing(true);
     try {
-      const { synced, failed } = await syncQueue();
+      const { synced, failed, abandoned } = await syncQueue();
       updatePending();
       if (synced > 0) {
         toast.success(`${synced} venta${synced > 1 ? "s" : ""} sincronizada${synced > 1 ? "s" : ""} correctamente.`);
+      }
+      if (abandoned > 0) {
+        toast.error("⚠️ Venta no pudo sincronizarse después de 3 intentos. Revisá el historial.", { duration: 8000 });
       }
       if (failed > 0) {
         toast.error(`${failed} venta${failed > 1 ? "s" : ""} no se pudo${failed > 1 ? "n" : ""} sincronizar. Revisá la conexión.`);

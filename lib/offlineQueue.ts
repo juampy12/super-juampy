@@ -12,6 +12,7 @@ export type QueuedSale = {
 };
 
 const QUEUE_KEY = "pos_offline_queue_v1";
+const MAX_ATTEMPTS = 3;
 
 export function getQueue(): QueuedSale[] {
   if (typeof window === "undefined") return [];
@@ -36,14 +37,15 @@ export function clearQueue() {
   localStorage.removeItem(QUEUE_KEY);
 }
 
-export async function syncQueue(): Promise<{ synced: number; failed: number }> {
-  const queue = getQueue();
-  if (queue.length === 0) return { synced: 0, failed: 0 };
+export async function syncQueue(): Promise<{ synced: number; failed: number; abandoned: number }> {
+  let queue = getQueue();
+  if (queue.length === 0) return { synced: 0, failed: 0, abandoned: 0 };
 
   let synced = 0;
   let failed = 0;
+  let abandoned = 0;
 
-  for (const sale of queue) {
+  for (const sale of [...queue]) {
     try {
       const res = await fetch("/api/pos/confirm", {
         method: "POST",
@@ -51,15 +53,28 @@ export async function syncQueue(): Promise<{ synced: number; failed: number }> {
         body: JSON.stringify(sale.payload),
       });
       if (res.ok) {
-        removeFromQueue(sale.id);
+        queue = queue.filter(s => s.id !== sale.id);
         synced++;
+      } else if (res.status < 500) {
+        // 4xx: error permanente (venta duplicada, producto inexistente, etc.)
+        const newAttempts = sale.attempts + 1;
+        if (newAttempts >= MAX_ATTEMPTS) {
+          queue = queue.filter(s => s.id !== sale.id);
+          abandoned++;
+        } else {
+          queue = queue.map(s => s.id === sale.id ? { ...s, attempts: newAttempts } : s);
+          failed++;
+        }
       } else {
+        // 5xx: error transitorio (servidor caído), no cuenta como intento
         failed++;
       }
     } catch {
+      // Sin conexión o timeout: transitorio, no cuenta como intento
       failed++;
     }
   }
 
-  return { synced, failed };
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  return { synced, failed, abandoned };
 }
