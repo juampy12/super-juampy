@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import { getPosEmployee } from "@/lib/posSession";
+import { useProactiveAlert } from "@/lib/useProactiveAlert";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -19,6 +20,8 @@ export default function AIChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const didDrag = useRef(false);
+  const proactiveInjected = useRef(false);
+  const { message: proactiveMsg, clear: clearProactive } = useProactiveAlert();
 
   useEffect(() => {
     try {
@@ -34,6 +37,13 @@ export default function AIChat() {
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 100);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !proactiveMsg || proactiveInjected.current) return;
+    proactiveInjected.current = true;
+    setMessages((prev) => [...prev, { role: "assistant", content: proactiveMsg }]);
+    clearProactive();
+  }, [open, proactiveMsg, clearProactive]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

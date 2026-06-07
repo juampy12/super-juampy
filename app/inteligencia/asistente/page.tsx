@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { getPosEmployee } from "@/lib/posSession";
+import { useProactiveAlert } from "@/lib/useProactiveAlert";
 
 type Message = {
   role: "user" | "assistant";
@@ -28,10 +29,19 @@ export default function AsistentePage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const proactiveInjected = useRef(false);
+  const { message: proactiveMsg, clear: clearProactive } = useProactiveAlert();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (!proactiveMsg || proactiveInjected.current) return;
+    proactiveInjected.current = true;
+    setMessages((prev) => [...prev, { role: "assistant", content: proactiveMsg }]);
+    clearProactive();
+  }, [proactiveMsg, clearProactive]);
 
   async function sendMessage(question: string) {
     if (!question.trim() || loading) return;
