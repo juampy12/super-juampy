@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { exportReceiptPDF } from "@/app/_utils/receipt";
 
 type ConfirmItem = {
@@ -57,6 +57,28 @@ export default function ConfirmSaleButton({
   const [savedTotal, setSavedTotal] = useState(0);
   const [savedPayment, setSavedPayment] = useState<PaymentInfo | null>(null);
   const inFlightRef = useRef(false);
+  // Ref para que el listener de teclado siempre llame a la versión actual de confirmar
+  const confirmarRef = useRef(confirmar);
+  useEffect(() => { confirmarRef.current = confirmar; });
+
+  // Cuando el modal está abierto: Enter confirma, Escape cancela.
+  // Usamos capture phase para interceptar antes del listener global de ventas/page.tsx.
+  useEffect(() => {
+    if (!showModal) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        confirmarRef.current();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowModal(false);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [showModal]);
 
   function handleClick() {
     if (inFlightRef.current) return;
