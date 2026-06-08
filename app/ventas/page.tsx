@@ -338,6 +338,8 @@ export default function VentasPage() {
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<ProductRow[]>([]);
+  const [selectedResultIdx, setSelectedResultIdx] = useState(-1);
+  const resultItemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [items, setItems] = useState<CartItem[]>([]);
   const [holds, setHolds] = useState<Hold[]>([]);
   const [showHolds, setShowHolds] = useState(false);
@@ -346,6 +348,19 @@ export default function VentasPage() {
   useEffect(() => {
     setHolds(getHolds());
   }, []);
+
+  // Selecciona el primer resultado automáticamente cuando cambia la lista
+  useEffect(() => {
+    setSelectedResultIdx(results.length > 0 ? 0 : -1);
+    resultItemRefs.current = resultItemRefs.current.slice(0, results.length);
+  }, [results]);
+
+  // Scroll al ítem seleccionado cuando cambia el índice
+  useEffect(() => {
+    if (selectedResultIdx >= 0) {
+      resultItemRefs.current[selectedResultIdx]?.scrollIntoView({ block: "nearest" });
+    }
+  }, [selectedResultIdx]);
 
   // Pago
   const [paymentMethod, setPaymentMethod] =
@@ -834,6 +849,18 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
       if (!isTyping) {
         if (scannerTimerRef.current) clearTimeout(scannerTimerRef.current);
 
+        if (e.key === "ArrowDown" && results.length > 0) {
+          e.preventDefault();
+          setSelectedResultIdx((i) => Math.min(i + 1, results.length - 1));
+          return;
+        }
+
+        if (e.key === "ArrowUp" && results.length > 0) {
+          e.preventDefault();
+          setSelectedResultIdx((i) => Math.max(i - 1, 0));
+          return;
+        }
+
         if (e.key === "Enter") {
           const code = scannerBufferRef.current.trim();
           scannerBufferRef.current = "";
@@ -843,6 +870,16 @@ if (code.length >= 6) {
             setSearch(code);
             playBeep();
 void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
+            return;
+          }
+
+          // Si hay resultado seleccionado, agregarlo al carrito
+          if (results.length > 0 && selectedResultIdx >= 0) {
+            e.preventDefault();
+            addToCartMaybeWeighted(results[selectedResultIdx]);
+            setSearch("");
+            setResults([]);
+            setTimeout(() => searchInputRef.current?.focus(), 0);
             return;
           }
 
@@ -952,6 +989,8 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
     mpAmount,
     accountAmount,
     quickMode,
+    results,
+    selectedResultIdx,
   ]);
 
   // =========================
@@ -1223,8 +1262,27 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
 onKeyDown={(e) => {
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    if (results.length > 0) setSelectedResultIdx((i) => Math.min(i + 1, results.length - 1));
+    return;
+  }
+  if (e.key === "ArrowUp") {
+    e.preventDefault();
+    if (results.length > 0) setSelectedResultIdx((i) => Math.max(i - 1, 0));
+    return;
+  }
   if (e.key === "Enter") {
     e.preventDefault();
+
+    // Si hay un resultado seleccionado, agregarlo al carrito
+    if (results.length > 0 && selectedResultIdx >= 0) {
+      addToCartMaybeWeighted(results[selectedResultIdx]);
+      setSearch("");
+      setResults([]);
+      setTimeout(() => searchInputRef.current?.focus(), 0);
+      return;
+    }
 
     const term = search.trim();
     const isOwn4DigitSku = /^\d{4}$/.test(term); // SOLO 4 dígitos
@@ -1256,10 +1314,15 @@ onKeyDown={(e) => {
                   No hay resultados. Buscá por nombre o SKU.
                 </p>
               ) : (
-                results.map((p) => (
+                results.map((p, idx) => {
+                  const isSelected = idx === selectedResultIdx;
+                  return (
                   <div
                     key={p.id}
-                    className="flex items-start justify-between gap-3 border-b px-3 py-2 last:border-b-0 hover:bg-neutral-50"
+                    ref={(el) => { resultItemRefs.current[idx] = el; }}
+                    className="flex items-start justify-between gap-3 border-b px-3 py-2 last:border-b-0 cursor-default"
+                    style={isSelected ? { background: "#1A5FA8", color: "#fff" } : undefined}
+                    onMouseEnter={() => setSelectedResultIdx(idx)}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -1271,29 +1334,29 @@ onKeyDown={(e) => {
                         </p>
 
                         {p.is_weighted ? (
-                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] bg-blue-100 text-blue-800">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ${isSelected ? "bg-white/20 text-white" : "bg-blue-100 text-blue-800"}`}>
                             PESABLE
                           </span>
                         ) : null}
 
                         {p.has_offer ? (
-                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] bg-green-100 text-green-800">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ${isSelected ? "bg-white/20 text-white" : "bg-green-100 text-green-800"}`}>
                             OFERTA
                           </span>
                         ) : null}
                       </div>
 
-                      <p className="text-xs text-neutral-600 mt-0.5">
+                      <p className={`text-xs mt-0.5 ${isSelected ? "text-white/80" : "text-neutral-600"}`}>
                         SKU: {p.sku ?? "—"}
                         {" · "}
                         {p.stock !== undefined ? <>Stock: {p.stock ?? "—"}</> : null}
                         {p.stock !== undefined ? " · " : " · "}
                         {p.has_offer ? (
                           <>
-                            <span className="font-semibold text-green-700">
+                            <span className={`font-semibold ${isSelected ? "text-white" : "text-green-700"}`}>
                               ${Number(p.effective_price ?? 0).toFixed(2)}
                             </span>{" "}
-                            <span className="text-neutral-500 line-through ml-1">
+                            <span className={`line-through ml-1 ${isSelected ? "text-white/60" : "text-neutral-500"}`}>
                               ${Number(p.price ?? 0).toFixed(2)}
                             </span>
                           </>
@@ -1305,13 +1368,14 @@ onKeyDown={(e) => {
 
                     <button
                       onClick={() => addToCartMaybeWeighted(p)}
-                      className="shrink-0 rounded border px-3 py-2 text-xs font-medium hover:bg-neutral-100"
+                      className={`shrink-0 rounded border px-3 py-2 text-xs font-medium ${isSelected ? "border-white/40 text-white hover:bg-white/10" : "hover:bg-neutral-100"}`}
                       title="Agregar al carrito"
                     >
                       Agregar
                     </button>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
