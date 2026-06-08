@@ -32,9 +32,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
     }
 
+    // qty is the column name in sale_items (not quantity)
     const { data: items, error: itemsErr } = await supabaseAdmin
       .from("sale_items")
-      .select("product_id, quantity, unit_price, products(name)")
+      .select("product_id, qty, unit_price")
       .eq("sale_id", sale_id);
 
     if (itemsErr) {
@@ -42,10 +43,26 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
     }
 
-    const mapped = (items ?? []).map((item: any) => ({
+    const rows = items ?? [];
+    const productIds = [...new Set(rows.map((r: any) => r.product_id))];
+
+    const { data: products, error: prodErr } = await supabaseAdmin
+      .from("products")
+      .select("id, name")
+      .in("id", productIds);
+
+    if (prodErr) {
+      console.error("Error leyendo nombres de productos:", prodErr);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
+    }
+
+    const nameMap: Record<string, string> = {};
+    for (const p of products ?? []) nameMap[p.id] = p.name;
+
+    const mapped = rows.map((item: any) => ({
       product_id: item.product_id,
-      name: item.products?.name ?? "Producto",
-      quantity: Number(item.quantity),
+      name: nameMap[item.product_id] ?? "Producto",
+      quantity: Number(item.qty),
       unit_price: Number(item.unit_price),
     }));
 
