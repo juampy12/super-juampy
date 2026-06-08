@@ -30,6 +30,7 @@ const supervisorGroups: NavGroup[] = [
     children: [
       { href: '/reports', label: 'Resumen', icon: 'ti-chart-pie' },
       { href: '/reports/top-products', label: 'Top productos', icon: 'ti-trophy' },
+      { href: '/ventas/historial', label: 'Historial ventas', icon: 'ti-receipt' },
       { href: '/cierres', label: 'Cierre de caja', icon: 'ti-calculator' },
       { href: '/cierres/historial', label: 'Historial cierres', icon: 'ti-history' },
     ],

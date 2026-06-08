@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 
 type Store = { id: string; name: string };
 type Register = { id: string; name: string; store_id?: string | null };
@@ -173,6 +174,25 @@ export default function CashClosuresHistoryPage() {
     });
   }
 
+  function exportToExcel() {
+    const wsData: (string | number)[][] = [
+      ["Fecha", "Sucursal", "Caja", "Total ventas", "Efectivo", "Tickets", "Hora de cierre"],
+      ...rows.map((r) => [
+        formatDate(r.date),
+        storeName(r.store_id),
+        r.register_id ? registerMap[r.register_id] ?? "Caja" : "—",
+        r.total_sales,
+        r.total_cash,
+        r.total_tickets,
+        r.closed_at ? formatTime(r.closed_at) : "—",
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Historial cierres");
+    XLSX.writeFile(wb, `historial-cierres-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   async function clearFilters() {
     setFilterStore("");
     setFilterRegister("");
@@ -257,6 +277,14 @@ export default function CashClosuresHistoryPage() {
             className="rounded-lg border px-4 py-2 text-sm font-medium bg-neutral-800 text-white disabled:opacity-50"
           >
             {loading ? "Actualizando..." : "Actualizar"}
+          </button>
+
+          <button
+            onClick={exportToExcel}
+            disabled={rows.length === 0}
+            className="rounded-lg border px-4 py-2 text-sm font-medium bg-emerald-700 text-white disabled:opacity-50"
+          >
+            Exportar Excel
           </button>
         </div>
       </div>

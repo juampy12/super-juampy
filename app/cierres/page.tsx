@@ -40,6 +40,13 @@ type TicketRow = {
   change?: number;
 };
 
+type SaleItem = {
+  product_id: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+};
+
 type MetaInfo = {
   mixtoTickets: number;
   mixtoTotal: number;
@@ -96,6 +103,29 @@ export default function CashClosurePage() {
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
+  const [ticketItemsCache, setTicketItemsCache] = useState<Record<string, SaleItem[]>>({});
+  const [ticketItemsLoading, setTicketItemsLoading] = useState<string | null>(null);
+
+  async function toggleTicketExpand(id: string) {
+    if (expandedTicketId === id) {
+      setExpandedTicketId(null);
+      return;
+    }
+    setExpandedTicketId(id);
+    if (ticketItemsCache[id]) return;
+    try {
+      setTicketItemsLoading(id);
+      const res = await fetch(`/api/sales/items?sale_id=${id}`, { cache: "no-store" });
+      const json = await res.json();
+      setTicketItemsCache((prev) => ({ ...prev, [id]: json.data ?? [] }));
+    } catch {
+      setTicketItemsCache((prev) => ({ ...prev, [id]: [] }));
+    } finally {
+      setTicketItemsLoading(null);
+    }
+  }
 
   function formatMoney(n: number) {
     return `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -285,6 +315,8 @@ export default function CashClosurePage() {
             }))
           : []
       );
+      setExpandedTicketId(null);
+      setTicketItemsCache({});
 
       const rawMeta = data?.meta ?? null;
       setMeta(
@@ -629,6 +661,7 @@ export default function CashClosurePage() {
             <table className="min-w-full text-xs">
               <thead>
                 <tr className="border-b bg-neutral-50">
+                  <th className="text-left py-2 px-2 w-4"></th>
                   <th className="text-left py-2 px-2">Hora</th>
                   <th className="text-right py-2 px-2">Total</th>
                   <th className="text-left py-2 px-2">Método</th>
@@ -641,19 +674,62 @@ export default function CashClosurePage() {
                 </tr>
               </thead>
               <tbody>
-                {tickets.map((t) => (
-                  <tr key={t.id} className="border-b last:border-0">
-                    <td className="py-1 px-2">{t.time}</td>
-                    <td className="py-1 px-2 text-right">{formatMoney(t.total)}</td>
-                    <td className="py-1 px-2">{t.method_label}</td>
-                    <td className="py-1 px-2 text-right">{t.cash ? formatMoney(t.cash) : "—"}</td>
-                    <td className="py-1 px-2 text-right">{t.debit ? formatMoney(t.debit) : "—"}</td>
-                    <td className="py-1 px-2 text-right">{t.credit ? formatMoney(t.credit) : "—"}</td>
-                    <td className="py-1 px-2 text-right">{t.mp ? formatMoney(t.mp) : "—"}</td>
-                    <td className="py-1 px-2 text-right">{t.account ? formatMoney(t.account) : "—"}</td>
-                    <td className="py-1 px-2 text-right">{t.change ? formatMoney(t.change) : "—"}</td>
-                  </tr>
-                ))}
+                {tickets.map((t) => {
+                  const isExpanded = expandedTicketId === t.id;
+                  const items = ticketItemsCache[t.id];
+                  return (
+                    <React.Fragment key={t.id}>
+                      <tr
+                        className="border-b last:border-0 cursor-pointer hover:bg-neutral-50"
+                        onClick={() => toggleTicketExpand(t.id)}
+                      >
+                        <td className="py-1 px-2 text-neutral-400">{isExpanded ? "▼" : "▶"}</td>
+                        <td className="py-1 px-2">{t.time}</td>
+                        <td className="py-1 px-2 text-right">{formatMoney(t.total)}</td>
+                        <td className="py-1 px-2">{t.method_label}</td>
+                        <td className="py-1 px-2 text-right">{t.cash ? formatMoney(t.cash) : "—"}</td>
+                        <td className="py-1 px-2 text-right">{t.debit ? formatMoney(t.debit) : "—"}</td>
+                        <td className="py-1 px-2 text-right">{t.credit ? formatMoney(t.credit) : "—"}</td>
+                        <td className="py-1 px-2 text-right">{t.mp ? formatMoney(t.mp) : "—"}</td>
+                        <td className="py-1 px-2 text-right">{t.account ? formatMoney(t.account) : "—"}</td>
+                        <td className="py-1 px-2 text-right">{t.change ? formatMoney(t.change) : "—"}</td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-blue-50 border-b">
+                          <td></td>
+                          <td colSpan={9} className="py-2 px-4">
+                            {ticketItemsLoading === t.id ? (
+                              <span className="text-neutral-400">Cargando productos…</span>
+                            ) : !items || items.length === 0 ? (
+                              <span className="text-neutral-400">Sin detalle de productos.</span>
+                            ) : (
+                              <table className="min-w-full text-xs">
+                                <thead>
+                                  <tr className="text-neutral-500">
+                                    <th className="text-left py-1 pr-6">Producto</th>
+                                    <th className="text-right py-1 pr-6">Cant.</th>
+                                    <th className="text-right py-1 pr-6">Precio unit.</th>
+                                    <th className="text-right py-1">Subtotal</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {items.map((item) => (
+                                    <tr key={item.product_id}>
+                                      <td className="py-0.5 pr-6">{item.name}</td>
+                                      <td className="py-0.5 pr-6 text-right">{item.quantity}</td>
+                                      <td className="py-0.5 pr-6 text-right">{formatMoney(item.unit_price)}</td>
+                                      <td className="py-0.5 text-right">{formatMoney(item.quantity * item.unit_price)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
