@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifySession } from "@/lib/jwt";
 
 const PUBLIC_PATHS = [
   "/pos-login",
@@ -11,18 +12,28 @@ const PUBLIC_PATHS = [
   "/manifest.json",
 ];
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
-  const auth = req.cookies.get("sj_pos_auth")?.value;
-  if (!auth) {
+  const token = req.cookies.get("sj_pos_auth")?.value;
+  if (!token) {
     const loginUrl = new URL("/pos-login", req.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  const session = await verifySession(token);
+  if (!session) {
+    const loginUrl = new URL("/pos-login", req.url);
+    loginUrl.searchParams.set("redirect", pathname);
+    const response = NextResponse.redirect(loginUrl);
+    // Borra la cookie inválida o expirada
+    response.cookies.set("sj_pos_auth", "", { maxAge: 0, path: "/" });
+    return response;
   }
 
   return NextResponse.next();
