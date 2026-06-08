@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
+import { getSessionFromRequest, isSupervisor, unauthorized } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -193,18 +194,23 @@ async function getBusinessData() {
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionFromRequest(req);
+    if (!session) return unauthorized();
+
     const body = await req.json().catch(() => ({}));
     const question = String(body.question ?? "").trim();
-    const role = String(body.role ?? "cashier").trim();
     if (!question) {
       return NextResponse.json({ error: "Falta la pregunta" }, { status: 400 });
     }
 
-    const isSupervisor = role === "supervisor";
-    const storeId = String(body.store_id ?? "").trim() || "all";
-    const data = isSupervisor ? await getBusinessDataCached(storeId) : null;
+    const supervisorRole = isSupervisor(session);
+    // Supervisores pueden consultar una sucursal específica o "all"; cajeros usan la suya
+    const storeId = supervisorRole
+      ? (String(body.store_id ?? "").trim() || "all")
+      : (session.store_id ?? "all");
+    const data = supervisorRole ? await getBusinessDataCached(storeId) : null;
 
-    const systemPrompt = isSupervisor
+    const systemPrompt = supervisorRole
       ? `Sos el asistente de inteligencia artificial del sistema POS de Super Juampy, una cadena de supermercados en Charata, Chaco, Argentina.
 
 Tenés acceso a los datos actualizados del negocio. Respondé siempre en español argentino, de forma clara, concisa y útil para el gerente del supermercado.

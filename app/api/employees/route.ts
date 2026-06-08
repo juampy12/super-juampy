@@ -1,30 +1,47 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const [empRes, storeRes, regRes] = await Promise.all([
-      supabaseAdmin.from("employees").select("id, code, name, role, store_id, register_id, is_active").order("name", { ascending: true }),
-      supabaseAdmin.from("stores").select("id, name"),
-      supabaseAdmin.from("registers").select("id, name"),
-    ]);
+    const session = await getSessionFromRequest(req);
+    if (!session) return unauthorized();
 
-    if (empRes.error) return NextResponse.json({ error: empRes.error.message }, { status: 500 });
+    if (isSupervisor(session)) {
+      // Supervisores ven todos los empleados con datos de sucursal y caja
+      const [empRes, storeRes, regRes] = await Promise.all([
+        supabaseAdmin.from("employees").select("id, code, name, role, store_id, register_id, is_active").order("name", { ascending: true }),
+        supabaseAdmin.from("stores").select("id, name"),
+        supabaseAdmin.from("registers").select("id, name"),
+      ]);
 
-    const storeMap: Record<string, string> = {};
-    (storeRes.data ?? []).forEach((s: any) => { storeMap[s.id] = s.name; });
+      if (empRes.error) return NextResponse.json({ error: empRes.error.message }, { status: 500 });
 
-    const regMap: Record<string, string> = {};
-    (regRes.data ?? []).forEach((r: any) => { regMap[r.id] = r.name; });
+      const storeMap: Record<string, string> = {};
+      (storeRes.data ?? []).forEach((s: any) => { storeMap[s.id] = s.name; });
 
-    const employees = (empRes.data ?? []).map((e: any) => ({
-      ...e,
-      active: e.is_active,
-      stores: e.store_id ? { name: storeMap[e.store_id] ?? "—" } : null,
-      registers: e.register_id ? { name: regMap[e.register_id] ?? "—" } : null,
-    }));
+      const regMap: Record<string, string> = {};
+      (regRes.data ?? []).forEach((r: any) => { regMap[r.id] = r.name; });
 
-    return NextResponse.json({ employees });
+      const employees = (empRes.data ?? []).map((e: any) => ({
+        ...e,
+        active: e.is_active,
+        stores: e.store_id ? { name: storeMap[e.store_id] ?? "—" } : null,
+        registers: e.register_id ? { name: regMap[e.register_id] ?? "—" } : null,
+      }));
+
+      return NextResponse.json({ employees });
+    }
+
+    // Cajeros solo ven su propio perfil
+    const { data, error } = await supabaseAdmin
+      .from("employees")
+      .select("id, code, name, role, store_id, register_id, is_active")
+      .eq("id", session.employee_id)
+      .maybeSingle();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ employees: data ? [{ ...data, active: data.is_active }] : [] });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Error" }, { status: 500 });
   }
@@ -32,6 +49,10 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionFromRequest(req);
+    if (!session) return unauthorized();
+    if (!isSupervisor(session)) return forbidden("Solo supervisores pueden crear empleados");
+
     const body = await req.json();
     const name = String(body?.name ?? "").trim();
     const code = String(body?.code ?? "").trim();
@@ -72,6 +93,10 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    const session = await getSessionFromRequest(req);
+    if (!session) return unauthorized();
+    if (!isSupervisor(session)) return forbidden("Solo supervisores pueden modificar empleados");
+
     const body = await req.json();
     const id = String(body?.id ?? "").trim();
     if (!id) return NextResponse.json({ error: "Falta id" }, { status: 400 });

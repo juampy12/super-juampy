@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -9,10 +10,18 @@ function isUuid(v: string) {
 
 export async function GET(req: Request) {
   try {
+    const session = await getSessionFromRequest(req);
+    if (!session) return unauthorized();
+
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date");
     const store_id = searchParams.get("store_id");
     const register_id = searchParams.get("register_id");
+
+    // Cajeros solo pueden consultar su propia sucursal
+    if (!isSupervisor(session) && store_id && session.store_id !== store_id) {
+      return forbidden("No podés consultar cierres de otra sucursal");
+    }
 
     // ✅ Validaciones estrictas (evita devolver datos de otra caja por error)
     if (store_id && !isUuid(store_id)) {
@@ -33,6 +42,11 @@ export async function GET(req: Request) {
     if (date) q = q.eq("date", date);
     if (store_id) q = q.eq("store_id", store_id);
     if (register_id) q = q.eq("register_id", register_id);
+
+    // Cajeros sin store_id explícito → forzar filtro a su propia sucursal
+    if (!isSupervisor(session) && !store_id && session.store_id) {
+      q = q.eq("store_id", session.store_id);
+    }
 
     // Fecha + sucursal + caja → 1 cierre
     if (date && store_id && register_id) {
@@ -58,7 +72,15 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionFromRequest(req);
+    if (!session) return unauthorized();
+
     const body = await req.json();
+
+    // Cajeros solo pueden crear cierres de su propia sucursal
+    if (!isSupervisor(session) && session.store_id !== body.store_id) {
+      return forbidden("No podés crear cierres de otra sucursal");
+    }
 
     const { data, error } = await supabaseAdmin
       .from("cash_closures")
@@ -97,7 +119,15 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    const session = await getSessionFromRequest(req);
+    if (!session) return unauthorized();
+
     const body = await req.json();
+
+    // Cajeros solo pueden actualizar cierres de su propia sucursal
+    if (!isSupervisor(session) && session.store_id !== body.store_id) {
+      return forbidden("No podés modificar cierres de otra sucursal");
+    }
 
     const { data, error } = await supabaseAdmin
       .from("cash_closures")

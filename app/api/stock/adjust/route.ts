@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
 // ✅ Asegurar Node runtime en Vercel (evita Edge/variantes raras)
 export const runtime = "nodejs";
@@ -22,6 +23,9 @@ type Change = { product_id: string; stock: number };
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionFromRequest(req);
+    if (!session) return unauthorized();
+
     if (!SUPABASE_URL || !SERVICE_KEY) {
       return NextResponse.json(
         {
@@ -61,6 +65,12 @@ export async function POST(req: Request) {
     if (!storeId) {
       return NextResponse.json({ ok: false, error: "Falta store_id" }, { status: 400 });
     }
+
+    // Cajeros solo pueden operar en su propia sucursal
+    if (!isSupervisor(session) && session.store_id !== storeId) {
+      return forbidden("No podés ajustar stock de otra sucursal");
+    }
+
     if (!changes.length) {
       return NextResponse.json(
         { ok: false, error: "No hay cambios válidos para guardar." },
@@ -127,24 +137,24 @@ export async function POST(req: Request) {
         );
       }
 
-      // 3) movimiento
-// 3) Registrar movimiento (stock_movements exige qty NOT NULL)
-const qty = Math.max(1, Math.round(Math.abs(delta)));
+      // 3) Registrar movimiento (stock_movements exige qty NOT NULL)
+      const qty = Math.max(1, Math.round(Math.abs(delta)));
 
-const { error: insErr } = await supabaseAdmin.from("stock_movements").insert({
-  store_id: storeId,
-  product_id: productId,
+      const { error: insErr } = await supabaseAdmin.from("stock_movements").insert({
+        store_id: storeId,
+        product_id: productId,
 
-  // ✅ columnas reales
-  qty,                 // NOT NULL
-  qty_delta: delta,    // numérico (puede ser negativo)
-  delta,               // existe pero puede ser null; lo dejamos por compatibilidad
+        // ✅ columnas reales
+        qty,                 // NOT NULL
+        qty_delta: delta,    // numérico (puede ser negativo)
+        delta,               // existe pero puede ser null; lo dejamos por compatibilidad
 
-  reason,
-  note: null,
+        reason,
+        note: null,
 
-  created_at: new Date().toISOString(),
-});
+        created_at: new Date().toISOString(),
+      });
+
       if (insErr) {
         // stock ya quedó guardado; igual informamos error del movimiento
         return NextResponse.json(

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +11,10 @@ function isProvided(v: any) {
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionFromRequest(req);
+    if (!session) return unauthorized();
+    if (!isSupervisor(session)) return forbidden("Solo supervisores pueden modificar productos");
+
     const body = await req.json();
 
     const productId = String(body?.productId ?? body?.product_id ?? "").trim();
