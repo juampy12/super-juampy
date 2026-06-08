@@ -340,6 +340,8 @@ export default function VentasPage() {
   const [results, setResults] = useState<ProductRow[]>([]);
   const [selectedResultIdx, setSelectedResultIdx] = useState(-1);
   const resultItemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  // true solo cuando el usuario usó ↑/↓ o hover para elegir un resultado
+  const hasNavigatedRef = useRef(false);
   const [items, setItems] = useState<CartItem[]>([]);
   const [holds, setHolds] = useState<Hold[]>([]);
   const [showHolds, setShowHolds] = useState(false);
@@ -353,6 +355,7 @@ export default function VentasPage() {
   useEffect(() => {
     setSelectedResultIdx(results.length > 0 ? 0 : -1);
     resultItemRefs.current = resultItemRefs.current.slice(0, results.length);
+    hasNavigatedRef.current = false; // nueva búsqueda = sin navegación activa
   }, [results]);
 
   // Scroll al ítem seleccionado cuando cambia el índice
@@ -851,12 +854,14 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
 
         if (e.key === "ArrowDown" && results.length > 0) {
           e.preventDefault();
+          hasNavigatedRef.current = true;
           setSelectedResultIdx((i) => Math.min(i + 1, results.length - 1));
           return;
         }
 
         if (e.key === "ArrowUp" && results.length > 0) {
           e.preventDefault();
+          hasNavigatedRef.current = true;
           setSelectedResultIdx((i) => Math.max(i - 1, 0));
           return;
         }
@@ -873,8 +878,8 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
             return;
           }
 
-          // Si hay resultado seleccionado, agregarlo al carrito
-          if (results.length > 0 && selectedResultIdx >= 0) {
+          // Agrega al carrito solo si el usuario navegó con flechas o hover
+          if (hasNavigatedRef.current && results.length > 0 && selectedResultIdx >= 0) {
             e.preventDefault();
             addToCartMaybeWeighted(results[selectedResultIdx]);
             setSearch("");
@@ -1260,23 +1265,29 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                 placeholder={quickMode ? "Escaneá o escribí (Enter agrega primero)" : "Nombre o SKU"}
                 className="border rounded px-3 py-2 flex-1"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); hasNavigatedRef.current = false; }}
 onKeyDown={(e) => {
   if (e.key === "ArrowDown") {
     e.preventDefault();
-    if (results.length > 0) setSelectedResultIdx((i) => Math.min(i + 1, results.length - 1));
+    if (results.length > 0) {
+      hasNavigatedRef.current = true;
+      setSelectedResultIdx((i) => Math.min(i + 1, results.length - 1));
+    }
     return;
   }
   if (e.key === "ArrowUp") {
     e.preventDefault();
-    if (results.length > 0) setSelectedResultIdx((i) => Math.max(i - 1, 0));
+    if (results.length > 0) {
+      hasNavigatedRef.current = true;
+      setSelectedResultIdx((i) => Math.max(i - 1, 0));
+    }
     return;
   }
   if (e.key === "Enter") {
     e.preventDefault();
 
-    // Si hay un resultado seleccionado, agregarlo al carrito
-    if (results.length > 0 && selectedResultIdx >= 0) {
+    // Agrega al carrito solo si el usuario navegó con flechas o hover
+    if (hasNavigatedRef.current && results.length > 0 && selectedResultIdx >= 0) {
       addToCartMaybeWeighted(results[selectedResultIdx]);
       setSearch("");
       setResults([]);
@@ -1322,7 +1333,7 @@ onKeyDown={(e) => {
                     ref={(el) => { resultItemRefs.current[idx] = el; }}
                     className="flex items-start justify-between gap-3 border-b px-3 py-2 last:border-b-0 cursor-default"
                     style={isSelected ? { background: "#1A5FA8", color: "#fff" } : undefined}
-                    onMouseEnter={() => setSelectedResultIdx(idx)}
+                    onMouseEnter={() => { hasNavigatedRef.current = true; setSelectedResultIdx(idx); }}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
