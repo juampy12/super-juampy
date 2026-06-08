@@ -13,6 +13,7 @@ type Suggestion = Product & {
 };
 
 type GeneratedTexts = { instagram: string; facebook: string };
+type Offer = { type: string; value: number };
 
 // ─── Canvas helpers ───────────────────────────────────────────────────────────
 
@@ -56,7 +57,6 @@ function roundRect(
   ctx.closePath();
 }
 
-// Draws two text segments with different colors, centered together at (centerX, y)
 function drawTwoColorText(
   ctx: CanvasRenderingContext2D,
   text1: string, color1: string,
@@ -74,30 +74,190 @@ function drawTwoColorText(
   ctx.textAlign = "center";
 }
 
+// 4-pointed star path (center cx,cy; outer radius R, inner radius r)
+function starPath(
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number,
+  outerR: number, innerR: number,
+  points = 4
+) {
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const r = i % 2 === 0 ? outerR : innerR;
+    const angle = (i * Math.PI) / points - Math.PI / 2;
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+// Returns computed promo price (null if not computable)
+function calcPromoPrice(price: number, offer: Offer): number | null {
+  if (offer.type === "percent" && offer.value > 0 && offer.value < 100) {
+    return Math.round(price * (1 - offer.value / 100));
+  }
+  if ((offer.type === "fixed" || offer.type === "price") && offer.value > 0) {
+    return Math.round(offer.value);
+  }
+  return null;
+}
+
+// ─── Draw: rotated "¡OFERTA!" badge ──────────────────────────────────────────
+
+function drawOfertaBadge(ctx: CanvasRenderingContext2D, W: number) {
+  ctx.save();
+  ctx.translate(W - 30, 195);
+  ctx.rotate(-15 * (Math.PI / 180));
+
+  const bW = 220, bH = 66;
+
+  // Drop shadow
+  ctx.shadowColor = "rgba(0,0,0,0.45)";
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetX = 3;
+  ctx.shadowOffsetY = 4;
+
+  // Yellow background
+  ctx.fillStyle = "#FFD700";
+  roundRect(ctx, -bW, -bH / 2, bW, bH, 14);
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+
+  // Thin dark border
+  ctx.strokeStyle = "rgba(0,0,0,0.15)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Text "¡OFERTA!"
+  ctx.fillStyle = "#CC2020";
+  ctx.font = `bold 36px 'Arial', sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("¡OFERTA!", -bW / 2, 2);
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+}
+
+// ─── Draw: sparkles around price badge ───────────────────────────────────────
+
+function drawSparkles(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  priceY: number,
+  pillH: number,
+  contentBottom: number
+) {
+  const pillW = 520;
+  const left = W / 2 - pillW / 2;
+  const right = W / 2 + pillW / 2;
+  const top = priceY;
+  const mid = priceY + pillH / 2;
+  const bottom = Math.min(priceY + pillH, contentBottom - 10);
+
+  const sparkles = [
+    { x: left - 42, y: top + 18,       r: 20, color: "#FFD700", points: 4 },
+    { x: right + 42, y: top + 18,      r: 16, color: "#A8C62A", points: 4 },
+    { x: left - 52, y: mid,            r: 14, color: "#A8C62A", points: 4 },
+    { x: right + 52, y: mid,           r: 22, color: "#FFD700", points: 4 },
+    { x: left - 28, y: bottom - 22,    r: 12, color: "#FFD700", points: 4 },
+    { x: right + 28, y: bottom - 22,   r: 16, color: "#A8C62A", points: 4 },
+  ];
+
+  // Clip so sparkles never bleed into the footer
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 130, W, contentBottom - 130);
+  ctx.clip();
+
+  for (const s of sparkles) {
+    ctx.fillStyle = s.color;
+    ctx.globalAlpha = 0.88;
+    starPath(ctx, s.x, s.y, s.r, s.r * 0.38, s.points);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// ─── Draw: price badge (with optional promo/strikethrough) ───────────────────
+
 function drawPriceBadge(
   ctx: CanvasRenderingContext2D,
   product: Product,
+  offer: Offer | undefined | null,
   W: number,
   priceY: number
-) {
-  const priceFormatted = `$${product.price.toLocaleString("es-AR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })}`;
-  const pillW = 480, pillH = 130;
+): number {
+  const promoPrice = offer ? calcPromoPrice(product.price, offer) : null;
+  const hasPromo = promoPrice !== null && promoPrice < product.price;
+
+  const pillW = 520;
+  const pillH = hasPromo ? 172 : 130;
+  const pillX = (W - pillW) / 2;
+
   ctx.fillStyle = "rgba(255,255,255,0.15)";
-  roundRect(ctx, (W - pillW) / 2, priceY, pillW, pillH, 20);
+  roundRect(ctx, pillX, priceY, pillW, pillH, 24);
   ctx.fill();
-  ctx.fillStyle = "rgba(255,255,255,0.8)";
-  ctx.font = `28px 'Arial', sans-serif`;
+
   ctx.textAlign = "center";
-  ctx.fillText("PRECIO", W / 2, priceY + 38);
-  ctx.fillStyle = "#FFFFFF";
-  ctx.font = `bold 80px 'Arial', sans-serif`;
-  ctx.shadowColor = "rgba(0,0,0,0.4)";
-  ctx.shadowBlur = 10;
-  ctx.fillText(priceFormatted, W / 2, priceY + 112);
-  ctx.shadowBlur = 0;
+
+  if (hasPromo) {
+    // Strikethrough original price
+    const origText = `$${product.price.toLocaleString("es-AR", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })}`;
+    ctx.font = `28px 'Arial', sans-serif`;
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fillText(origText, W / 2, priceY + 40);
+
+    const origW = ctx.measureText(origText).width;
+    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - origW / 2, priceY + 28);
+    ctx.lineTo(W / 2 + origW / 2, priceY + 28);
+    ctx.stroke();
+
+    // "PRECIO OFERTA" label in green
+    ctx.fillStyle = "#A8C62A";
+    ctx.font = `bold 24px 'Arial', sans-serif`;
+    ctx.fillText("PRECIO OFERTA", W / 2, priceY + 76);
+
+    // Promo price big and green
+    const promoFormatted = `$${promoPrice!.toLocaleString("es-AR", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })}`;
+    ctx.fillStyle = "#A8C62A";
+    ctx.font = `bold 92px 'Arial', sans-serif`;
+    ctx.shadowColor = "rgba(0,0,0,0.5)";
+    ctx.shadowBlur = 12;
+    ctx.fillText(promoFormatted, W / 2, priceY + 160);
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    ctx.font = `28px 'Arial', sans-serif`;
+    ctx.fillText("PRECIO", W / 2, priceY + 38);
+
+    const priceFormatted = `$${product.price.toLocaleString("es-AR", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })}`;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = `bold 80px 'Arial', sans-serif`;
+    ctx.shadowColor = "rgba(0,0,0,0.4)";
+    ctx.shadowBlur = 10;
+    ctx.fillText(priceFormatted, W / 2, priceY + 112);
+    ctx.shadowBlur = 0;
+  }
+
+  return pillH;
 }
 
 // ─── Main canvas draw ─────────────────────────────────────────────────────────
@@ -106,6 +266,7 @@ function drawMarketingImage(
   canvas: HTMLCanvasElement,
   product: Product,
   offerText: string,
+  offer?: Offer | null,
   productImage?: HTMLImageElement | null
 ) {
   const ctx = canvas.getContext("2d");
@@ -120,7 +281,7 @@ function drawMarketingImage(
   ctx.fillStyle = "#CC2020";
   ctx.fillRect(0, 0, W, H);
 
-  // Subtle diagonal lines overlay
+  // Diagonal lines overlay
   ctx.globalAlpha = 0.06;
   ctx.strokeStyle = "#fff";
   ctx.lineWidth = 2;
@@ -136,20 +297,25 @@ function drawMarketingImage(
   ctx.fillStyle = "#1A5FA8";
   ctx.fillRect(0, 0, W, 120);
 
-  // "Super " (white) + "Juampy" (green) — same bold 62px font
   ctx.font = `bold 62px 'Arial', sans-serif`;
   drawTwoColorText(ctx, "Super ", "#FFFFFF", "Juampy", "#A8C62A", W / 2, 82);
 
-  // Green accent line under header
   ctx.fillStyle = "#A8C62A";
   ctx.fillRect(0, 120, W, 10);
 
-  // "Charata, Chaco" small label top-right
   ctx.fillStyle = "rgba(255,255,255,0.7)";
   ctx.font = `22px 'Arial', sans-serif`;
   ctx.textAlign = "right";
   ctx.fillText("Charata, Chaco", W - 40, 108);
   ctx.textAlign = "center";
+
+  // Footer y-position (content area ends here)
+  const footerY = H - 110;
+
+  // ── "¡OFERTA!" rotated badge (top-right, only when there's an offer) ──
+  if (offerText) {
+    drawOfertaBadge(ctx, W);
+  }
 
   const hasPhoto =
     !!(productImage && productImage.complete && productImage.naturalWidth > 0);
@@ -160,13 +326,13 @@ function drawMarketingImage(
     const photoCX = W / 2;
     const photoCY = 310;
 
-    // Soft white ring around the circle
+    // White ring
     ctx.fillStyle = "rgba(255,255,255,0.2)";
     ctx.beginPath();
     ctx.arc(photoCX, photoCY, photoRadius + 10, 0, Math.PI * 2);
     ctx.fill();
 
-    // Clip to circle and draw image (cover-fit)
+    // Circular clip + cover-fit
     ctx.save();
     ctx.beginPath();
     ctx.arc(photoCX, photoCY, photoRadius, 0, Math.PI * 2);
@@ -175,39 +341,39 @@ function drawMarketingImage(
     const imgH = productImage!.naturalHeight;
     const diameter = photoRadius * 2;
     const scale = Math.max(diameter / imgW, diameter / imgH);
-    const drawW = imgW * scale;
-    const drawH = imgH * scale;
     ctx.drawImage(
       productImage!,
-      photoCX - drawW / 2,
-      photoCY - drawH / 2,
-      drawW,
-      drawH
+      photoCX - (imgW * scale) / 2,
+      photoCY - (imgH * scale) / 2,
+      imgW * scale,
+      imgH * scale
     );
     ctx.restore();
 
-    // Product name below photo
+    // Product name below photo — bigger + stronger shadow
     const name = product.name.toUpperCase();
-    let nameFontSize = 66;
-    if (name.length > 20) nameFontSize = 54;
-    if (name.length > 35) nameFontSize = 42;
+    let nameFontSize = 72;
+    if (name.length > 20) nameFontSize = 60;
+    if (name.length > 35) nameFontSize = 48;
 
     ctx.font = `bold ${nameFontSize}px 'Arial', sans-serif`;
     const nameLines = wrapText(ctx, name, W - 120);
     const nameLineH = nameFontSize * 1.25;
-    // baseline of first line (top of text area = photoCY + photoRadius + 30)
     const nameStartY = photoCY + photoRadius + 30 + nameFontSize;
 
     ctx.fillStyle = "#FFFFFF";
-    ctx.shadowColor = "rgba(0,0,0,0.35)";
-    ctx.shadowBlur = 8;
+    ctx.shadowColor = "rgba(0,0,0,0.55)";
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 4;
     nameLines.forEach((line, i) =>
       ctx.fillText(line, W / 2, nameStartY + i * nameLineH)
     );
     ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
 
     const nameBottom = nameStartY + (nameLines.length - 1) * nameLineH;
 
+    let priceY: number;
     if (offerText) {
       const obY = nameBottom + 28;
       ctx.fillStyle = "#A8C62A";
@@ -216,16 +382,20 @@ function drawMarketingImage(
       ctx.font = `bold 32px 'Arial', sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(offerText.toUpperCase(), W / 2, obY + 44);
-      drawPriceBadge(ctx, product, W, obY + 68 + 24);
+      priceY = obY + 68 + 24;
     } else {
-      drawPriceBadge(ctx, product, W, nameBottom + 36);
+      priceY = nameBottom + 36;
     }
+
+    const pillH = drawPriceBadge(ctx, product, offer, W, priceY);
+    drawSparkles(ctx, W, priceY, pillH, footerY);
+
   } else {
-    // ── Layout WITHOUT photo (original) ──
+    // ── Layout WITHOUT photo ──
     const name = product.name.toUpperCase();
-    let nameFontSize = 86;
-    if (name.length > 30) nameFontSize = 68;
-    if (name.length > 45) nameFontSize = 54;
+    let nameFontSize = 96;
+    if (name.length > 28) nameFontSize = 76;
+    if (name.length > 42) nameFontSize = 60;
 
     ctx.font = `bold ${nameFontSize}px 'Arial', sans-serif`;
     const nameLines = wrapText(ctx, name, W - 120);
@@ -233,12 +403,14 @@ function drawMarketingImage(
     const nameStartY = 160 + (440 - nameBlockH) / 2 + nameFontSize;
 
     ctx.fillStyle = "#FFFFFF";
-    ctx.shadowColor = "rgba(0,0,0,0.35)";
-    ctx.shadowBlur = 8;
+    ctx.shadowColor = "rgba(0,0,0,0.55)";
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 4;
     nameLines.forEach((line, i) =>
       ctx.fillText(line, W / 2, nameStartY + i * nameFontSize * 1.25)
     );
     ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
 
     if (offerText) {
       ctx.fillStyle = "#A8C62A";
@@ -249,21 +421,33 @@ function drawMarketingImage(
       ctx.fillText(offerText.toUpperCase(), W / 2, 674);
     }
 
-    drawPriceBadge(ctx, product, W, offerText ? 730 : 680);
+    const priceY = offerText ? 730 : 680;
+    const pillH = drawPriceBadge(ctx, product, offer, W, priceY);
+    drawSparkles(ctx, W, priceY, pillH, footerY);
   }
 
   // ── Bottom blue footer ──
   ctx.fillStyle = "#1A5FA8";
-  ctx.fillRect(0, H - 110, W, 110);
+  ctx.fillRect(0, footerY, W, 110);
   ctx.fillStyle = "#A8C62A";
-  ctx.fillRect(0, H - 110, W, 6);
-  ctx.fillStyle = "#FFFFFF";
-  ctx.font = `bold 32px 'Arial', sans-serif`;
+  ctx.fillRect(0, footerY, W, 6);
+
   ctx.textAlign = "center";
-  ctx.fillText("¡Visitanos en Charata, Chaco!", W / 2, H - 60);
-  ctx.font = `22px 'Arial', sans-serif`;
-  ctx.fillStyle = "rgba(255,255,255,0.75)";
-  ctx.fillText("Super Juampy — Tu supermercado de confianza", W / 2, H - 24);
+  if (offerText) {
+    ctx.fillStyle = "#FFD700";
+    ctx.font = `bold 36px 'Arial', sans-serif`;
+    ctx.fillText("¡Aprovechá esta promo!", W / 2, footerY + 52);
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    ctx.font = `22px 'Arial', sans-serif`;
+    ctx.fillText("Super Juampy · Charata, Chaco", W / 2, footerY + 86);
+  } else {
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = `bold 32px 'Arial', sans-serif`;
+    ctx.fillText("¡Visitanos en Charata, Chaco!", W / 2, footerY + 52);
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    ctx.font = `22px 'Arial', sans-serif`;
+    ctx.fillText("Super Juampy · Tu supermercado de confianza", W / 2, footerY + 88);
+  }
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -280,9 +464,7 @@ export default function MarketingPage() {
   const [searchLoading, setSearchLoading] = useState(false);
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [selectedOffer, setSelectedOffer] = useState<
-    { type: string; value: number } | undefined
-  >();
+  const [selectedOffer, setSelectedOffer] = useState<Offer | undefined>();
 
   const [productImageSrc, setProductImageSrc] = useState<string | null>(null);
 
@@ -318,7 +500,7 @@ export default function MarketingPage() {
     }
   }
 
-  function getOfferLabel(offer: { type: string; value: number } | undefined) {
+  function getOfferLabel(offer: Offer | undefined) {
     if (!offer) return "";
     return offer.type === "percent"
       ? `${offer.value}% OFF`
@@ -327,11 +509,11 @@ export default function MarketingPage() {
 
   function redrawCanvas(
     prod: Product,
-    offer: { type: string; value: number } | undefined,
+    offer: Offer | undefined,
     imgEl: HTMLImageElement | null
   ) {
     if (!canvasRef.current) return;
-    drawMarketingImage(canvasRef.current, prod, getOfferLabel(offer), imgEl);
+    drawMarketingImage(canvasRef.current, prod, getOfferLabel(offer), offer, imgEl);
   }
 
   const searchProducts = useCallback(async (q: string) => {
@@ -360,17 +542,13 @@ export default function MarketingPage() {
     searchTimerRef.current = setTimeout(() => searchProducts(val), 300);
   }
 
-  function selectProduct(
-    prod: Product,
-    offer?: { type: string; value: number }
-  ) {
+  function selectProduct(prod: Product, offer?: Offer) {
     setSelectedProduct(prod);
     setSelectedOffer(offer);
     setTexts(null);
     setGenError(null);
     setSearchQuery("");
     setSearchResults([]);
-    // Clear photo when changing product
     setProductImageSrc(null);
     productImageRef.current = null;
     requestAnimationFrame(() => redrawCanvas(prod, offer, null));
@@ -386,7 +564,6 @@ export default function MarketingPage() {
       const img = new Image();
       img.onload = () => {
         productImageRef.current = img;
-        // Capture current state at call time
         const prod = selectedProduct;
         const offer = selectedOffer;
         if (prod) redrawCanvas(prod, offer, img);
@@ -636,7 +813,6 @@ export default function MarketingPage() {
             </button>
           </div>
 
-          {/* Photo upload controls */}
           <div className="flex flex-wrap items-center gap-3">
             <input
               ref={fileInputRef}
