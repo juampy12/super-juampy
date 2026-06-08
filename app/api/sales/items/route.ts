@@ -32,10 +32,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
     }
 
-    // qty is the column name in sale_items (not quantity)
     const { data: items, error: itemsErr } = await supabaseAdmin
       .from("sale_items")
-      .select("product_id, qty, unit_price")
+      .select("product_id, quantity, unit_price")
       .eq("sale_id", sale_id);
 
     if (itemsErr) {
@@ -62,7 +61,7 @@ export async function GET(req: Request) {
     const mapped = rows.map((item: any) => ({
       product_id: item.product_id,
       name: nameMap[item.product_id] ?? "Producto",
-      quantity: Number(item.qty),
+      quantity: Number(item.quantity),
       unit_price: Number(item.unit_price),
     }));
 
