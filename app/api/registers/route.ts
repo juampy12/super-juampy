@@ -7,6 +7,9 @@ export async function GET() {
     .select("id, name, store_id")
     .eq("active", true)
     .order("name", { ascending: true });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("Error leyendo registers:", error);
+    return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
+  }
   return NextResponse.json({ registers: data ?? [] });
 }

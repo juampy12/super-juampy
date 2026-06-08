@@ -110,11 +110,17 @@ if (use_final_price) {
       .single();
 
     if (error) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      console.error("Error creando producto:", error);
+      // Código 23505 = unique violation (SKU duplicado): es un error de negocio, no interno
+      if (error.code === "23505") {
+        return NextResponse.json({ ok: false, error: "El SKU ya existe" }, { status: 409 });
+      }
+      return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, product: data });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Error" }, { status: 500 });
+    console.error("Error inesperado en /api/products/create:", e);
+    return NextResponse.json({ ok: false, error: "Error inesperado" }, { status: 500 });
   }
 }

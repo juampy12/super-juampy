@@ -18,10 +18,14 @@ export async function POST(req: Request) {
       .select("id,sku,name,price,active")
       .single();
 
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    if (error) {
+      console.error("Error actualizando nombre de producto:", error);
+      return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, product: data });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Error" }, { status: 500 });
+    console.error("Error inesperado en /api/products/update-name:", e);
+    return NextResponse.json({ ok: false, error: "Error inesperado" }, { status: 500 });
   }
 }

@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("Error en verify_employee_pin:", error);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
     }
 
     const emp = Array.isArray(data) ? data[0] : null;

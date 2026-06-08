@@ -100,8 +100,9 @@ export async function POST(req: Request) {
         .maybeSingle();
 
       if (psErr) {
+        console.error("Error leyendo stock actual:", psErr);
         return NextResponse.json(
-          { ok: false, error: `Error leyendo stock actual: ${psErr.message}` },
+          { ok: false, error: "Error al procesar la operación" },
           { status: 500 }
         );
       }
@@ -131,8 +132,9 @@ export async function POST(req: Request) {
         );
 
       if (upErr) {
+        console.error("Error actualizando stock:", upErr);
         return NextResponse.json(
-          { ok: false, error: `Error actualizando stock: ${upErr.message}` },
+          { ok: false, error: "Error al procesar la operación" },
           { status: 500 }
         );
       }
@@ -156,9 +158,9 @@ export async function POST(req: Request) {
       });
 
       if (insErr) {
-        // stock ya quedó guardado; igual informamos error del movimiento
+        console.error("Error registrando movimiento de stock:", insErr);
         return NextResponse.json(
-          { ok: false, error: `Stock guardado pero falló movimiento: ${insErr.message}` },
+          { ok: false, error: "Error al procesar la operación" },
           { status: 500 }
         );
       }
@@ -175,8 +177,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, results });
   } catch (e: any) {
+    console.error("Error inesperado en /api/stock/adjust:", e);
     return NextResponse.json(
-      { ok: false, error: e?.message ?? String(e) },
+      { ok: false, error: "Error inesperado" },
       { status: 500 }
     );
   }

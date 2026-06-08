@@ -24,10 +24,14 @@ export async function POST(req: Request) {
       p_store_id: storeId,
     });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error("Error en register_cash_diff RPC:", error);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
+    }
 
     return NextResponse.json({ rows: data ?? [] });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
+    console.error("Error inesperado en /api/intelligence/register-diff:", e);
+    return NextResponse.json({ error: "Error inesperado" }, { status: 500 });
   }
 }

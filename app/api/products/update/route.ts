@@ -45,7 +45,8 @@ export async function POST(req: Request) {
         .eq("id", productId);
 
       if (error) {
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        console.error("Error actualizando precio directo:", error);
+        return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
       }
 
       return NextResponse.json({ ok: true, price: finalPrice, mode: "direct" });
@@ -85,11 +86,13 @@ export async function POST(req: Request) {
       .eq("id", productId);
 
     if (error) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      console.error("Error actualizando producto:", error);
+      return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, price: finalPrice, mode: "calc" });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Error" }, { status: 500 });
+    console.error("Error inesperado en /api/products/update:", e);
+    return NextResponse.json({ ok: false, error: "Error inesperado" }, { status: 500 });
   }
 }

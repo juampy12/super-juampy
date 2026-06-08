@@ -6,6 +6,9 @@ export async function GET() {
     .from("stores")
     .select("id, name")
     .order("name", { ascending: true });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("Error leyendo stores:", error);
+    return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
+  }
   return NextResponse.json({ stores: data ?? [] });
 }

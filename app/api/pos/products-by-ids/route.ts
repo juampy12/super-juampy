@@ -12,9 +12,13 @@ export async function POST(req: NextRequest) {
       .select("id, name, sku, active")
       .in("id", ids.slice(0, 100));
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error("Error leyendo productos por ids:", error);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
+    }
     return NextResponse.json({ products: data ?? [] });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Error" }, { status: 500 });
+    console.error("Error inesperado en /api/pos/products-by-ids:", e);
+    return NextResponse.json({ error: "Error inesperado" }, { status: 500 });
   }
 }

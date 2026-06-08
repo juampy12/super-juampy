@@ -52,7 +52,8 @@ export async function GET(req: Request) {
     if (date && store_id && register_id) {
       const { data, error } = await q.maybeSingle();
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        console.error("Error en cash-closures:", error);
+        return NextResponse.json({ error: "Error al procesar la operación" }, { status: 400 });
       }
       return NextResponse.json({ data }, { status: 200 });
     }
@@ -60,7 +61,8 @@ export async function GET(req: Request) {
     // Listado
     const { data, error } = await q;
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      console.error("Error leyendo cash-closures:", error);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
     }
 
     return NextResponse.json({ data: data ?? [] }, { status: 200 });
@@ -107,7 +109,8 @@ export async function POST(req: Request) {
       if (error.code === "23505") {
         return NextResponse.json({ error: "Cierre ya existente para esta caja" }, { status: 409 });
       }
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      console.error("Error insertando cash-closure:", error);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
     }
 
     return NextResponse.json({ data }, { status: 200 });
@@ -154,7 +157,8 @@ export async function PUT(req: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      console.error("Error en upsert cash-closure:", error);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
     }
 
     return NextResponse.json({ data }, { status: 200 });

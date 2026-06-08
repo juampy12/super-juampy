@@ -55,9 +55,6 @@ const resolveProductId = (item: InItem): string | null =>
 const resolveQty = (item: InItem): number =>
   toNum(item.qty ?? item.quantity ?? item.cantidad ?? item.count ?? item.amount ?? item.q ?? 0);
 
-const resolveUnitPrice = (item: InItem): number =>
-  toNum(item.unit_price ?? item.price ?? item.unitPrice ?? item.importe ?? 0);
-
 const resolveStoreId = (body: any): string | null =>
   body.store_id ?? body.storeId ?? body.branch_id ?? body.sucursal_id ?? null;
 
@@ -127,7 +124,8 @@ export async function POST(req: Request) {
       .map((it) => ({
         product_id: resolveProductId(it),
         quantity: resolveQty(it),
-        unit_price: resolveUnitPrice(it),
+        // unit_price del cliente se ignora — se sobreescribe con el precio de la DB
+        unit_price: 0,
       }))
       .filter((it) => it.product_id && it.quantity > 0) as Array<{
       product_id: string;
@@ -139,33 +137,46 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No hay ítems válidos para registrar la venta" }, { status: 400 });
     }
 
-    // ✅ Fallback: si algún unit_price vino 0, lo tomamos de products.price
-    const needsPrice = items.some((it) => !(it.unit_price > 0));
-    if (needsPrice) {
-      const ids = Array.from(new Set(items.map((x) => x.product_id)));
-      const { data: prods, error: perr } = await supabaseAdmin
-        .from("products")
-        .select("id,price")
-        .in("id", ids);
+    // ✅ Siempre consultar precios y estado de la DB — nunca confiar en el cliente
+    const productIds = Array.from(new Set(items.map((x) => x.product_id)));
+    const { data: prods, error: prodErr } = await supabaseAdmin
+      .from("products")
+      .select("id, price, active")
+      .in("id", productIds);
 
-      if (perr) {
-        return NextResponse.json({ error: "No pude leer precios de productos", details: perr.message }, { status: 400 });
-      }
-
-      const map = new Map<string, number>();
-      (prods ?? []).forEach((p: any) => map.set(String(p.id), toNum(p.price ?? 0, 0)));
-
-      items = items.map((it) => {
-        if (it.unit_price > 0) return it;
-        const fallback = map.get(it.product_id) ?? 0;
-        return { ...it, unit_price: fallback };
-      });
+    if (prodErr) {
+      console.error("Error leyendo productos en confirm:", prodErr);
+      return NextResponse.json({ error: "Error al procesar la venta" }, { status: 500 });
     }
 
-    // Total: si viene 0 / inválido, calculamos desde items
-    const totalFromBody = toNum(body.total ?? 0, 0);
-    const calcTotal = items.reduce((acc, it) => acc + it.quantity * it.unit_price, 0);
-    const total = totalFromBody > 0 ? totalFromBody : calcTotal;
+    const productMap = new Map<string, { price: number }>();
+    for (const p of prods ?? []) {
+      if (!p.active) {
+        return NextResponse.json(
+          { error: "La venta contiene productos inactivos" },
+          { status: 400 }
+        );
+      }
+      productMap.set(String(p.id), { price: toNum(p.price, 0) });
+    }
+
+    for (const item of items) {
+      if (!productMap.has(item.product_id)) {
+        return NextResponse.json(
+          { error: "La venta contiene productos no encontrados" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Reemplazar precios con los valores reales de la DB
+    items = items.map((it) => ({
+      ...it,
+      unit_price: productMap.get(it.product_id)!.price,
+    }));
+
+    // Total siempre calculado desde precios de DB (no se acepta del cliente)
+    const total = items.reduce((acc, it) => acc + it.quantity * it.unit_price, 0);
 
     const payment = normalizePayment(body.payment);
 
@@ -180,10 +191,7 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error("Error en confirm_sale_with_stock:", error);
-      return NextResponse.json(
-        { error: "Error al registrar la venta", details: error.message },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Error al registrar la venta" }, { status: 500 });
     }
 
     const saleId = data as string | null;
@@ -196,6 +204,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, saleId });
   } catch (e: any) {
     console.error("Error inesperado en /api/pos/confirm:", e);
-    return NextResponse.json({ error: e?.message || "Error inesperado" }, { status: 500 });
+    return NextResponse.json({ error: "Error inesperado al registrar la venta" }, { status: 500 });
   }
 }

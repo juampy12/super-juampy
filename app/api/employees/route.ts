@@ -15,7 +15,10 @@ export async function GET(req: Request) {
         supabaseAdmin.from("registers").select("id, name"),
       ]);
 
-      if (empRes.error) return NextResponse.json({ error: empRes.error.message }, { status: 500 });
+      if (empRes.error) {
+        console.error("Error leyendo empleados:", empRes.error);
+        return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
+      }
 
       const storeMap: Record<string, string> = {};
       (storeRes.data ?? []).forEach((s: any) => { storeMap[s.id] = s.name; });
@@ -40,10 +43,14 @@ export async function GET(req: Request) {
       .eq("id", session.employee_id)
       .maybeSingle();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error("Error en employees:", error);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
+    }
     return NextResponse.json({ employees: data ? [{ ...data, active: data.is_active }] : [] });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Error" }, { status: 500 });
+    console.error("Error inesperado en /api/employees:", e);
+    return NextResponse.json({ error: "Error inesperado" }, { status: 500 });
   }
 }
 
@@ -84,10 +91,14 @@ export async function POST(req: Request) {
       p_register_id: register_id,
     });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error("Error en employees:", error);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, employee: data }, { status: 201 });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Error" }, { status: 500 });
+    console.error("Error inesperado en /api/employees:", e);
+    return NextResponse.json({ error: "Error inesperado" }, { status: 500 });
   }
 }
 
@@ -116,7 +127,10 @@ export async function PATCH(req: Request) {
         p_id: id,
         p_pin: pin,
       });
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) {
+      console.error("Error en employees:", error);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
+    }
     }
 
     if (Object.keys(updates).length > 0) {
@@ -124,11 +138,15 @@ export async function PATCH(req: Request) {
         .from("employees")
         .update(updates)
         .eq("id", id);
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) {
+      console.error("Error en employees:", error);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
+    }
     }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Error" }, { status: 500 });
+    console.error("Error inesperado en /api/employees:", e);
+    return NextResponse.json({ error: "Error inesperado" }, { status: 500 });
   }
 }
