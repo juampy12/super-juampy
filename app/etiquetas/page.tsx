@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPosEmployee } from "@/lib/posSession";
 import toast from "react-hot-toast";
@@ -55,7 +55,6 @@ export default function EtiquetasPage() {
   const [loading, setLoading] = useState(false);
   const [loadingAll, setLoadingAll] = useState(false);
   const [items, setItems] = useState<LabelItem[]>([]);
-  const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const emp = getPosEmployee();
@@ -366,8 +365,17 @@ export default function EtiquetasPage() {
 
           {/* Label list */}
           <div className="border rounded-xl bg-white overflow-hidden">
-            <div className="px-4 py-3 text-sm font-semibold bg-gray-50 border-b">
-              Lista de etiquetas
+            <div className="px-4 py-3 text-sm font-semibold bg-gray-50 border-b flex items-center justify-between">
+              <span>Lista de etiquetas</span>
+              {items.length > 0 && (
+                <button
+                  className="text-xs font-normal text-red-600 hover:text-red-800 flex items-center gap-1"
+                  onClick={() => setItems([])}
+                >
+                  <i className="ti ti-trash" aria-hidden="true" />
+                  Eliminar todos
+                </button>
+              )}
             </div>
             <div className="max-h-[480px] overflow-auto divide-y">
               {items.length === 0 ? (
@@ -428,28 +436,6 @@ export default function EtiquetasPage() {
           </div>
         </div>
 
-        {/* Label preview */}
-        {items.length > 0 && (
-          <div className="mt-6">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">Vista previa</h2>
-              <button
-                className="px-5 py-2 rounded-lg bg-[#CC2020] text-white font-semibold hover:bg-[#a81a1a] flex items-center gap-2"
-                onClick={printLabels}
-              >
-                <i className="ti ti-printer" aria-hidden="true" />
-                Imprimir
-              </button>
-            </div>
-            <div className="overflow-x-auto border rounded-xl bg-white p-4">
-              <div ref={printRef} className="labels-grid" style={{ display: "grid" }}>
-                {expanded.map(({ product, key }) => (
-                  <Label key={key} product={product} />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ── Print-only area ─────────────────────────────────────────── */}
