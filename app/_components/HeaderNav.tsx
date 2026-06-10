@@ -49,6 +49,7 @@ const supervisorGroups: NavGroup[] = [
     children: [
       { href: '/empleados', label: 'Empleados', icon: 'ti-users' },
       { href: '/marketing', label: 'Marketing', icon: 'ti-speakerphone' },
+      { href: '/etiquetas', label: 'Etiquetas', icon: 'ti-tag' },
     ],
   },
 ];
