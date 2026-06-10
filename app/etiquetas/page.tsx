@@ -53,6 +53,7 @@ export default function EtiquetasPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ProductRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingAll, setLoadingAll] = useState(false);
   const [items, setItems] = useState<LabelItem[]>([]);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -104,6 +105,36 @@ export default function EtiquetasPage() {
       toast.error(e?.message || "Error buscando productos");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadAllProducts() {
+    if (!storeId) return;
+    setLoadingAll(true);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/products_with_stock`,
+        {
+          method: "POST",
+          headers: {
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ p_store: storeId, p_query: null, p_limit: 999 }),
+        }
+      );
+      const data = await res.json();
+      const rows: ProductRow[] = Array.isArray(data)
+        ? (data as ProductRow[]).filter((r) => r.active !== false)
+        : [];
+      if (rows.length === 0) { toast("No se encontraron productos activos"); return; }
+      setItems(rows.map((p) => ({ product: p, qty: 1 })));
+      toast.success(`${rows.length} productos cargados`);
+    } catch (e: any) {
+      toast.error(e?.message || "Error cargando catálogo");
+    } finally {
+      setLoadingAll(false);
     }
   }
 
@@ -275,6 +306,15 @@ export default function EtiquetasPage() {
           >
             Buscar
           </button>
+          <button
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2"
+            onClick={loadAllProducts}
+            disabled={loadingAll || !storeId}
+            title="Carga todos los productos activos del catálogo con 1 etiqueta cada uno"
+          >
+            <i className="ti ti-stack-2" aria-hidden="true" />
+            {loadingAll ? "Cargando…" : "Todo el catálogo"}
+          </button>
           {items.length > 0 && (
             <button
               className="px-5 py-2 rounded-lg bg-[#CC2020] text-white font-semibold hover:bg-[#a81a1a] ml-auto flex items-center gap-2"
@@ -369,11 +409,11 @@ export default function EtiquetasPage() {
                         onClick={() => updateQty(item.product.id, item.qty + 1)}
                       >+</button>
                       <button
-                        className="ml-1 text-red-500 hover:text-red-700"
+                        className="ml-1 w-7 h-7 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-800 transition-colors"
                         onClick={() => removeItem(item.product.id)}
-                        title="Quitar"
+                        title="Quitar producto"
                       >
-                        <i className="ti ti-x" aria-hidden="true" />
+                        <i className="ti ti-x text-sm" aria-hidden="true" />
                       </button>
                     </div>
                   </div>
