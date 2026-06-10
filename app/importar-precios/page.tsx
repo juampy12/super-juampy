@@ -92,6 +92,11 @@ export default function ImportarPreciosPage() {
 
   const [applySummary, setApplySummary] = useState<ApplySummary | null>(null);
 
+  // Total de productos únicos en el archivo (se fija al construir la vista previa)
+  const [totalInFile, setTotalInFile] = useState(0);
+  // Sección de nuevos expandida/colapsada
+  const [isNewExpanded, setIsNewExpanded] = useState(true);
+
   useEffect(() => {
     const emp = getPosEmployee();
     if (emp?.role !== "supervisor") router.replace("/ventas");
@@ -178,6 +183,7 @@ export default function ImportarPreciosPage() {
 
       const skus = Array.from(skuSet);
       if (skus.length === 0) { alert("No se encontraron códigos de barras en el archivo."); return; }
+      setTotalInFile(skus.length);
 
       const batchSize = 500;
       const dbProducts: { id: string; sku: string; name: string; price: number }[] = [];
@@ -234,6 +240,7 @@ export default function ImportarPreciosPage() {
       setNewProductNames(initNames);
       setAddSummary(null);
       setApplySummary(null);
+      setIsNewExpanded(true);
       setStep("preview");
     } catch (e: any) {
       alert(`Error consultando la base de datos: ${e?.message ?? e}`);
@@ -322,6 +329,8 @@ export default function ImportarPreciosPage() {
     setNewProductNames({});
     setAddSummary(null);
     setApplySummary(null);
+    setTotalInFile(0);
+    setIsNewExpanded(true);
     setFileType(null);
     if (fileRef.current) fileRef.current.value = "";
   }
@@ -474,14 +483,23 @@ export default function ImportarPreciosPage() {
       {/* ── Step: Preview ──────────────────────────────────────────────── */}
       {step === "preview" && (
         <div>
-          <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <div className="flex items-center gap-3 mb-5 flex-wrap">
             <button onClick={() => setStep("upload")} className="text-sm text-gray-600 underline">
               ← Volver
             </button>
-            <span className="text-sm text-gray-500">
-              <strong>{matched.length}</strong> encontrados en DB ·{" "}
-              <strong>{notFound.length}</strong> no encontrados
-            </span>
+            <div className="flex items-center gap-2 text-sm flex-wrap">
+              <span className="bg-gray-100 rounded-full px-3 py-1 font-semibold text-gray-700">
+                {totalInFile} en el {fileType === "pdf" ? "PDF" : "archivo"}
+              </span>
+              <span className="text-gray-300">·</span>
+              <span className="bg-emerald-100 text-emerald-800 rounded-full px-3 py-1 font-semibold">
+                {matched.length} encontrados en el sistema
+              </span>
+              <span className="text-gray-300">·</span>
+              <span className="bg-blue-100 text-blue-800 rounded-full px-3 py-1 font-semibold">
+                {notFound.length} nuevos no cargados
+              </span>
+            </div>
           </div>
 
           {/* Controls */}
@@ -588,40 +606,51 @@ export default function ImportarPreciosPage() {
           {/* ── Productos nuevos para agregar ───────────────────────────── */}
           {notFound.length > 0 && (
             <div className="border rounded bg-white overflow-hidden">
-              {/* Header con controles */}
-              <div className="bg-blue-50 border-b px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={allNewSelected}
-                      ref={(el) => { if (el) el.indeterminate = someNewSelected; }}
-                      onChange={(e) => {
-                        setSelectedNew(
-                          e.target.checked ? new Set(notFound.map((nf) => nf.sku)) : new Set()
-                        );
-                      }}
-                      className="w-4 h-4"
-                    />
-                    <span className="font-medium text-blue-800">
-                      Productos nuevos para agregar ({notFound.length})
-                    </span>
-                  </label>
-                  {selectedNew.size > 0 && (
-                    <span className="text-xs text-blue-600">{selectedNew.size} seleccionados</span>
+              {/* Header con toggle de expandir/colapsar */}
+              <div className="bg-blue-50 border-b px-4 py-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <button
+                    onClick={() => setIsNewExpanded((v) => !v)}
+                    className="flex items-center gap-2 text-sm font-semibold text-blue-800 hover:text-blue-900 select-none"
+                  >
+                    <span className="text-xs">{isNewExpanded ? "▼" : "▶"}</span>
+                    Productos nuevos no cargados ({notFound.length})
+                  </button>
+                  {isNewExpanded && (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none text-blue-700">
+                        <input
+                          type="checkbox"
+                          checked={allNewSelected}
+                          ref={(el) => { if (el) el.indeterminate = someNewSelected; }}
+                          onChange={(e) => {
+                            setSelectedNew(
+                              e.target.checked ? new Set(notFound.map((nf) => nf.sku)) : new Set()
+                            );
+                          }}
+                          className="w-4 h-4"
+                        />
+                        Seleccionar todos
+                      </label>
+                      {selectedNew.size > 0 && (
+                        <span className="text-xs text-blue-600">{selectedNew.size} seleccionados</span>
+                      )}
+                      <button
+                        onClick={handleAddNew}
+                        disabled={loading || selectedNew.size === 0}
+                        className="bg-blue-700 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {loading && loadingMsg === "Agregando productos..."
+                          ? "Agregando..."
+                          : `Agregar seleccionados (${selectedNew.size})`}
+                      </button>
+                    </div>
                   )}
                 </div>
-                <button
-                  onClick={handleAddNew}
-                  disabled={loading || selectedNew.size === 0}
-                  className="bg-blue-700 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50 whitespace-nowrap"
-                >
-                  {loading && loadingMsg === "Agregando productos..."
-                    ? "Agregando..."
-                    : `Agregar seleccionados (${selectedNew.size})`}
-                </button>
               </div>
 
+              {isNewExpanded && (
+                <>
               {/* Resultado inline del agregar */}
               {addSummary && (
                 <div className="bg-green-50 border-b px-4 py-2 text-sm text-green-800 flex items-center gap-2">
@@ -709,6 +738,8 @@ export default function ImportarPreciosPage() {
                   })}
                 </tbody>
               </table>
+                </>
+              )}
             </div>
           )}
 
