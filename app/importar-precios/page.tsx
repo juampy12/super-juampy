@@ -15,7 +15,7 @@ type DetectedColumns = {
 
 type ProductMatch = {
   sku: string;
-  excelName: string;
+  sourceName: string;
   dbId: string;
   dbName: string;
   currentPrice: number;
@@ -35,9 +35,7 @@ function detectColumns(headers: string[]): DetectedColumns {
   const priceKeywords = ["precio"];
 
   const skuCol =
-    headers.find((h) =>
-      skuKeywords.some((k) => h.toLowerCase().includes(k))
-    ) ?? null;
+    headers.find((h) => skuKeywords.some((k) => h.toLowerCase().includes(k))) ?? null;
 
   const priceCols = headers.filter((h) =>
     priceKeywords.some((k) => h.toLowerCase().includes(k))
@@ -52,17 +50,21 @@ function parsePrice(v: string | number | null): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+const PDF_HEADERS = ["Cod.Barra", "Detalle", "Precio/SI", "Precio/CI"];
+
 export default function ImportarPreciosPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState<"upload" | "preview" | "done">("upload");
   const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState("");
 
-  // parsed excel
+  // parsed file data (unified for both Excel and PDF)
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<ExcelRow[]>([]);
   const [detected, setDetected] = useState<DetectedColumns>({ skuCol: null, priceCols: [] });
+  const [fileType, setFileType] = useState<"excel" | "pdf" | null>(null);
 
   // user selections
   const [priceCol, setPriceCol] = useState("");
@@ -76,16 +78,70 @@ export default function ImportarPreciosPage() {
 
   useEffect(() => {
     const emp = getPosEmployee();
-    if (emp?.role !== "supervisor") {
-      router.replace("/ventas");
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (emp?.role !== "supervisor") router.replace("/ventas");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function loadRows(parsed: ExcelRow[], hdrs: string[], type: "excel" | "pdf") {
+    const det = detectColumns(hdrs);
+    setHeaders(hdrs);
+    setRows(parsed);
+    setDetected(det);
+    // Default price col: for PDF prefer Precio/SI; for Excel prefer first detected
+    setPriceCol(type === "pdf" ? "Precio/SI" : (det.priceCols[0] ?? ""));
+    setFileType(type);
+    setMatched([]);
+    setNotFound([]);
+    setSummary(null);
+  }
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const ext = file.name.split(".").pop()?.toLowerCase();
+
+    if (ext === "pdf") {
+      await handlePdf(file);
+    } else {
+      handleExcel(file);
+    }
+  }
+
+  async function handlePdf(file: File) {
+    setLoading(true);
+    setLoadingMsg("Procesando PDF...");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/products/parse-pdf", {
+        method: "POST",
+        body: formData,
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!json?.ok) {
+        alert(`Error procesando el PDF: ${json?.error ?? "desconocido"}`);
+        return;
+      }
+
+      const parsed: ExcelRow[] = json.rows ?? [];
+      if (parsed.length === 0) {
+        alert("No se encontraron productos con código de barras válido en el PDF.");
+        return;
+      }
+
+      loadRows(parsed, PDF_HEADERS, "pdf");
+    } catch (e: any) {
+      alert(`Error: ${e?.message ?? e}`);
+    } finally {
+      setLoading(false);
+      setLoadingMsg("");
+    }
+  }
+
+  function handleExcel(file: File) {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
@@ -99,17 +155,7 @@ export default function ImportarPreciosPage() {
           return;
         }
 
-        const hdrs = Object.keys(parsed[0]);
-        const det = detectColumns(hdrs);
-
-        setHeaders(hdrs);
-        setRows(parsed);
-        setDetected(det);
-        setPriceCol(det.priceCols[0] ?? "");
-        setMatched([]);
-        setNotFound([]);
-        setSummary(null);
-        setStep("upload");
+        loadRows(parsed, Object.keys(parsed[0]), "excel");
       } catch {
         alert("Error al leer el archivo. Verificá que sea un Excel válido.");
       }
@@ -119,7 +165,7 @@ export default function ImportarPreciosPage() {
 
   async function buildPreview() {
     if (!detected.skuCol) {
-      alert("No se detectó columna de código de barras. Verificá el Excel.");
+      alert("No se detectó columna de código de barras.");
       return;
     }
     if (!priceCol) {
@@ -128,8 +174,8 @@ export default function ImportarPreciosPage() {
     }
 
     setLoading(true);
+    setLoadingMsg("Buscando productos en la base de datos...");
     try {
-      // Collect unique SKUs from Excel
       const skuSet = new Set<string>();
       const skuToRow: Record<string, ExcelRow> = {};
 
@@ -149,7 +195,6 @@ export default function ImportarPreciosPage() {
         return;
       }
 
-      // Lookup in DB in batches of 500
       const batchSize = 500;
       const dbProducts: { id: string; sku: string; name: string; price: number }[] = [];
 
@@ -174,9 +219,9 @@ export default function ImportarPreciosPage() {
       const notFoundList: { sku: string; name: string }[] = [];
 
       for (const sku of skus) {
-        const excelRow = skuToRow[sku];
-        const excelName = String(excelRow["Detalle"] ?? excelRow["detalle"] ?? "").trim();
-        const importedPrice = parsePrice(excelRow[priceCol]);
+        const row = skuToRow[sku];
+        const sourceName = String(row["Detalle"] ?? row["detalle"] ?? "").trim();
+        const importedPrice = parsePrice(row[priceCol]);
 
         if (dbBySku[sku]) {
           const db = dbBySku[sku];
@@ -189,7 +234,7 @@ export default function ImportarPreciosPage() {
 
           matchedList.push({
             sku,
-            excelName,
+            sourceName,
             dbId: db.id,
             dbName: db.name,
             currentPrice,
@@ -198,7 +243,7 @@ export default function ImportarPreciosPage() {
             diffPct,
           });
         } else {
-          notFoundList.push({ sku, name: excelName });
+          notFoundList.push({ sku, name: sourceName });
         }
       }
 
@@ -211,6 +256,7 @@ export default function ImportarPreciosPage() {
       alert(`Error consultando la base de datos: ${e?.message ?? e}`);
     } finally {
       setLoading(false);
+      setLoadingMsg("");
     }
   }
 
@@ -219,6 +265,7 @@ export default function ImportarPreciosPage() {
     if (!window.confirm(`¿Aplicar precios a ${matched.length} productos?`)) return;
 
     setLoading(true);
+    setLoadingMsg("Aplicando precios...");
     try {
       const updates = matched.map((m) => ({ productId: m.dbId, price: m.finalPrice }));
 
@@ -240,6 +287,7 @@ export default function ImportarPreciosPage() {
       alert(`Error: ${e?.message ?? e}`);
     } finally {
       setLoading(false);
+      setLoadingMsg("");
     }
   }
 
@@ -253,10 +301,10 @@ export default function ImportarPreciosPage() {
     setMatched([]);
     setNotFound([]);
     setSummary(null);
+    setFileType(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  // Recompute preview when margin changes
   function handleMarginChange(val: number) {
     setMargin(val);
     if (step === "preview") {
@@ -278,9 +326,9 @@ export default function ImportarPreciosPage() {
 
   return (
     <div className="mx-auto max-w-5xl p-4">
-      <h1 className="text-2xl font-semibold mb-1">Importar precios desde Excel</h1>
+      <h1 className="text-2xl font-semibold mb-1">Importar precios</h1>
       <p className="text-gray-500 text-sm mb-6">
-        Actualizá precios en masa usando el archivo Excel del proveedor.
+        Actualizá precios en masa desde un archivo Excel o PDF del proveedor.
       </p>
 
       {/* Step: Upload */}
@@ -290,21 +338,27 @@ export default function ImportarPreciosPage() {
 
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Archivo Excel (.xlsx o .xls)
+              Archivo de precios (.xlsx, .xls o .pdf)
             </label>
             <input
               ref={fileRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".xlsx,.xls,.pdf"
               onChange={handleFile}
-              className="block w-full text-sm border rounded px-3 py-2 cursor-pointer"
+              disabled={loading}
+              className="block w-full text-sm border rounded px-3 py-2 cursor-pointer disabled:opacity-50"
             />
+            {loading && (
+              <p className="mt-2 text-sm text-blue-700 animate-pulse">{loadingMsg}</p>
+            )}
           </div>
 
-          {headers.length > 0 && (
+          {headers.length > 0 && !loading && (
             <div className="mt-4 space-y-4">
               <div className="bg-gray-50 rounded p-3 text-sm">
-                <p className="font-medium mb-1">Columnas detectadas:</p>
+                <p className="font-medium mb-1">
+                  Archivo {fileType === "pdf" ? "PDF" : "Excel"} cargado:
+                </p>
                 <p>
                   <span className="font-medium">Código de barras: </span>
                   {detected.skuCol ? (
@@ -321,7 +375,7 @@ export default function ImportarPreciosPage() {
                     <span className="text-red-600">No detectadas</span>
                   )}
                 </p>
-                <p className="mt-1 text-gray-500">{rows.length} filas en el archivo</p>
+                <p className="mt-1 text-gray-500">{rows.length} productos en el archivo</p>
               </div>
 
               <div>
@@ -366,20 +420,29 @@ export default function ImportarPreciosPage() {
                 disabled={loading || !detected.skuCol || !priceCol}
                 className="bg-blue-700 text-white rounded px-5 py-2 font-medium disabled:opacity-50 w-full"
               >
-                {loading ? "Consultando productos..." : "Ver vista previa →"}
+                {loading ? loadingMsg : "Ver vista previa →"}
               </button>
             </div>
           )}
 
-          {headers.length === 0 && (
-            <div className="mt-4 text-sm text-gray-500">
-              <p className="font-medium mb-1">Formato esperado del Excel del proveedor:</p>
-              <ul className="list-disc ml-5 space-y-1">
-                <li><strong>Cod.Barra</strong> — código de barras (SKU)</li>
-                <li><strong>Detalle</strong> — nombre del producto</li>
-                <li><strong>Precio/SI</strong> — precio sin IVA</li>
-                <li><strong>Precio/CI</strong> — precio con IVA</li>
-              </ul>
+          {headers.length === 0 && !loading && (
+            <div className="mt-4 space-y-4">
+              <div className="text-sm text-gray-500">
+                <p className="font-medium mb-1">Formato Excel (proveedor genérico):</p>
+                <ul className="list-disc ml-5 space-y-0.5">
+                  <li><strong>Cod.Barra</strong> — código de barras (SKU)</li>
+                  <li><strong>Detalle</strong> — nombre del producto</li>
+                  <li><strong>Precio/SI</strong> — precio sin IVA</li>
+                  <li><strong>Precio/CI</strong> — precio con IVA</li>
+                </ul>
+              </div>
+              <div className="text-sm text-gray-500">
+                <p className="font-medium mb-1">Formato PDF (lista Empreto Haldemann):</p>
+                <ul className="list-disc ml-5 space-y-0.5">
+                  <li>Columnas: <strong>Codigo, Cod.Barra, Detalle, Bulto, Precio/SI, Precio/CI</strong></li>
+                  <li>Se detectan automáticamente los EAN de 12-13 dígitos</li>
+                </ul>
+              </div>
             </div>
           )}
         </div>
@@ -389,10 +452,7 @@ export default function ImportarPreciosPage() {
       {step === "preview" && (
         <div>
           <div className="flex items-center gap-3 mb-4 flex-wrap">
-            <button
-              onClick={() => setStep("upload")}
-              className="text-sm text-gray-600 underline"
-            >
+            <button onClick={() => setStep("upload")} className="text-sm text-gray-600 underline">
               ← Volver
             </button>
             <span className="text-sm text-gray-500">
@@ -410,20 +470,22 @@ export default function ImportarPreciosPage() {
               <select
                 className="border rounded px-3 py-2 text-sm"
                 value={priceCol}
-                onChange={async (e) => {
-                  setPriceCol(e.target.value);
-                  // Rebuild preview with new price column
+                onChange={(e) => {
                   const col = e.target.value;
+                  setPriceCol(col);
                   setMatched((prev) =>
                     prev.map((m) => {
-                      const excelRow = rows.find(
+                      const row = rows.find(
                         (r) => String(r[detected.skuCol!] ?? "").trim() === m.sku
                       );
-                      const importedPrice = excelRow ? parsePrice(excelRow[col]) : m.importedPrice;
-                      const finalPrice = Math.round(importedPrice * (1 + margin / 100) * 100) / 100;
+                      const importedPrice = row ? parsePrice(row[col]) : m.importedPrice;
+                      const finalPrice =
+                        Math.round(importedPrice * (1 + margin / 100) * 100) / 100;
                       const diffPct =
                         m.currentPrice > 0
-                          ? Math.round(((finalPrice - m.currentPrice) / m.currentPrice) * 10000) / 100
+                          ? Math.round(
+                              ((finalPrice - m.currentPrice) / m.currentPrice) * 10000
+                            ) / 100
                           : 0;
                       return { ...m, importedPrice, finalPrice, diffPct };
                     })
@@ -457,7 +519,7 @@ export default function ImportarPreciosPage() {
               disabled={loading || matched.length === 0}
               className="bg-emerald-700 text-white rounded px-5 py-2 font-medium disabled:opacity-50"
             >
-              {loading ? "Aplicando..." : `Aplicar precios (${matched.length})`}
+              {loading ? loadingMsg : `Aplicar precios (${matched.length})`}
             </button>
           </div>
 
@@ -471,10 +533,14 @@ export default function ImportarPreciosPage() {
                 <thead className="bg-gray-50 text-xs text-gray-600">
                   <tr>
                     <th className="p-2 text-left">Producto (DB)</th>
-                    <th className="p-2 text-left">Nombre Excel</th>
+                    <th className="p-2 text-left">
+                      Nombre en {fileType === "pdf" ? "PDF" : "archivo"}
+                    </th>
                     <th className="p-2 text-right">Precio actual</th>
                     <th className="p-2 text-right">Precio importado</th>
-                    {margin > 0 && <th className="p-2 text-right">Precio final (+{margin}%)</th>}
+                    {margin > 0 && (
+                      <th className="p-2 text-right">Precio final (+{margin}%)</th>
+                    )}
                     <th className="p-2 text-right">Diferencia</th>
                   </tr>
                 </thead>
@@ -485,7 +551,7 @@ export default function ImportarPreciosPage() {
                         <div className="font-medium">{m.dbName}</div>
                         <div className="text-xs text-gray-500">{m.sku}</div>
                       </td>
-                      <td className="p-2 text-gray-500 text-xs">{m.excelName || "—"}</td>
+                      <td className="p-2 text-gray-500 text-xs">{m.sourceName || "—"}</td>
                       <td className="p-2 text-right">${fmt(m.currentPrice)}</td>
                       <td className="p-2 text-right">${fmt(m.importedPrice)}</td>
                       {margin > 0 && (
@@ -514,13 +580,13 @@ export default function ImportarPreciosPage() {
           {notFound.length > 0 && (
             <div className="border rounded bg-white overflow-auto">
               <div className="bg-amber-50 px-4 py-2 border-b text-sm font-medium text-amber-700">
-                Productos no encontrados en la base de datos ({notFound.length}) — no se actualizarán
+                Productos no encontrados ({notFound.length}) — no se actualizarán
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-600">
                   <tr>
                     <th className="p-2 text-left">Código de barras</th>
-                    <th className="p-2 text-left">Nombre en Excel</th>
+                    <th className="p-2 text-left">Nombre en archivo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -568,10 +634,7 @@ export default function ImportarPreciosPage() {
           </div>
 
           <div className="flex gap-3">
-            <button
-              onClick={reset}
-              className="flex-1 border rounded px-4 py-2 text-sm"
-            >
+            <button onClick={reset} className="flex-1 border rounded px-4 py-2 text-sm">
               Nueva importación
             </button>
             <a

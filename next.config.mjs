@@ -25,6 +25,7 @@ const csp = [
 const nextConfig = {
   reactStrictMode: true,
   typedRoutes: true,
+  serverExternalPackages: ['pdf-parse'],
   async headers() {
     return [
       {
