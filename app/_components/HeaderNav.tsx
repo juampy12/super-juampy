@@ -50,6 +50,7 @@ const supervisorGroups: NavGroup[] = [
       { href: '/empleados', label: 'Empleados', icon: 'ti-users' },
       { href: '/marketing', label: 'Marketing', icon: 'ti-speakerphone' },
       { href: '/etiquetas', label: 'Etiquetas', icon: 'ti-tag' },
+      { href: '/importar-precios', label: 'Importar precios', icon: 'ti-file-import' },
     ],
   },
 ];
