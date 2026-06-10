@@ -24,9 +24,22 @@ type ProductMatch = {
   diffPct: number;
 };
 
-type Summary = {
+type NotFoundItem = {
+  sku: string;
+  name: string;
+  priceSI: number;
+  priceCI: number;
+};
+
+type ApplySummary = {
   updated: number;
   notFound: number;
+  errors: string[];
+};
+
+type AddSummary = {
+  created: number;
+  updated: number;
   errors: string[];
 };
 
@@ -44,7 +57,7 @@ function detectColumns(headers: string[]): DetectedColumns {
   return { skuCol, priceCols };
 }
 
-function parsePrice(v: string | number | null): number {
+function parsePrice(v: string | number | null | undefined): number {
   if (v === null || v === undefined || v === "") return 0;
   const n = Number(String(v).replace(/[^0-9.,]/g, "").replace(",", "."));
   return Number.isFinite(n) ? n : 0;
@@ -60,21 +73,24 @@ export default function ImportarPreciosPage() {
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
 
-  // parsed file data (unified for both Excel and PDF)
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<ExcelRow[]>([]);
   const [detected, setDetected] = useState<DetectedColumns>({ skuCol: null, priceCols: [] });
   const [fileType, setFileType] = useState<"excel" | "pdf" | null>(null);
 
-  // user selections
   const [priceCol, setPriceCol] = useState("");
   const [margin, setMargin] = useState(0);
 
-  // matches
   const [matched, setMatched] = useState<ProductMatch[]>([]);
-  const [notFound, setNotFound] = useState<{ sku: string; name: string }[]>([]);
+  const [notFound, setNotFound] = useState<NotFoundItem[]>([]);
 
-  const [summary, setSummary] = useState<Summary | null>(null);
+  // Estado para agregar productos nuevos
+  const [selectedNew, setSelectedNew] = useState<Set<string>>(new Set());
+  const [newProductPrices, setNewProductPrices] = useState<Record<string, number>>({});
+  const [newProductNames, setNewProductNames] = useState<Record<string, string>>({});
+  const [addSummary, setAddSummary] = useState<AddSummary | null>(null);
+
+  const [applySummary, setApplySummary] = useState<ApplySummary | null>(null);
 
   useEffect(() => {
     const emp = getPosEmployee();
@@ -87,25 +103,23 @@ export default function ImportarPreciosPage() {
     setHeaders(hdrs);
     setRows(parsed);
     setDetected(det);
-    // Default price col: for PDF prefer Precio/SI; for Excel prefer first detected
     setPriceCol(type === "pdf" ? "Precio/SI" : (det.priceCols[0] ?? ""));
     setFileType(type);
     setMatched([]);
     setNotFound([]);
-    setSummary(null);
+    setSelectedNew(new Set());
+    setNewProductPrices({});
+    setNewProductNames({});
+    setAddSummary(null);
+    setApplySummary(null);
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const ext = file.name.split(".").pop()?.toLowerCase();
-
-    if (ext === "pdf") {
-      await handlePdf(file);
-    } else {
-      handleExcel(file);
-    }
+    if (ext === "pdf") await handlePdf(file);
+    else handleExcel(file);
   }
 
   async function handlePdf(file: File) {
@@ -114,24 +128,11 @@ export default function ImportarPreciosPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-
-      const res = await fetch("/api/products/parse-pdf", {
-        method: "POST",
-        body: formData,
-      });
-
+      const res = await fetch("/api/products/parse-pdf", { method: "POST", body: formData });
       const json = await res.json().catch(() => ({}));
-      if (!json?.ok) {
-        alert(`Error procesando el PDF: ${json?.error ?? "desconocido"}`);
-        return;
-      }
-
+      if (!json?.ok) { alert(`Error procesando el PDF: ${json?.error ?? "desconocido"}`); return; }
       const parsed: ExcelRow[] = json.rows ?? [];
-      if (parsed.length === 0) {
-        alert("No se encontraron productos con código de barras válido en el PDF.");
-        return;
-      }
-
+      if (parsed.length === 0) { alert("No se encontraron productos con código de barras válido."); return; }
       loadRows(parsed, PDF_HEADERS, "pdf");
     } catch (e: any) {
       alert(`Error: ${e?.message ?? e}`);
@@ -149,12 +150,7 @@ export default function ImportarPreciosPage() {
         const wb = XLSX.read(data, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const parsed: ExcelRow[] = XLSX.utils.sheet_to_json(ws, { defval: null });
-
-        if (parsed.length === 0) {
-          alert("El archivo está vacío o no tiene datos legibles.");
-          return;
-        }
-
+        if (parsed.length === 0) { alert("El archivo está vacío o no tiene datos legibles."); return; }
         loadRows(parsed, Object.keys(parsed[0]), "excel");
       } catch {
         alert("Error al leer el archivo. Verificá que sea un Excel válido.");
@@ -164,14 +160,8 @@ export default function ImportarPreciosPage() {
   }
 
   async function buildPreview() {
-    if (!detected.skuCol) {
-      alert("No se detectó columna de código de barras.");
-      return;
-    }
-    if (!priceCol) {
-      alert("Seleccioná una columna de precio.");
-      return;
-    }
+    if (!detected.skuCol) { alert("No se detectó columna de código de barras."); return; }
+    if (!priceCol) { alert("Seleccioná una columna de precio."); return; }
 
     setLoading(true);
     setLoadingMsg("Buscando productos en la base de datos...");
@@ -183,17 +173,11 @@ export default function ImportarPreciosPage() {
         const raw: string | number | null = row[detected.skuCol!];
         if (!raw && raw !== 0) continue;
         const sku = String(raw).trim();
-        if (sku) {
-          skuSet.add(sku);
-          skuToRow[sku] = row;
-        }
+        if (sku) { skuSet.add(sku); skuToRow[sku] = row; }
       }
 
       const skus = Array.from(skuSet);
-      if (skus.length === 0) {
-        alert("No se encontraron códigos de barras en el archivo.");
-        return;
-      }
+      if (skus.length === 0) { alert("No se encontraron códigos de barras en el archivo."); return; }
 
       const batchSize = 500;
       const dbProducts: { id: string; sku: string; name: string; price: number }[] = [];
@@ -205,18 +189,17 @@ export default function ImportarPreciosPage() {
           .select("id, sku, name, price")
           .in("sku", batch)
           .eq("active", true);
-
         if (error) throw error;
         dbProducts.push(...((data ?? []) as typeof dbProducts));
       }
 
       const dbBySku: Record<string, typeof dbProducts[0]> = {};
-      for (const p of dbProducts) {
-        if (p.sku) dbBySku[p.sku] = p;
-      }
+      for (const p of dbProducts) { if (p.sku) dbBySku[p.sku] = p; }
 
       const matchedList: ProductMatch[] = [];
-      const notFoundList: { sku: string; name: string }[] = [];
+      const notFoundList: NotFoundItem[] = [];
+      const initPrices: Record<string, number> = {};
+      const initNames: Record<string, string> = {};
 
       for (const sku of skus) {
         const row = skuToRow[sku];
@@ -231,19 +214,14 @@ export default function ImportarPreciosPage() {
             currentPrice > 0
               ? Math.round(((finalPrice - currentPrice) / currentPrice) * 10000) / 100
               : 0;
-
-          matchedList.push({
-            sku,
-            sourceName,
-            dbId: db.id,
-            dbName: db.name,
-            currentPrice,
-            importedPrice,
-            finalPrice,
-            diffPct,
-          });
+          matchedList.push({ sku, sourceName, dbId: db.id, dbName: db.name, currentPrice, importedPrice, finalPrice, diffPct });
         } else {
-          notFoundList.push({ sku, name: sourceName });
+          const priceSI = parsePrice(row["Precio/SI"] ?? row[priceCol]);
+          const priceCI = parsePrice(row["Precio/CI"] ?? row[priceCol]);
+          const defaultPrice = priceCI > 0 ? priceCI : priceSI > 0 ? priceSI : importedPrice;
+          notFoundList.push({ sku, name: sourceName, priceSI, priceCI });
+          initPrices[sku] = defaultPrice;
+          initNames[sku] = sourceName;
         }
       }
 
@@ -251,6 +229,11 @@ export default function ImportarPreciosPage() {
 
       setMatched(matchedList);
       setNotFound(notFoundList);
+      setSelectedNew(new Set());
+      setNewProductPrices(initPrices);
+      setNewProductNames(initNames);
+      setAddSummary(null);
+      setApplySummary(null);
       setStep("preview");
     } catch (e: any) {
       alert(`Error consultando la base de datos: ${e?.message ?? e}`);
@@ -268,21 +251,55 @@ export default function ImportarPreciosPage() {
     setLoadingMsg("Aplicando precios...");
     try {
       const updates = matched.map((m) => ({ productId: m.dbId, price: m.finalPrice }));
-
       const res = await fetch("/api/products/bulk-price-import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ updates }),
       });
-
       const json = await res.json().catch(() => ({}));
-      if (!json?.ok) {
-        alert(`Error aplicando precios: ${json?.error ?? "desconocido"}`);
+      if (!json?.ok) { alert(`Error aplicando precios: ${json?.error ?? "desconocido"}`); return; }
+      setApplySummary({ updated: json.updated, notFound: notFound.length, errors: json.errors ?? [] });
+      setStep("done");
+    } catch (e: any) {
+      alert(`Error: ${e?.message ?? e}`);
+    } finally {
+      setLoading(false);
+      setLoadingMsg("");
+    }
+  }
+
+  async function handleAddNew() {
+    if (selectedNew.size === 0) return;
+    if (!window.confirm(`¿Agregar ${selectedNew.size} producto(s) a la base de datos?`)) return;
+
+    setLoading(true);
+    setLoadingMsg("Agregando productos...");
+    try {
+      const products = Array.from(selectedNew).map((sku) => ({
+        sku,
+        name: (newProductNames[sku] ?? notFound.find((nf) => nf.sku === sku)?.name ?? "").trim(),
+        price: newProductPrices[sku] ?? 0,
+      })).filter((p) => p.name && p.price > 0);
+
+      if (products.length === 0) {
+        alert("Completá el nombre y precio de todos los productos seleccionados.");
         return;
       }
 
-      setSummary({ updated: json.updated, notFound: notFound.length, errors: json.errors ?? [] });
-      setStep("done");
+      const res = await fetch("/api/products/bulk-create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ products }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!json?.ok) { alert(`Error: ${json?.error ?? "desconocido"}`); return; }
+
+      setAddSummary({ created: json.created, updated: json.updated, errors: json.errors ?? [] });
+
+      // Quitar los procesados de la lista de no encontrados
+      const processedSkus = new Set(products.map((p) => p.sku));
+      setNotFound((prev) => prev.filter((nf) => !processedSkus.has(nf.sku)));
+      setSelectedNew(new Set());
     } catch (e: any) {
       alert(`Error: ${e?.message ?? e}`);
     } finally {
@@ -300,7 +317,11 @@ export default function ImportarPreciosPage() {
     setMargin(0);
     setMatched([]);
     setNotFound([]);
-    setSummary(null);
+    setSelectedNew(new Set());
+    setNewProductPrices({});
+    setNewProductNames({});
+    setAddSummary(null);
+    setApplySummary(null);
     setFileType(null);
     if (fileRef.current) fileRef.current.value = "";
   }
@@ -324,6 +345,10 @@ export default function ImportarPreciosPage() {
   const fmt = (n: number) =>
     n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  const allNewSelected =
+    notFound.length > 0 && selectedNew.size === notFound.length;
+  const someNewSelected = selectedNew.size > 0 && !allNewSelected;
+
   return (
     <div className="mx-auto max-w-5xl p-4">
       <h1 className="text-2xl font-semibold mb-1">Importar precios</h1>
@@ -331,7 +356,7 @@ export default function ImportarPreciosPage() {
         Actualizá precios en masa desde un archivo Excel o PDF del proveedor.
       </p>
 
-      {/* Step: Upload */}
+      {/* ── Step: Upload ───────────────────────────────────────────────── */}
       {step === "upload" && (
         <div className="border rounded-lg p-6 bg-white max-w-xl">
           <h2 className="font-semibold text-lg mb-4">1. Subir archivo</h2>
@@ -380,7 +405,7 @@ export default function ImportarPreciosPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Columna de precio a usar
+                  Columna de precio para actualizar existentes
                 </label>
                 <select
                   className="border rounded px-3 py-2 w-full"
@@ -389,9 +414,7 @@ export default function ImportarPreciosPage() {
                 >
                   <option value="">— Elegir columna —</option>
                   {headers.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
-                    </option>
+                    <option key={h} value={h}>{h}</option>
                   ))}
                 </select>
               </div>
@@ -426,8 +449,8 @@ export default function ImportarPreciosPage() {
           )}
 
           {headers.length === 0 && !loading && (
-            <div className="mt-4 space-y-4">
-              <div className="text-sm text-gray-500">
+            <div className="mt-4 space-y-4 text-sm text-gray-500">
+              <div>
                 <p className="font-medium mb-1">Formato Excel (proveedor genérico):</p>
                 <ul className="list-disc ml-5 space-y-0.5">
                   <li><strong>Cod.Barra</strong> — código de barras (SKU)</li>
@@ -436,7 +459,7 @@ export default function ImportarPreciosPage() {
                   <li><strong>Precio/CI</strong> — precio con IVA</li>
                 </ul>
               </div>
-              <div className="text-sm text-gray-500">
+              <div>
                 <p className="font-medium mb-1">Formato PDF (lista Empreto Haldemann):</p>
                 <ul className="list-disc ml-5 space-y-0.5">
                   <li>Columnas: <strong>Codigo, Cod.Barra, Detalle, Bulto, Precio/SI, Precio/CI</strong></li>
@@ -448,7 +471,7 @@ export default function ImportarPreciosPage() {
         </div>
       )}
 
-      {/* Step: Preview */}
+      {/* ── Step: Preview ──────────────────────────────────────────────── */}
       {step === "preview" && (
         <div>
           <div className="flex items-center gap-3 mb-4 flex-wrap">
@@ -456,7 +479,7 @@ export default function ImportarPreciosPage() {
               ← Volver
             </button>
             <span className="text-sm text-gray-500">
-              <strong>{matched.length}</strong> encontrados ·{" "}
+              <strong>{matched.length}</strong> encontrados en DB ·{" "}
               <strong>{notFound.length}</strong> no encontrados
             </span>
           </div>
@@ -479,13 +502,10 @@ export default function ImportarPreciosPage() {
                         (r) => String(r[detected.skuCol!] ?? "").trim() === m.sku
                       );
                       const importedPrice = row ? parsePrice(row[col]) : m.importedPrice;
-                      const finalPrice =
-                        Math.round(importedPrice * (1 + margin / 100) * 100) / 100;
+                      const finalPrice = Math.round(importedPrice * (1 + margin / 100) * 100) / 100;
                       const diffPct =
                         m.currentPrice > 0
-                          ? Math.round(
-                              ((finalPrice - m.currentPrice) / m.currentPrice) * 10000
-                            ) / 100
+                          ? Math.round(((finalPrice - m.currentPrice) / m.currentPrice) * 10000) / 100
                           : 0;
                       return { ...m, importedPrice, finalPrice, diffPct };
                     })
@@ -493,9 +513,7 @@ export default function ImportarPreciosPage() {
                 }}
               >
                 {headers.map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
+                  <option key={h} value={h}>{h}</option>
                 ))}
               </select>
             </div>
@@ -519,7 +537,7 @@ export default function ImportarPreciosPage() {
               disabled={loading || matched.length === 0}
               className="bg-emerald-700 text-white rounded px-5 py-2 font-medium disabled:opacity-50"
             >
-              {loading ? loadingMsg : `Aplicar precios (${matched.length})`}
+              {loading ? loadingMsg : `Aplicar precios a existentes (${matched.length})`}
             </button>
           </div>
 
@@ -533,14 +551,10 @@ export default function ImportarPreciosPage() {
                 <thead className="bg-gray-50 text-xs text-gray-600">
                   <tr>
                     <th className="p-2 text-left">Producto (DB)</th>
-                    <th className="p-2 text-left">
-                      Nombre en {fileType === "pdf" ? "PDF" : "archivo"}
-                    </th>
+                    <th className="p-2 text-left">Nombre en {fileType === "pdf" ? "PDF" : "archivo"}</th>
                     <th className="p-2 text-right">Precio actual</th>
                     <th className="p-2 text-right">Precio importado</th>
-                    {margin > 0 && (
-                      <th className="p-2 text-right">Precio final (+{margin}%)</th>
-                    )}
+                    {margin > 0 && <th className="p-2 text-right">Precio final (+{margin}%)</th>}
                     <th className="p-2 text-right">Diferencia</th>
                   </tr>
                 </thead>
@@ -559,15 +573,10 @@ export default function ImportarPreciosPage() {
                       )}
                       <td
                         className={`p-2 text-right font-semibold ${
-                          m.diffPct > 0
-                            ? "text-red-600"
-                            : m.diffPct < 0
-                            ? "text-emerald-600"
-                            : "text-gray-400"
+                          m.diffPct > 0 ? "text-red-600" : m.diffPct < 0 ? "text-emerald-600" : "text-gray-400"
                         }`}
                       >
-                        {m.diffPct > 0 ? "+" : ""}
-                        {m.diffPct}%
+                        {m.diffPct > 0 ? "+" : ""}{m.diffPct}%
                       </td>
                     </tr>
                   ))}
@@ -576,57 +585,173 @@ export default function ImportarPreciosPage() {
             </div>
           )}
 
-          {/* Not found */}
+          {/* ── Productos nuevos para agregar ───────────────────────────── */}
           {notFound.length > 0 && (
-            <div className="border rounded bg-white overflow-auto">
-              <div className="bg-amber-50 px-4 py-2 border-b text-sm font-medium text-amber-700">
-                Productos no encontrados ({notFound.length}) — no se actualizarán
+            <div className="border rounded bg-white overflow-hidden">
+              {/* Header con controles */}
+              <div className="bg-blue-50 border-b px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={allNewSelected}
+                      ref={(el) => { if (el) el.indeterminate = someNewSelected; }}
+                      onChange={(e) => {
+                        setSelectedNew(
+                          e.target.checked ? new Set(notFound.map((nf) => nf.sku)) : new Set()
+                        );
+                      }}
+                      className="w-4 h-4"
+                    />
+                    <span className="font-medium text-blue-800">
+                      Productos nuevos para agregar ({notFound.length})
+                    </span>
+                  </label>
+                  {selectedNew.size > 0 && (
+                    <span className="text-xs text-blue-600">{selectedNew.size} seleccionados</span>
+                  )}
+                </div>
+                <button
+                  onClick={handleAddNew}
+                  disabled={loading || selectedNew.size === 0}
+                  className="bg-blue-700 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50 whitespace-nowrap"
+                >
+                  {loading && loadingMsg === "Agregando productos..."
+                    ? "Agregando..."
+                    : `Agregar seleccionados (${selectedNew.size})`}
+                </button>
               </div>
+
+              {/* Resultado inline del agregar */}
+              {addSummary && (
+                <div className="bg-green-50 border-b px-4 py-2 text-sm text-green-800 flex items-center gap-2">
+                  <span>✅</span>
+                  <span>
+                    {addSummary.created > 0 && `${addSummary.created} producto(s) creado(s)`}
+                    {addSummary.created > 0 && addSummary.updated > 0 && " · "}
+                    {addSummary.updated > 0 && `${addSummary.updated} precio(s) actualizado(s)`}
+                    {addSummary.errors.length > 0 && ` · ${addSummary.errors.length} error(es)`}
+                  </span>
+                </div>
+              )}
+
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-600">
+                <thead className="bg-gray-50 text-xs text-gray-600 border-b">
                   <tr>
+                    <th className="p-2 w-8"></th>
                     <th className="p-2 text-left">Código de barras</th>
-                    <th className="p-2 text-left">Nombre en archivo</th>
+                    <th className="p-2 text-left">Nombre</th>
+                    <th className="p-2 text-right text-gray-400">Precio/SI</th>
+                    <th className="p-2 text-right text-gray-400">Precio/CI</th>
+                    <th className="p-2 text-right">Precio de venta</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {notFound.map((nf) => (
-                    <tr key={nf.sku} className="border-t">
-                      <td className="p-2 font-mono text-gray-700">{nf.sku}</td>
-                      <td className="p-2 text-gray-500">{nf.name || "—"}</td>
-                    </tr>
-                  ))}
+                  {notFound.map((nf) => {
+                    const isSelected = selectedNew.has(nf.sku);
+                    return (
+                      <tr
+                        key={nf.sku}
+                        className={`border-t ${isSelected ? "bg-blue-50" : "hover:bg-gray-50"}`}
+                      >
+                        <td className="p-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              const next = new Set(selectedNew);
+                              if (e.target.checked) next.add(nf.sku);
+                              else next.delete(nf.sku);
+                              setSelectedNew(next);
+                            }}
+                            className="w-4 h-4"
+                          />
+                        </td>
+                        <td className="p-2 font-mono text-xs text-gray-700">{nf.sku}</td>
+                        <td className="p-2">
+                          <input
+                            type="text"
+                            value={newProductNames[nf.sku] ?? nf.name}
+                            onChange={(e) =>
+                              setNewProductNames((prev) => ({ ...prev, [nf.sku]: e.target.value }))
+                            }
+                            className="border rounded px-2 py-1 text-sm w-full min-w-[180px]"
+                            placeholder="Nombre del producto"
+                          />
+                        </td>
+                        <td className="p-2 text-right text-gray-400 text-xs">
+                          {nf.priceSI > 0 ? `$${fmt(nf.priceSI)}` : "—"}
+                        </td>
+                        <td className="p-2 text-right text-gray-400 text-xs">
+                          {nf.priceCI > 0 ? `$${fmt(nf.priceCI)}` : "—"}
+                        </td>
+                        <td className="p-2 text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={newProductPrices[nf.sku] ?? 0}
+                            onChange={(e) =>
+                              setNewProductPrices((prev) => ({
+                                ...prev,
+                                [nf.sku]: Number(e.target.value),
+                              }))
+                            }
+                            className={`border rounded px-2 py-1 w-28 text-right text-sm ${
+                              isSelected && (newProductPrices[nf.sku] ?? 0) <= 0
+                                ? "border-red-400"
+                                : ""
+                            }`}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
+
+          {notFound.length === 0 && matched.length === 0 && (
+            <p className="text-gray-500 text-sm">
+              No se encontraron productos. Verificá las columnas detectadas.
+            </p>
+          )}
         </div>
       )}
 
-      {/* Step: Done */}
-      {step === "done" && summary && (
+      {/* ── Step: Done ─────────────────────────────────────────────────── */}
+      {step === "done" && applySummary && (
         <div className="max-w-lg border rounded-lg p-6 bg-white">
           <div className="text-5xl mb-4 text-center">✅</div>
           <h2 className="text-xl font-semibold text-center mb-6">Importación completada</h2>
 
           <div className="space-y-3 mb-6">
             <div className="flex justify-between items-center py-2 border-b">
-              <span className="text-gray-600">Productos actualizados</span>
-              <span className="font-bold text-emerald-700 text-lg">{summary.updated}</span>
+              <span className="text-gray-600">Precios actualizados</span>
+              <span className="font-bold text-emerald-700 text-lg">{applySummary.updated}</span>
             </div>
             <div className="flex justify-between items-center py-2 border-b">
               <span className="text-gray-600">No encontrados (sin cambios)</span>
-              <span className="font-bold text-amber-600 text-lg">{summary.notFound}</span>
+              <span className="font-bold text-amber-600 text-lg">{applySummary.notFound}</span>
             </div>
-            {summary.errors.length > 0 && (
+            {addSummary && (addSummary.created > 0 || addSummary.updated > 0) && (
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-gray-600">Productos nuevos agregados</span>
+                <span className="font-bold text-blue-700 text-lg">
+                  {addSummary.created + addSummary.updated}
+                </span>
+              </div>
+            )}
+            {applySummary.errors.length > 0 && (
               <div className="py-2 border-b">
-                <span className="text-gray-600">Errores ({summary.errors.length})</span>
+                <span className="text-gray-600">Errores ({applySummary.errors.length})</span>
                 <ul className="mt-1 text-xs text-red-600 space-y-1">
-                  {summary.errors.slice(0, 5).map((e, i) => (
+                  {applySummary.errors.slice(0, 5).map((e, i) => (
                     <li key={i}>{e}</li>
                   ))}
-                  {summary.errors.length > 5 && (
-                    <li>...y {summary.errors.length - 5} más</li>
+                  {applySummary.errors.length > 5 && (
+                    <li>...y {applySummary.errors.length - 5} más</li>
                   )}
                 </ul>
               </div>
