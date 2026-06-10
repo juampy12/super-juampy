@@ -25,15 +25,20 @@ type ParseStats = {
   totalFound: number;
 };
 
-// Parse precio en formato argentino (1.234,56) o simple (1234,56 / 1234.56)
+// Detecta el formato según cuál separador aparece al final antes de los 2 decimales:
+//   US  (punto decimal, coma miles):  2,290.00  → 2290.00
+//   ARG (coma decimal, punto miles):  2.290,00  → 2290.00
 function parsePrecio(s: string): number {
   const c = s.trim();
-  if (c.includes(",")) {
-    // Argentino: separador miles = '.', decimal = ','
+  if (/\.\d{2}$/.test(c)) {
+    // Último separador es punto → decimal = punto, miles = coma
+    return parseFloat(c.replace(/,/g, ""));
+  }
+  if (/,\d{2}$/.test(c)) {
+    // Último separador es coma → decimal = coma, miles = punto
     return parseFloat(c.replace(/\./g, "").replace(",", "."));
   }
-  // Sin comas: puede ser 1234.56 (US) o 1.234 sin centavos (ignorar)
-  return parseFloat(c.replace(/,/g, ""));
+  return parseFloat(c);
 }
 
 // Acepta:
