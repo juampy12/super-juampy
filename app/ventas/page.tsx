@@ -35,6 +35,7 @@ type ProductRow = {
 
 type CartItem = {
   product_id: string;
+  lineId?: string;      // único por línea; para balanza permite varias líneas del mismo producto
   name: string;
   sku: string | null;
   qty: number;
@@ -42,6 +43,7 @@ type CartItem = {
   base_unit_price?: number;
   has_offer?: boolean;
   is_weighted?: boolean;
+  is_balanza?: boolean; // precio viene de la etiqueta de balanza, qty siempre 1
 };
 
 type PaymentMethod =
@@ -102,6 +104,17 @@ function paymentLabel(m: PaymentMethod) {
 
 function round2(n: number) {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+// Detecta EAN-13 de balanza: primer dígito "2", 13 dígitos total.
+// Retorna PLU (5 dígitos tal cual, ej "00009") y precio en pesos.
+function parseBalanzaBarcode(code: string): { plu: string; price: number } | null {
+  if (code.length !== 13 || code[0] !== "2") return null;
+  const plu = code.substring(1, 6);            // dígitos 2-6
+  const priceRaw = parseInt(code.substring(6, 11), 10); // dígitos 7-11
+  if (!Number.isFinite(priceRaw)) return null;
+  const price = priceRaw / 10;                 // 37800 → $3780.00
+  return { plu, price };
 }
 
 export default function VentasPage() {
@@ -261,6 +274,40 @@ export default function VentasPage() {
     } catch (e) {
       console.error("beep error", e);
     }
+  }
+
+  async function handleBalanzaBarcode(plu: string, price: number) {
+    const pluInt = String(parseInt(plu, 10)); // "00009" → "9"
+    try {
+      const res = await fetch(`/api/products/by-plu?plu=${encodeURIComponent(pluInt)}`);
+      const json = await res.json();
+      if (!json.product) {
+        toast.error("Producto no encontrado. Configurá el PLU en el catálogo");
+        setTimeout(() => searchInputRef.current?.focus(), 0);
+        return;
+      }
+      const p = json.product;
+      const lineId = `${p.id}:${Date.now()}`;
+      setItems((prev) => [
+        ...prev,
+        {
+          product_id: p.id,
+          lineId,
+          name: p.name,
+          sku: p.sku ?? null,
+          qty: 1,
+          unit_price: price,
+          base_unit_price: price,
+          has_offer: false,
+          is_balanza: true,
+        },
+      ]);
+      playBeep(880, 100, 0.15);
+      toast.success(`${p.name} — $${price.toFixed(2)}`);
+    } catch {
+      toast.error("Error buscando producto de balanza");
+    }
+    setTimeout(() => searchInputRef.current?.focus(), 0);
   }
 
   // refs foco
@@ -793,17 +840,19 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
     setTimeout(() => searchInputRef.current?.focus(), 0);
   }
 
-  function updateQty(product_id: string, qty: number) {
+  function lineKey(it: CartItem) {
+    return it.lineId ?? it.product_id;
+  }
+
+  function updateQty(key: string, qty: number) {
     setItems((prev) => {
-      if (qty <= 0) return prev.filter((it) => it.product_id !== product_id);
-      return prev.map((it) =>
-        it.product_id === product_id ? { ...it, qty } : it
-      );
+      if (qty <= 0) return prev.filter((it) => lineKey(it) !== key);
+      return prev.map((it) => lineKey(it) === key ? { ...it, qty } : it);
     });
   }
 
-  function removeItem(product_id: string) {
-    setItems((prev) => prev.filter((it) => it.product_id !== product_id));
+  function removeItem(key: string) {
+    setItems((prev) => prev.filter((it) => lineKey(it) !== key));
   }
 
   // =========================
@@ -872,6 +921,11 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
 
 if (code.length >= 6) {
             e.preventDefault();
+            const balanza = parseBalanzaBarcode(code);
+            if (balanza) {
+              void handleBalanzaBarcode(balanza.plu, balanza.price);
+              return;
+            }
             setSearch(code);
             playBeep();
 void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
@@ -902,6 +956,11 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
             const code = scannerBufferRef.current.trim();
             scannerBufferRef.current = "";
             if (code.length >= 6) {
+              const balanza = parseBalanzaBarcode(code);
+              if (balanza) {
+                void handleBalanzaBarcode(balanza.plu, balanza.price);
+                return;
+              }
               setSearch(code);
               playBeep();
 void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
@@ -954,21 +1013,21 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         const last = items[items.length - 1];
-        if (last) removeItem(last.product_id);
+        if (last) removeItem(lineKey(last));
         return;
       }
 
       if (e.key === "+" || e.key === "=") {
         e.preventDefault();
         const last = items[items.length - 1];
-        if (last) updateQty(last.product_id, last.qty + 1);
+        if (last) updateQty(lineKey(last), last.qty + 1);
         return;
       }
 
       if (e.key === "-") {
         e.preventDefault();
         const last = items[items.length - 1];
-        if (last) updateQty(last.product_id, last.qty - 1);
+        if (last) updateQty(lineKey(last), last.qty - 1);
         return;
       }
 
@@ -1428,7 +1487,7 @@ onKeyDown={(e) => {
                   </thead>
                   <tbody>
                     {items.map((it) => (
-                      <tr key={it.product_id} className="border-b last:border-0">
+                      <tr key={lineKey(it)} className="border-b last:border-0">
                         <td className="py-2 px-2">
                           {it.name}
                           {it.has_offer && (
@@ -1436,9 +1495,14 @@ onKeyDown={(e) => {
                               OFERTA
                             </span>
                           )}
-                          {(it as any).is_weighted && (
+                          {(it as any).is_weighted && !(it as any).is_balanza && (
                             <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-blue-100 text-blue-800">
                               PESABLE
+                            </span>
+                          )}
+                          {(it as any).is_balanza && (
+                            <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-purple-100 text-purple-800">
+                              BALANZA
                             </span>
                           )}
                         </td>
@@ -1449,6 +1513,7 @@ onKeyDown={(e) => {
                               type="button"
                               className="px-2 py-1 rounded border text-xs"
                               onClick={() => {
+                                if ((it as any).is_balanza) return; // precio fijo de etiqueta
                                 if ((it as any).is_weighted) {
                                   const gramsStr = window.prompt(
                                     `Restar gramos a: ${it.name}`,
@@ -1457,23 +1522,29 @@ onKeyDown={(e) => {
                                   if (!gramsStr) return;
                                   const grams = Number(String(gramsStr).replace(",", "."));
                                   if (!Number.isFinite(grams) || grams <= 0) return;
-                                  updateQty(it.product_id, it.qty - grams);
+                                  updateQty(lineKey(it), it.qty - grams);
                                   return;
                                 }
-                                updateQty(it.product_id, it.qty - 1);
+                                updateQty(lineKey(it), it.qty - 1);
                               }}
+                              disabled={(it as any).is_balanza}
                             >
                               -
                             </button>
 
                             <span className="w-16 text-center">
-                              {(it as any).is_weighted ? `${it.qty} g` : it.qty}
+                              {(it as any).is_balanza
+                                ? "1"
+                                : (it as any).is_weighted
+                                ? `${it.qty} g`
+                                : it.qty}
                             </span>
 
                             <button
                               type="button"
                               className="px-2 py-1 rounded border text-xs"
                               onClick={() => {
+                                if ((it as any).is_balanza) return; // precio fijo de etiqueta
                                 if ((it as any).is_weighted) {
                                   const gramsStr = window.prompt(
                                     `Sumar gramos a: ${it.name}`,
@@ -1482,11 +1553,12 @@ onKeyDown={(e) => {
                                   if (!gramsStr) return;
                                   const grams = Number(String(gramsStr).replace(",", "."));
                                   if (!Number.isFinite(grams) || grams <= 0) return;
-                                  updateQty(it.product_id, it.qty + grams);
+                                  updateQty(lineKey(it), it.qty + grams);
                                   return;
                                 }
-                                updateQty(it.product_id, it.qty + 1);
+                                updateQty(lineKey(it), it.qty + 1);
                               }}
+                              disabled={(it as any).is_balanza}
                             >
                               +
                             </button>
@@ -1521,7 +1593,7 @@ onKeyDown={(e) => {
                           <button
                             type="button"
                             className="px-2 py-1 rounded border text-xs text-red-600 hover:bg-red-50"
-                            onClick={() => removeItem(it.product_id)}
+                            onClick={() => removeItem(lineKey(it))}
                           >
                             Quitar
                           </button>

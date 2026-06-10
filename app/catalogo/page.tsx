@@ -31,6 +31,7 @@ function isSupervisorClient() {
 type ProductMini = {
   id: string;
   sku: string | null;
+  plu: string | null;
   name: string;
   price: number | null;
   active: boolean | null;
@@ -149,11 +150,13 @@ export default function CatalogoPage() {
   const [results, setResults] = useState<ProductMini[]>([]);
   const [selected, setSelected] = useState<ProductMini | null>(null);
   const [editName, setEditName] = useState("");
+  const [editPlu, setEditPlu] = useState("");
   const [working, setWorking] = useState(false);
 
   function pick(p: ProductMini) {
     setSelected(p);
     setEditName(p.name ?? "");
+    setEditPlu(p.plu ?? "");
   }
 
   // ✅ NUEVO: cargar TODOS los desactivados al tildar
@@ -164,7 +167,7 @@ export default function CatalogoPage() {
     try {
       const { data, error } = await supabase
         .from("products")
-        .select("id, sku, name, price, active")
+        .select("id, sku, plu, name, price, active")
         .eq("active", false)
         .order("name", { ascending: true })
         .limit(300);
@@ -213,7 +216,7 @@ export default function CatalogoPage() {
       if (isNumeric) {
         const { data, error } = await supabase
           .from("products")
-          .select("id, sku, name, price, active")
+          .select("id, sku, plu, name, price, active")
           .eq("sku", term)
           .eq("active", desiredActive)
           .limit(20);
@@ -235,7 +238,7 @@ export default function CatalogoPage() {
       // 2) buscar por nombre (ilike)
       const { data, error } = await supabase
         .from("products")
-        .select("id, sku, name, price, active")
+        .select("id, sku, plu, name, price, active")
         .eq("active", desiredActive)
         .ilike("name", `%${term}%`)
         .order("name", { ascending: true })
@@ -286,6 +289,29 @@ export default function CatalogoPage() {
       setSelected(updated);
       setResults((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       alert("Nombre actualizado ✅");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function savePlu() {
+    if (!isSupervisor) { alert("Solo supervisor puede editar productos."); return; }
+    if (!selected?.id) return;
+
+    setWorking(true);
+    try {
+      const res = await fetch("/api/products/update-plu", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selected.id, plu: editPlu.trim() || null }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!json?.ok) { alert(`Error guardando PLU: ${json?.error ?? "desconocido"}`); return; }
+
+      const updated = { ...selected, plu: editPlu.trim() || null };
+      setSelected(updated);
+      setResults((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      alert("PLU actualizado ✅");
     } finally {
       setWorking(false);
     }
@@ -648,11 +674,44 @@ export default function CatalogoPage() {
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <div className="md:col-span-2">
                     <label className="text-sm text-gray-600">Nombre</label>
-                    <input
-                      className="border rounded px-3 py-2 w-full"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        className="border rounded px-3 py-2 flex-1"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                      />
+                      <button
+                        className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50 shrink-0"
+                        onClick={() => void saveProductName()}
+                        disabled={working || !isSupervisor}
+                        type="button"
+                      >
+                        {working ? "..." : "Guardar"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="text-sm text-gray-600">
+                      PLU (balanza){" "}
+                      <span className="text-xs text-gray-400">— código corto para etiquetas de peso, ej: 9</span>
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        className="border rounded px-3 py-2 w-32"
+                        value={editPlu}
+                        onChange={(e) => setEditPlu(e.target.value)}
+                        placeholder="ej: 9"
+                      />
+                      <button
+                        className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+                        onClick={() => void savePlu()}
+                        disabled={working || !isSupervisor}
+                        type="button"
+                      >
+                        {working ? "..." : "Guardar PLU"}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="text-sm text-gray-700">
@@ -677,14 +736,6 @@ export default function CatalogoPage() {
                   </div>
 
                   <div className="flex items-end gap-2 justify-end">
-                    <button
-                      className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-                      onClick={() => void saveProductName()}
-                      disabled={working || !isSupervisor}
-                      type="button"
-                    >
-                      {working ? "..." : "Guardar nombre"}
-                    </button>
 
                     {selected.active ? (
                       <button
