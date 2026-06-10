@@ -43,6 +43,16 @@ type AddSummary = {
   errors: string[];
 };
 
+type PdfParseStats = {
+  totalLines: number;
+  linesWithEan: number;
+  linesWithPrices: number;
+  skippedNoPrice: number;
+  skippedNoName: number;
+  skippedDupe: number;
+  totalFound: number;
+};
+
 function detectColumns(headers: string[]): DetectedColumns {
   const skuKeywords = ["barra", "ean", "codigo", "código"];
   const priceKeywords = ["precio"];
@@ -92,6 +102,9 @@ export default function ImportarPreciosPage() {
 
   const [applySummary, setApplySummary] = useState<ApplySummary | null>(null);
 
+  // Diagnóstico del parser PDF
+  const [pdfStats, setPdfStats] = useState<PdfParseStats | null>(null);
+
   // Total de productos únicos en el archivo (se fija al construir la vista previa)
   const [totalInFile, setTotalInFile] = useState(0);
   // Sección de nuevos expandida/colapsada
@@ -138,6 +151,7 @@ export default function ImportarPreciosPage() {
       if (!json?.ok) { alert(`Error procesando el PDF: ${json?.error ?? "desconocido"}`); return; }
       const parsed: ExcelRow[] = json.rows ?? [];
       if (parsed.length === 0) { alert("No se encontraron productos con código de barras válido."); return; }
+      setPdfStats(json.parseStats ?? null);
       loadRows(parsed, PDF_HEADERS, "pdf");
     } catch (e: any) {
       alert(`Error: ${e?.message ?? e}`);
@@ -330,6 +344,7 @@ export default function ImportarPreciosPage() {
     setAddSummary(null);
     setApplySummary(null);
     setTotalInFile(0);
+    setPdfStats(null);
     setIsNewExpanded(true);
     setFileType(null);
     if (fileRef.current) fileRef.current.value = "";
@@ -410,6 +425,17 @@ export default function ImportarPreciosPage() {
                   )}
                 </p>
                 <p className="mt-1 text-gray-500">{rows.length} productos en el archivo</p>
+                {pdfStats && (
+                  <div className="mt-2 text-xs text-gray-400 space-y-0.5">
+                    <p>{pdfStats.linesWithEan} líneas con código de barras · {pdfStats.totalFound} con precio válido</p>
+                    {pdfStats.skippedNoPrice > 0 && (
+                      <p className="text-amber-600">
+                        {pdfStats.skippedNoPrice} líneas con EAN sin precio reconocido
+                        {pdfStats.skippedNoPrice > 0 && " — puede haber más productos en el PDF"}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
