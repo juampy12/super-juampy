@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
 
 type Store = { id: string; name: string };
 type Register = { id: string; name: string; store_id?: string | null };
@@ -174,7 +173,8 @@ export default function CashClosuresHistoryPage() {
     });
   }
 
-  function exportToExcel() {
+  async function exportToExcel() {
+    const XLSX = await import("xlsx");
     const wsData: (string | number)[][] = [
       ["Fecha", "Sucursal", "Caja", "Total ventas", "Efectivo", "Tickets", "Hora de cierre"],
       ...rows.map((r) => [

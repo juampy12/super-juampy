@@ -1,23 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
-// ✅ Asegurar Node runtime en Vercel (evita Edge/variantes raras)
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function getEnv(name: string) {
-  const v = process.env[name];
-  return typeof v === "string" && v.length > 0 ? v : "";
-}
-
-const SUPABASE_URL = getEnv("SUPABASE_URL") || getEnv("NEXT_PUBLIC_SUPABASE_URL");
-const SERVICE_KEY = getEnv("SUPABASE_SERVICE_ROLE_KEY");
-
-// Cliente admin (SERVER ONLY)
-const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_KEY, {
-  auth: { persistSession: false },
-});
 
 type Change = { product_id: string; stock: number };
 
@@ -26,26 +12,10 @@ export async function POST(req: Request) {
     const session = await getSessionFromRequest(req);
     if (!session) return unauthorized();
 
-    if (!SUPABASE_URL || !SERVICE_KEY) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Faltan envs del backend (SUPABASE_URL o NEXT_PUBLIC_SUPABASE_URL) y/o SUPABASE_SERVICE_ROLE_KEY.",
-        },
-        { status: 500 }
-      );
-    }
-
     const body: any = await req.json().catch(() => ({}));
 
-    // Batch si viene changes como array
     const isBatch = Array.isArray(body?.changes);
-
-    // store_id (snake) o storeId (camel)
     const storeId = String((body?.store_id ?? body?.storeId) ?? "").trim();
-
-    // reason (batch) o _reason (single)
     const reason = String((body?.reason ?? body?._reason) ?? "adjust").trim();
 
     const changes: Change[] = isBatch
@@ -66,7 +36,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Falta store_id" }, { status: 400 });
     }
 
-    // Cajeros solo pueden operar en su propia sucursal
     if (!isSupervisor(session) && session.store_id !== storeId) {
       return forbidden("No podés ajustar stock de otra sucursal");
     }
@@ -78,109 +47,94 @@ export async function POST(req: Request) {
       );
     }
 
+    // 1) Leer todos los stocks actuales en una sola query (elimina N SELECTs)
+    const productIds = changes.map((c) => c.product_id);
+    const { data: psRows, error: psErr } = await supabaseAdmin
+      .from("product_stocks")
+      .select("product_id, stock")
+      .eq("store_id", storeId)
+      .in("product_id", productIds);
+
+    if (psErr) {
+      console.error("Error leyendo stocks actuales:", psErr);
+      return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
+    }
+
+    const currentMap: Record<string, number> = {};
+    for (const row of psRows ?? []) {
+      currentMap[row.product_id] = Number(row.stock ?? 0);
+    }
+
+    // 2) Calcular deltas y separar noops de cambios reales
     const results: Array<{
-      product_id: string;
-      changed: boolean;
-      before: number;
-      requested: number;
-      stored: number;
-      delta: number;
+      product_id: string; changed: boolean;
+      before: number; requested: number; stored: number; delta: number;
     }> = [];
+    const changedItems: Array<Change & { current: number; delta: number }> = [];
 
     for (const ch of changes) {
-      const productId = ch.product_id;
-      const newStock = ch.stock;
-
-      // 1) leer stock actual
-      const { data: psRow, error: psErr } = await supabaseAdmin
-        .from("product_stocks")
-        .select("stock")
-        .eq("store_id", storeId)
-        .eq("product_id", productId)
-        .maybeSingle();
-
-      if (psErr) {
-        console.error("Error leyendo stock actual:", psErr);
-        return NextResponse.json(
-          { ok: false, error: "Error al procesar la operación" },
-          { status: 500 }
-        );
-      }
-
-      const current = Number(psRow?.stock ?? 0);
-      const delta = newStock - current;
-
-      // Si no cambia, igual lo registramos como noop
+      const current = currentMap[ch.product_id] ?? 0;
+      const delta = ch.stock - current;
       if (delta === 0) {
-        results.push({
-          product_id: productId,
-          changed: false,
-          before: current,
-          requested: newStock,
-          stored: current,
-          delta: 0,
-        });
-        continue;
+        results.push({ product_id: ch.product_id, changed: false, before: current, requested: ch.stock, stored: current, delta: 0 });
+      } else {
+        changedItems.push({ ...ch, current, delta });
       }
+    }
 
-      // 2) upsert stock (IMPORTANTE: no dependemos de devolver row)
+    if (changedItems.length > 0) {
+      // 3) Upsert batch: un solo INSERT … ON CONFLICT UPDATE para todos los productos
       const { error: upErr } = await supabaseAdmin
         .from("product_stocks")
         .upsert(
-          { store_id: storeId, product_id: productId, stock: newStock },
+          changedItems.map((item) => ({
+            store_id: storeId,
+            product_id: item.product_id,
+            stock: item.stock,
+          })),
           { onConflict: "store_id,product_id" }
         );
 
       if (upErr) {
-        console.error("Error actualizando stock:", upErr);
-        return NextResponse.json(
-          { ok: false, error: "Error al procesar la operación" },
-          { status: 500 }
-        );
+        console.error("Error actualizando stocks:", upErr);
+        return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
       }
 
-      // 3) Registrar movimiento (stock_movements exige qty NOT NULL)
-      const qty = Math.max(1, Math.round(Math.abs(delta)));
-
-      const { error: insErr } = await supabaseAdmin.from("stock_movements").insert({
-        store_id: storeId,
-        product_id: productId,
-
-        // ✅ columnas reales
-        qty,                 // NOT NULL
-        qty_delta: delta,    // numérico (puede ser negativo)
-        delta,               // existe pero puede ser null; lo dejamos por compatibilidad
-
-        reason,
-        note: null,
-
-        created_at: new Date().toISOString(),
-      });
+      // 4) Insert batch de movimientos (un solo INSERT para todos)
+      const now = new Date().toISOString();
+      const { error: insErr } = await supabaseAdmin.from("stock_movements").insert(
+        changedItems.map((item) => ({
+          store_id: storeId,
+          product_id: item.product_id,
+          qty: Math.max(1, Math.round(Math.abs(item.delta))),
+          qty_delta: item.delta,
+          delta: item.delta,
+          reason,
+          note: null,
+          created_at: now,
+        }))
+      );
 
       if (insErr) {
-        console.error("Error registrando movimiento de stock:", insErr);
-        return NextResponse.json(
-          { ok: false, error: "Error al procesar la operación" },
-          { status: 500 }
-        );
+        console.error("Error registrando movimientos de stock:", insErr);
+        return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
       }
 
-      results.push({
-        product_id: productId,
-        changed: true,
-        before: current,
-        requested: newStock,
-        stored: newStock,
-        delta,
-      });
+      for (const item of changedItems) {
+        results.push({
+          product_id: item.product_id,
+          changed: true,
+          before: item.current,
+          requested: item.stock,
+          stored: item.stock,
+          delta: item.delta,
+        });
+      }
     }
 
     return NextResponse.json({ ok: true, results });
   } catch (e: any) {
     console.error("Error inesperado en /api/stock/adjust:", e);
-    return NextResponse.json(
-      { ok: false, error: "Error inesperado" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "Error inesperado" }, { status: 500 });
   }
 }

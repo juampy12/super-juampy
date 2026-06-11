@@ -82,6 +82,10 @@ export async function GET(req: NextRequest) {
     if (storeId) {
       query = query.eq("store_id", storeId);
     }
+    // Filtrar por fecha en la DB (la vista v_sales_daily usa la columna "day").
+    // El filtro JS de abajo actúa como red de seguridad por si la vista usa otro nombre.
+    if (from) query = query.gte("day", from);
+    if (to) query = query.lte("day", to);
 
     const { data, error } = await query;
 
@@ -95,7 +99,8 @@ export async function GET(req: NextRequest) {
       day: getRowDay(row),
     }));
 
-    // Filtro por rango en JS (seguro porque no conocemos exacto el campo fecha en la vista)
+    // Red de seguridad: si la vista no tiene columna "day" y devolvió todo,
+    // el filtro de DB no tuvo efecto y este filtro JS lo completa.
     if (from) {
       rows = rows.filter((r: any) => r.day && r.day >= from);
     }

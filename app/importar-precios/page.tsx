@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPosEmployee } from "@/lib/posSession";
 import { supabase } from "@/app/lib/supabase";
-import * as XLSX from "xlsx";
 
 type ExcelRow = Record<string, string | number | null>;
 
@@ -163,8 +162,9 @@ export default function ImportarPreciosPage() {
 
   function handleExcel(file: File) {
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
+        const XLSX = await import("xlsx");
         const data = new Uint8Array(ev.target!.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
