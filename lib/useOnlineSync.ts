@@ -5,6 +5,9 @@ import { getQueue, syncQueue } from "./offlineQueue";
 
 export function useOnlineSync(onReconnect?: () => void) {
   const [isOnline, setIsOnline] = useState(true);
+  // Ref espejo de isOnline: se actualiza síncronamente antes que el estado React,
+  // para que sync() lo lea correctamente cuando se llama desde el handler de "online".
+  const isOnlineRef = useRef(true);
   const [pendingCount, setPendingCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const onReconnectRef = useRef(onReconnect);
@@ -14,8 +17,10 @@ export function useOnlineSync(onReconnect?: () => void) {
     setPendingCount(getQueue().length);
   }, []);
 
+  // Lee isOnlineRef (no el estado) para evitar race condition en reconexión:
+  // setIsOnline(true) es asíncrono; isOnlineRef.current se actualiza antes de llamar sync().
   const sync = useCallback(async () => {
-    if (syncing || !isOnline) return;
+    if (syncing || !isOnlineRef.current) return;
     const count = getQueue().length;
     if (count === 0) return;
     setSyncing(true);
@@ -34,18 +39,24 @@ export function useOnlineSync(onReconnect?: () => void) {
     } finally {
       setSyncing(false);
     }
-  }, [isOnline, syncing, updatePending]);
+  }, [syncing, updatePending]);
 
   useEffect(() => {
-    setIsOnline(navigator.onLine);
+    const online = navigator.onLine;
+    isOnlineRef.current = online;
+    setIsOnline(online);
     updatePending();
 
     const handleOnline = () => {
+      isOnlineRef.current = true;  // actualizar ref síncronamente ANTES de llamar sync()
       setIsOnline(true);
       sync();
       onReconnectRef.current?.();
     };
-    const handleOffline = () => setIsOnline(false);
+    const handleOffline = () => {
+      isOnlineRef.current = false;
+      setIsOnline(false);
+    };
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
 export async function POST(req: Request) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
+  if (!isSupervisor(session)) return forbidden("Solo supervisores pueden desactivar productos");
   try {
     const body = await req.json();
 

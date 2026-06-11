@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, unauthorized } from "@/lib/session";
 
 type InItem = {
   product_id?: string;
@@ -106,6 +107,9 @@ function normalizePayment(p: any): PaymentInfo | null {
 }
 
 export async function POST(req: Request) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
+
   try {
     const body = await req.json();
 

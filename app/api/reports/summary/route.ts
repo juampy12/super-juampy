@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
 function isYmd(v: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -39,6 +40,10 @@ function getRevenue(row: any): number {
 }
 
 export async function GET(req: NextRequest) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
+  if (!isSupervisor(session)) return forbidden("Solo supervisores pueden ver reportes");
+
   try {
     const { searchParams } = new URL(req.url);
 

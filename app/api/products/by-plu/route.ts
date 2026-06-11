@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, unauthorized } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
   const url = new URL(req.url);
   const plu = url.searchParams.get("plu")?.trim() ?? "";
 

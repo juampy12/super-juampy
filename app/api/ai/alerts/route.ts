@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, unauthorized } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,9 @@ function dateAR(d: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
   try {
     const now = new Date();
     const todayAR = dateAR(now);

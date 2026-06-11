@@ -22,7 +22,7 @@ export function getQueue(): QueuedSale[] {
 
 export function addToQueue(payload: QueuedSale["payload"]): string {
   const queue = getQueue();
-  const id = `offline-${Date.now()}`;
+  const id = crypto.randomUUID();
   queue.push({ id, payload, queuedAt: Date.now(), attempts: 0 });
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
   return id;

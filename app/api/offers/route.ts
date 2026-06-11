@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
 type OfferType = "fixed_price" | "percent";
 
@@ -40,6 +41,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
+  if (!isSupervisor(session)) return forbidden("Solo supervisores pueden gestionar ofertas");
+
   try {
     const body = await req.json();
 
@@ -100,6 +105,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
+  if (!isSupervisor(session)) return forbidden("Solo supervisores pueden gestionar ofertas");
+
   try {
     const body = await req.json();
     const id = body?.id as string | undefined;

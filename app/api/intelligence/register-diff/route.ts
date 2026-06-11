@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-  process.env.SUPABASE_SERVICE_ROLE_KEY as string // SERVER-ONLY
-);
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
 export async function POST(req: Request) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
+  if (!isSupervisor(session)) return forbidden("Solo supervisores pueden acceder a inteligencia");
+
   try {
     const body: any = await req.json();
 

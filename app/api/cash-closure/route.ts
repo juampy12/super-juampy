@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, unauthorized } from "@/lib/session";
 
 type PaymentBreakdown = {
   cash?: number;
@@ -74,6 +75,9 @@ function formatTimeAR(ts: string) {
 }
 
 export async function GET(req: NextRequest) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
+
   try {
     const { searchParams } = new URL(req.url);
 
