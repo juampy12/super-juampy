@@ -102,49 +102,56 @@ export default function ConfirmSaleButton({
     setSavedTotal(total);
     setSavedPayment(payment ?? null);
 
-    // Sin conexión: guardar en cola offline
-    if (!isOnline) {
-      const { addToQueue } = await import("@/lib/offlineQueue");
-      addToQueue({
-        items, total, payment,
-        store_id: storeId ?? "",
-        register_id: registerId ?? null,
-      });
-      onConfirmed?.(null);
-      onQueued?.();
-      setShowTicket(true);
-      setLoading(false);
-      inFlightRef.current = false;
-      return;
-    }
-
     try {
-      const res = await fetch("/api/pos/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items, total, payment, store_id: storeId, register_id: registerId }),
-      });
+      // Sin conexión conocida: encolar directamente sin intentar la red.
+      if (!isOnline) {
+        const { addToQueue } = await import("@/lib/offlineQueue");
+        addToQueue({ items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null });
+        onConfirmed?.(null);
+        onQueued?.();
+        setShowTicket(true);
+        return;
+      }
+
+      let res: Response;
+      try {
+        res = await fetch("/api/pos/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items, total, payment, store_id: storeId, register_id: registerId }),
+        });
+      } catch {
+        // Error de red: el dispositivo perdió conectividad o el servidor es inalcanzable.
+        // Encolar siempre — navigator.onLine puede ser true aun sin llegar al servidor.
+        const { addToQueue } = await import("@/lib/offlineQueue");
+        addToQueue({ items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null });
+        onConfirmed?.(null);
+        onQueued?.();
+        setShowTicket(true);
+        return;
+      }
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        if (res.status >= 500) {
+          // 5xx: servidor caído o error transitorio → encolar para reintentar.
+          const { addToQueue } = await import("@/lib/offlineQueue");
+          addToQueue({ items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null });
+          onConfirmed?.(null);
+          onQueued?.();
+          setShowTicket(true);
+        } else {
+          // 4xx: error permanente (producto inactivo, datos inválidos) → no encolar.
+          alert("Error al confirmar: " + (json?.error ?? json?.details ?? `HTTP ${res.status}`));
+        }
+        return;
+      }
+
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error ?? json?.details ?? `HTTP ${res.status}`);
       const saleId = json?.saleId ?? null;
       setLastSaleId(saleId);
       onConfirmed?.(saleId);
       setShowTicket(true);
-    } catch (e: any) {
-      // Si falla por red, guardar en cola
-      if (!navigator.onLine) {
-        const { addToQueue } = await import("@/lib/offlineQueue");
-        addToQueue({
-          items, total, payment,
-          store_id: storeId ?? "",
-          register_id: registerId ?? null,
-        });
-        onConfirmed?.(null);
-        onQueued?.();
-        setShowTicket(true);
-      } else {
-        alert("Error al confirmar: " + (e?.message ?? "desconocido"));
-      }
     } finally {
       setLoading(false);
       inFlightRef.current = false;

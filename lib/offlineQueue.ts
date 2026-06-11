@@ -37,44 +37,58 @@ export function clearQueue() {
   localStorage.removeItem(QUEUE_KEY);
 }
 
+// Mutex de módulo: impide que dos llamadas concurrentes a syncQueue procesen
+// la misma venta (ej. evento "online" disparado dos veces seguidas en móvil).
+let _syncing = false;
+
 export async function syncQueue(): Promise<{ synced: number; failed: number; abandoned: number }> {
-  let queue = getQueue();
-  if (queue.length === 0) return { synced: 0, failed: 0, abandoned: 0 };
+  if (_syncing) return { synced: 0, failed: 0, abandoned: 0 };
+  _syncing = true;
 
-  let synced = 0;
-  let failed = 0;
-  let abandoned = 0;
+  try {
+    let queue = getQueue();
+    if (queue.length === 0) return { synced: 0, failed: 0, abandoned: 0 };
 
-  for (const sale of [...queue]) {
-    try {
-      const res = await fetch("/api/pos/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sale.payload),
-      });
-      if (res.ok) {
-        queue = queue.filter(s => s.id !== sale.id);
-        synced++;
-      } else if (res.status < 500) {
-        // 4xx: error permanente (venta duplicada, producto inexistente, etc.)
-        const newAttempts = sale.attempts + 1;
-        if (newAttempts >= MAX_ATTEMPTS) {
+    let synced = 0;
+    let failed = 0;
+    let abandoned = 0;
+
+    for (const sale of [...queue]) {
+      try {
+        const res = await fetch("/api/pos/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sale.payload),
+        });
+        if (res.ok) {
           queue = queue.filter(s => s.id !== sale.id);
-          abandoned++;
+          // Persistir inmediatamente tras cada éxito: si el tab se cierra antes
+          // de terminar el loop, las ventas ya procesadas no se re-envían.
+          localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+          synced++;
+        } else if (res.status < 500) {
+          // 4xx: error permanente (producto inactivo, datos inválidos, etc.)
+          const newAttempts = sale.attempts + 1;
+          if (newAttempts >= MAX_ATTEMPTS) {
+            queue = queue.filter(s => s.id !== sale.id);
+            abandoned++;
+          } else {
+            queue = queue.map(s => s.id === sale.id ? { ...s, attempts: newAttempts } : s);
+            failed++;
+          }
+          localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
         } else {
-          queue = queue.map(s => s.id === sale.id ? { ...s, attempts: newAttempts } : s);
+          // 5xx: error transitorio (servidor caído), no cuenta como intento
           failed++;
         }
-      } else {
-        // 5xx: error transitorio (servidor caído), no cuenta como intento
+      } catch {
+        // Sin conexión o timeout: transitorio, no cuenta como intento
         failed++;
       }
-    } catch {
-      // Sin conexión o timeout: transitorio, no cuenta como intento
-      failed++;
     }
-  }
 
-  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
-  return { synced, failed, abandoned };
+    return { synced, failed, abandoned };
+  } finally {
+    _syncing = false;
+  }
 }
