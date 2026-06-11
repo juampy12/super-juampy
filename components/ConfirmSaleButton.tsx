@@ -57,6 +57,11 @@ export default function ConfirmSaleButton({
   const [savedTotal, setSavedTotal] = useState(0);
   const [savedPayment, setSavedPayment] = useState<PaymentInfo | null>(null);
   const inFlightRef = useRef(false);
+  // UUID estable por venta. Se usa como clave de idempotencia en el servidor:
+  // si el mismo key llega dos veces (timeout + reintento, o cola offline),
+  // el servidor devuelve la venta existente sin crear un duplicado.
+  // Se resetea después de cada venta confirmada o encolada para preparar la siguiente.
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
   // Ref para que el listener de teclado siempre llame a la versión actual de confirmar
   const confirmarRef = useRef(confirmar);
   useEffect(() => { confirmarRef.current = confirmar; });
@@ -102,11 +107,17 @@ export default function ConfirmSaleButton({
     setSavedTotal(total);
     setSavedPayment(payment ?? null);
 
+    const currentKey = idempotencyKeyRef.current;
+
     try {
       // Sin conexión conocida: encolar directamente sin intentar la red.
       if (!isOnline) {
         const { addToQueue } = await import("@/lib/offlineQueue");
-        addToQueue({ items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null });
+        addToQueue(
+          { items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null },
+          currentKey,
+        );
+        idempotencyKeyRef.current = crypto.randomUUID();
         onConfirmed?.(null);
         onQueued?.();
         setShowTicket(true);
@@ -118,13 +129,25 @@ export default function ConfirmSaleButton({
         res = await fetch("/api/pos/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items, total, payment, store_id: storeId, register_id: registerId }),
+          // idempotency_key se envía junto con el payload para que el servidor
+          // pueda detectar y rechazar el duplicado si el request llega dos veces.
+          body: JSON.stringify({
+            items, total, payment,
+            store_id: storeId, register_id: registerId,
+            idempotency_key: currentKey,
+          }),
         });
       } catch {
         // Error de red: el dispositivo perdió conectividad o el servidor es inalcanzable.
-        // Encolar siempre — navigator.onLine puede ser true aun sin llegar al servidor.
+        // Encolar con el MISMO key que se envió al servidor: si el servidor ya procesó
+        // la venta (pero la respuesta no llegó), el sync detectará el duplicado y
+        // devolverá la venta existente en vez de crear una nueva.
         const { addToQueue } = await import("@/lib/offlineQueue");
-        addToQueue({ items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null });
+        addToQueue(
+          { items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null },
+          currentKey,
+        );
+        idempotencyKeyRef.current = crypto.randomUUID();
         onConfirmed?.(null);
         onQueued?.();
         setShowTicket(true);
@@ -134,14 +157,19 @@ export default function ConfirmSaleButton({
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
         if (res.status >= 500) {
-          // 5xx: servidor caído o error transitorio → encolar para reintentar.
+          // 5xx: servidor caído o error transitorio → encolar con el mismo key.
           const { addToQueue } = await import("@/lib/offlineQueue");
-          addToQueue({ items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null });
+          addToQueue(
+            { items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null },
+            currentKey,
+          );
+          idempotencyKeyRef.current = crypto.randomUUID();
           onConfirmed?.(null);
           onQueued?.();
           setShowTicket(true);
         } else {
           // 4xx: error permanente (producto inactivo, datos inválidos) → no encolar.
+          // No se resetea el key: misma venta, el usuario puede corregir y reintentar.
           alert("Error al confirmar: " + (json?.error ?? json?.details ?? `HTTP ${res.status}`));
         }
         return;
@@ -150,6 +178,7 @@ export default function ConfirmSaleButton({
       const json = await res.json().catch(() => ({}));
       const saleId = json?.saleId ?? null;
       setLastSaleId(saleId);
+      idempotencyKeyRef.current = crypto.randomUUID();
       onConfirmed?.(saleId);
       setShowTicket(true);
     } finally {

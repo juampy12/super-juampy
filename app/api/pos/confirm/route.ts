@@ -43,7 +43,10 @@ type PaymentInfo = {
   change?: number;
   breakdown?: PaymentBreakdown;
   notes?: string;
+  idempotency_key?: string;
 };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const toNum = (v: any, def = 0) => {
   const n = Number(v);
@@ -106,6 +109,20 @@ function normalizePayment(p: any): PaymentInfo | null {
   };
 }
 
+/** Devuelve null si idempotencyKey no existe en sales; el sale_id si ya fue procesada. */
+async function findExistingSale(idempotencyKey: string): Promise<string | null> {
+  const { supabaseAdmin } = await import("@/lib/supabaseAdmin");
+  const oneHourAgo = new Date(Date.now() - 3600_000).toISOString();
+  const { data } = await supabaseAdmin
+    .from("sales")
+    .select("id")
+    .contains("payment", { idempotency_key: idempotencyKey })
+    .gte("created_at", oneHourAgo)
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
 export async function POST(req: Request) {
   const session = await getSessionFromRequest(req);
   if (!session) return unauthorized();
@@ -116,11 +133,26 @@ export async function POST(req: Request) {
     const storeId = resolveStoreId(body);
     const register_id = body.register_id ?? body.registerId ?? null;
 
+    // Validar y extraer la clave de idempotencia enviada por el cliente.
+    // Debe ser un UUID válido; se ignora si no cumple el formato.
+    const rawKey = body.idempotency_key;
+    const idempotencyKey: string | null =
+      typeof rawKey === "string" && UUID_RE.test(rawKey) ? rawKey : null;
+
     if (!storeId) {
       return NextResponse.json({ error: "store_id es obligatorio" }, { status: 400 });
     }
     if (!register_id) {
       return NextResponse.json({ error: "register_id es obligatorio (falta caja)" }, { status: 400 });
+    }
+
+    // Dedup: si la misma clave ya existe en una venta reciente, devolver la existente.
+    // Cubre tanto reintentos por timeout como la cola offline reenviando la misma venta.
+    if (idempotencyKey) {
+      const existingSaleId = await findExistingSale(idempotencyKey);
+      if (existingSaleId) {
+        return NextResponse.json({ ok: true, saleId: existingSaleId });
+      }
     }
 
     const rawItems: InItem[] = Array.isArray(body.items) ? body.items : [];
@@ -184,12 +216,18 @@ export async function POST(req: Request) {
 
     const payment = normalizePayment(body.payment);
 
+    // Embeber idempotency_key en el JSONB de payment para que quede persistido en sales.
+    // La próxima llamada con el mismo key encontrará la venta ya creada sin crear duplicado.
+    const paymentWithKey: PaymentInfo | null = payment && idempotencyKey
+      ? { ...payment, idempotency_key: idempotencyKey }
+      : payment;
+
     // RPC: confirm_sale_with_stock mete register_id dentro de payment para confirm_sale
     const { data, error } = await supabaseAdmin.rpc("confirm_sale_with_stock", {
       p_store_id: storeId,
       p_items: items,
       p_total: total,
-      p_payment: payment,
+      p_payment: paymentWithKey,
       p_register_id: register_id,
     });
 

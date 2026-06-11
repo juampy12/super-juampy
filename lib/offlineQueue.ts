@@ -6,6 +6,7 @@ export type QueuedSale = {
     payment: unknown;
     store_id: string;
     register_id: string | null;
+    idempotency_key: string;
   };
   queuedAt: number;
   attempts: number;
@@ -20,10 +21,21 @@ export function getQueue(): QueuedSale[] {
   catch { return []; }
 }
 
-export function addToQueue(payload: QueuedSale["payload"]): string {
-  const queue = getQueue();
+/**
+ * Encola una venta para sincronizar después.
+ * @param idempotencyKey UUID estable de esta venta. Si se pasó ya al servidor
+ *   (y la respuesta no llegó), enviar el mismo key permite que el servidor
+ *   detecte la venta como duplicada y devuelva la existente.
+ *   Si no se provee, se genera uno nuevo a partir del id de cola.
+ */
+export function addToQueue(
+  payload: Omit<QueuedSale["payload"], "idempotency_key">,
+  idempotencyKey?: string,
+): string {
   const id = crypto.randomUUID();
-  queue.push({ id, payload, queuedAt: Date.now(), attempts: 0 });
+  const key = idempotencyKey ?? id;
+  const queue = getQueue();
+  queue.push({ id, payload: { ...payload, idempotency_key: key }, queuedAt: Date.now(), attempts: 0 });
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
   return id;
 }
@@ -60,14 +72,19 @@ export async function syncQueue(): Promise<{ synced: number; failed: number; aba
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(sale.payload),
         });
+
         if (res.ok) {
           queue = queue.filter(s => s.id !== sale.id);
           // Persistir inmediatamente tras cada éxito: si el tab se cierra antes
           // de terminar el loop, las ventas ya procesadas no se re-envían.
           localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
           synced++;
+        } else if (res.status === 401) {
+          // Sesión expirada: error transitorio. No consume intentos.
+          // La sesión se puede renovar al re-loguearse; la venta no debe perderse.
+          failed++;
         } else if (res.status < 500) {
-          // 4xx: error permanente (producto inactivo, datos inválidos, etc.)
+          // 4xx permanente: producto inactivo, datos inválidos, etc.
           const newAttempts = sale.attempts + 1;
           if (newAttempts >= MAX_ATTEMPTS) {
             queue = queue.filter(s => s.id !== sale.id);
