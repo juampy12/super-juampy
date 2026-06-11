@@ -82,10 +82,9 @@ export async function GET(req: NextRequest) {
     if (storeId) {
       query = query.eq("store_id", storeId);
     }
-    // Filtrar por fecha en la DB (la vista v_sales_daily usa la columna "day").
-    // El filtro JS de abajo actúa como red de seguridad por si la vista usa otro nombre.
-    if (from) query = query.gte("day", from);
-    if (to) query = query.lte("day", to);
+    // La columna de fecha en v_sales_daily es "date"
+    if (from) query = query.gte("date", from);
+    if (to) query = query.lte("date", to);
 
     const { data, error } = await query;
 
