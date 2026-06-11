@@ -1,7 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
-import { getPosEmployee } from "@/lib/posSession";
 import { useProactiveAlert } from "@/lib/useProactiveAlert";
 
 type Message = {
@@ -49,12 +48,15 @@ export default function AsistentePage() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
     try {
       const history = messages.slice(-10);
       const res = await fetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, history, role: getPosEmployee()?.role ?? "cashier" }),
+        body: JSON.stringify({ question, history }),
+        signal: controller.signal,
       });
       const json = await res.json();
       const assistantMsg: Message = {
@@ -62,12 +64,13 @@ export default function AsistentePage() {
         content: json.response ?? json.error ?? "Error al procesar la consulta.",
       };
       setMessages((prev) => [...prev, assistantMsg]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Error de conexión. Intentá de nuevo." },
-      ]);
+    } catch (e: any) {
+      const content = e?.name === "AbortError"
+        ? "La consulta tardó demasiado (30 s). Intentá de nuevo."
+        : "Error de conexión. Intentá de nuevo.";
+      setMessages((prev) => [...prev, { role: "assistant", content }]);
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   }

@@ -12,7 +12,7 @@ const anthropic = new Anthropic({
 
 // Cache de datos del negocio en Supabase — persiste entre cold starts de Vercel.
 // Requiere la tabla ai_business_cache: key TEXT PK, data JSONB, expires_at TIMESTAMPTZ.
-const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutos
+const CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutos
 
 async function getBusinessDataCached(cacheKey: string) {
   // 1. Buscar hit vigente en la DB (sobrevive cold starts)
@@ -90,7 +90,8 @@ async function getBusinessData() {
     supabase.rpc("fn_top_products_range_all", { p_from: monthAgoAR, p_to: todayAR, p_limit: 10 }),
     supabase.from("product_min_stock").select("product_id, min_stock, store_id, products(name, sku), product_stocks(stock)").limit(20),
     supabase.from("stores").select("id, name"),
-    supabase.from("products").select("id, name, price, cost_net, markup_rate, active").eq("active", true).limit(200),
+    supabase.from("products").select("id, name, price, cost_net, markup_rate, active")
+      .eq("active", true).gt("cost_net", 0).gt("price", 0),
     supabase.from("cash_closures").select("store_id, date, total_sales, total_cash, total_tickets").order("date", { ascending: false }).limit(10),
   ]);
 
@@ -226,7 +227,7 @@ export async function POST(req: Request) {
 Tenés acceso a los datos actualizados del negocio. Respondé siempre en español argentino, de forma clara, concisa y útil para el gerente del supermercado.
 
 Datos actuales del negocio:
-${JSON.stringify(data, null, 2)}
+${JSON.stringify(data)}
 
 Reglas:
 - Usá pesos argentinos (ARS) con formato $X.XXX,XX
