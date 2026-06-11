@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import toast from "react-hot-toast";
 import ConfirmSaleButton from "@/components/ConfirmSaleButton";
 import { supabase } from "@/lib/supabase";
@@ -117,6 +117,127 @@ function parseBalanzaBarcode(code: string): { plu: string; price: number } | nul
   return { plu, price };
 }
 
+// ── Tipos y utilidades para ventas recientes / anulación desde POS ──────────
+
+type RecentSale = {
+  id: string;
+  created_at: string;
+  total: number;
+  method: string;
+  status: string;
+  voided_at: string | null;
+};
+
+function formatSaleTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+type PosVoidModalProps = {
+  sale: RecentSale;
+  storeName: string;
+  onClose: () => void;
+  onVoided: () => void;
+};
+
+function PosVoidModal({ sale, storeName, onClose, onVoided }: PosVoidModalProps) {
+  const [pin, setPin] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pin.trim()) { setError("Ingresá el PIN de supervisor"); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/sales/void", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sale_id: sale.id, pin: pin.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setError(json.error ?? "Error al anular la venta");
+        return;
+      }
+      toast.success("Venta anulada");
+      onVoided();
+    } catch {
+      setError("Error de conexión. Intentá de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+        <h2 className="text-lg font-semibold mb-1">Anular venta</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          Esta acción devuelve el stock y marca la venta como anulada. No se puede deshacer.
+        </p>
+        <div className="rounded-xl border bg-neutral-50 p-3 mb-4 text-sm space-y-1">
+          <div className="text-neutral-500 text-xs">Venta a anular</div>
+          <div className="font-medium">{formatSaleTime(sale.created_at)}</div>
+          <div className="text-neutral-600">{storeName} · ${sale.total.toFixed(2)}</div>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="text-sm font-medium text-neutral-700 block mb-1">
+              PIN de supervisor
+            </label>
+            <input
+              ref={inputRef}
+              type="password"
+              inputMode="numeric"
+              value={pin}
+              onChange={(e) => { setPin(e.target.value); setError(null); }}
+              className="w-full rounded-lg border px-3 py-2 text-lg tracking-widest text-center"
+              placeholder="••••"
+              disabled={loading}
+              maxLength={10}
+              autoComplete="off"
+            />
+          </div>
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="flex-1 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !pin.trim()}
+              className="flex-1 rounded-lg bg-red-600 text-white px-4 py-2 text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+            >
+              {loading ? "Anulando…" : "Confirmar anulación"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── POS Principal ─────────────────────────────────────────────────────────────
+
 export default function VentasPage() {
   const quickMode = false;
   const router = useRouter();
@@ -225,6 +346,33 @@ export default function VentasPage() {
   function deleteHold(id: string) {
     removeHold(id);
     setHolds(getHolds());
+  }
+
+  async function loadRecentSales() {
+    if (!selectedRegisterId) return;
+    try {
+      setRecentSalesLoading(true);
+      const res = await fetch(
+        `/api/sales/recent?register_id=${selectedRegisterId}`,
+        { cache: "no-store" }
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Error");
+      setRecentSales(
+        (json.data ?? []).map((r: any) => ({
+          id: r.id,
+          created_at: r.created_at,
+          total: Number(r.total ?? 0),
+          method: r.payment?.method ?? "desconocido",
+          status: r.status ?? "confirmed",
+          voided_at: r.payment?.voided_at ?? null,
+        }))
+      );
+    } catch {
+      toast.error("No se pudieron cargar las ventas recientes");
+    } finally {
+      setRecentSalesLoading(false);
+    }
   }
 
   function lockSupervisor() {
@@ -393,6 +541,10 @@ export default function VentasPage() {
   const [holds, setHolds] = useState<Hold[]>([]);
   const [showHolds, setShowHolds] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showRecentSales, setShowRecentSales] = useState(false);
+  const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
+  const [recentSalesLoading, setRecentSalesLoading] = useState(false);
+  const [voidTarget, setVoidTarget] = useState<RecentSale | null>(null);
 
   useEffect(() => {
     setHolds(getHolds());
@@ -1218,6 +1370,16 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
           >
             ⏸ En espera
           </button>
+          <button
+            onClick={() => {
+              setShowRecentSales(true);
+              void loadRecentSales();
+            }}
+            className="rounded-lg border px-3 py-2 text-sm font-medium bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100"
+            title="Ver últimas ventas del día de esta caja"
+          >
+            🧾 Últimas ventas
+          </button>
           {holds.length > 0 && (
             <button
               onClick={() => setShowHolds(true)}
@@ -1256,6 +1418,107 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {voidTarget && (
+        <PosVoidModal
+          sale={voidTarget}
+          storeName={stores.find((s) => s.id === selectedStoreId)?.name ?? "—"}
+          onClose={() => setVoidTarget(null)}
+          onVoided={() => {
+            setVoidTarget(null);
+            void loadRecentSales();
+          }}
+        />
+      )}
+
+      {showRecentSales && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between p-5 pb-3">
+              <div>
+                <h2 className="text-lg font-semibold">Ventas del día</h2>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  {registers.find((r) => r.id === selectedRegisterId)?.name ?? "Esta caja"} · hoy
+                </p>
+              </div>
+              <button
+                onClick={() => setShowRecentSales(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl ml-4"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="px-5 pb-2 flex justify-end">
+              <button
+                onClick={loadRecentSales}
+                disabled={recentSalesLoading}
+                className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+              >
+                {recentSalesLoading ? "Cargando…" : "Actualizar"}
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 pb-3">
+              {recentSalesLoading && recentSales.length === 0 ? (
+                <p className="text-sm text-neutral-500 py-6 text-center">Cargando ventas…</p>
+              ) : recentSales.length === 0 ? (
+                <p className="text-sm text-neutral-500 py-6 text-center">No hay ventas hoy en esta caja.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {recentSales.map((sale) => {
+                    const isVoided = sale.status === "anulada";
+                    return (
+                      <div
+                        key={sale.id}
+                        className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm ${isVoided ? "opacity-50 bg-neutral-50" : "bg-white"}`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className={`flex flex-wrap items-center gap-2 ${isVoided ? "line-through text-neutral-400" : ""}`}>
+                            <span className="font-semibold tabular-nums">{formatSaleTime(sale.created_at)}</span>
+                            <span className="text-neutral-400">·</span>
+                            <span className="font-bold">${sale.total.toFixed(2)}</span>
+                            <span className="text-neutral-400">·</span>
+                            <span className="text-neutral-500 text-xs">{paymentLabel(sale.method as any)}</span>
+                          </div>
+                          {isVoided && (
+                            <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 mt-1">
+                              ANULADA
+                            </span>
+                          )}
+                        </div>
+                        {!isVoided && (
+                          <button
+                            type="button"
+                            onClick={() => setVoidTarget(sale)}
+                            className="ml-3 shrink-0 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100"
+                          >
+                            Anular
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {recentSales.length > 0 && (
+              <div className="border-t px-5 py-3 flex justify-between text-xs text-neutral-500 bg-neutral-50 rounded-b-2xl">
+                <span>{recentSales.filter((s) => s.status === "confirmed").length} confirmadas</span>
+                {recentSales.some((s) => s.status === "anulada") && (
+                  <span className="text-red-600">
+                    {recentSales.filter((s) => s.status === "anulada").length} anulada{recentSales.filter((s) => s.status === "anulada").length !== 1 ? "s" : ""}
+                  </span>
+                )}
+                <span className="font-medium text-neutral-700">
+                  Total: ${recentSales.filter((s) => s.status === "confirmed").reduce((acc, s) => acc + s.total, 0).toFixed(2)}
+                </span>
               </div>
             )}
           </div>

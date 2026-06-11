@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
+import { getSessionFromRequest, unauthorized } from "@/lib/session";
 import { isBlocked, recordFailure, resetFailures } from "@/lib/rateLimiter";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,6 @@ export async function POST(req: NextRequest) {
     // ── 1. Autenticación y autorización ──────────────────────────
     const session = await getSessionFromRequest(req);
     if (!session) return unauthorized();
-    if (!isSupervisor(session)) return forbidden("Solo supervisores pueden anular ventas");
 
     const ip = getIp(req);
     if (isBlocked(ip)) {
