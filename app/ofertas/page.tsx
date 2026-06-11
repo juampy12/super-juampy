@@ -76,16 +76,20 @@ export default function OfertasPage() {
   const effectiveStoreId = useMemo(() => storeId, [storeId]);
 
   async function loadStores() {
-    const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/stores?select=id,name&order=name.asc`;
-    const res = await fetch(url, {
-      headers: {
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
-      },
-    });
-    const data = await res.json();
-    setStores(Array.isArray(data) ? data : []);
-    if (Array.isArray(data) && data.length && !storeId) setStoreId(data[0].id);
+    try {
+      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/stores?select=id,name&order=name.asc`;
+      const res = await fetch(url, {
+        headers: {
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
+        },
+      });
+      const data = await res.json();
+      setStores(Array.isArray(data) ? data : []);
+      if (Array.isArray(data) && data.length && !storeId) setStoreId(data[0].id);
+    } catch (e: any) {
+      toast.error(e?.message || "Error cargando sucursales");
+    }
   }
 
   async function searchProducts() {

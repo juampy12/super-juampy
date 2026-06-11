@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import toast from "react-hot-toast";
 
 function n(v: any, d = 0) {
   const x = Number(v);
@@ -90,15 +91,15 @@ export default function CatalogoPage() {
 
   const createProduct = async () => {
     if (!isSupervisor) {
-      alert("Solo supervisor puede crear productos.");
+      toast.error("Solo supervisor puede crear productos.");
       return;
     }
     if (!name.trim()) {
-      alert("Falta el nombre");
+      toast.error("Falta el nombre");
       return;
     }
     if (!isOwn && !sku.trim()) {
-      alert("Si NO es producto propio, el SKU/código de barras es obligatorio.");
+      toast.error("Si NO es producto propio, el SKU/código de barras es obligatorio.");
       return;
     }
 
@@ -124,13 +125,11 @@ export default function CatalogoPage() {
 
       const json = await res.json().catch(() => ({}));
       if (!json?.ok) {
-        alert(`Error creando producto: ${json?.error ?? "desconocido"}`);
+        toast.error(`Error creando producto: ${json?.error ?? "desconocido"}`);
         return;
       }
 
-      alert(
-        `Producto creado ✅\nSKU: ${json.product?.sku}\nNombre: ${json.product?.name}`
-      );
+      toast.success(`Producto creado — SKU: ${json.product?.sku} · ${json.product?.name}`);
       reset();
       setTab("editar");
       setQ(json.product?.sku ?? "");
@@ -173,14 +172,14 @@ export default function CatalogoPage() {
         .limit(300);
 
       if (error) {
-        alert("Error buscando: " + error.message);
+        toast.error("Error buscando: " + error.message);
         return;
       }
 
       const list = (data ?? []) as ProductMini[];
       setResults(list);
       if (list.length === 1) pick(list[0]);
-      if (list.length === 0) alert("No hay productos desactivados.");
+      if (list.length === 0) toast("No hay productos desactivados.");
     } finally {
       setSearching(false);
     }
@@ -200,7 +199,7 @@ export default function CatalogoPage() {
     }
 
     if (!term) {
-      alert("Escribí SKU o nombre para buscar");
+      toast.error("Escribí SKU o nombre para buscar");
       return;
     }
 
@@ -222,7 +221,7 @@ export default function CatalogoPage() {
           .limit(20);
 
         if (error) {
-          alert("Error buscando: " + error.message);
+          toast.error("Error buscando: " + error.message);
           return;
         }
 
@@ -245,14 +244,14 @@ export default function CatalogoPage() {
         .limit(50);
 
       if (error) {
-        alert("Error buscando: " + error.message);
+        toast.error("Error buscando: " + error.message);
         return;
       }
 
       const list = (data ?? []) as ProductMini[];
       setResults(list);
       if (list.length === 1) pick(list[0]);
-      if (list.length === 0) alert("No se encontraron productos.");
+      if (list.length === 0) toast("No se encontraron productos.");
     } finally {
       setSearching(false);
     }
@@ -260,14 +259,14 @@ export default function CatalogoPage() {
 
   async function saveProductName() {
     if (!isSupervisor) {
-      alert("Solo supervisor puede editar productos.");
+      toast.error("Solo supervisor puede editar productos.");
       return;
     }
     if (!selected?.id) return;
 
     const newName = editName.trim();
     if (!newName) {
-      alert("El nombre no puede quedar vacío");
+      toast.error("El nombre no puede quedar vacío");
       return;
     }
 
@@ -281,21 +280,21 @@ export default function CatalogoPage() {
 
       const json = await res.json().catch(() => ({}));
       if (!json?.ok) {
-        alert(`Error guardando: ${json?.error ?? "desconocido"}`);
+        toast.error(`Error guardando: ${json?.error ?? "desconocido"}`);
         return;
       }
 
       const updated = json.product as ProductMini;
       setSelected(updated);
       setResults((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-      alert("Nombre actualizado ✅");
+      toast.success("Nombre actualizado");
     } finally {
       setWorking(false);
     }
   }
 
   async function savePlu() {
-    if (!isSupervisor) { alert("Solo supervisor puede editar productos."); return; }
+    if (!isSupervisor) { toast.error("Solo supervisor puede editar productos."); return; }
     if (!selected?.id) return;
 
     setWorking(true);
@@ -306,12 +305,12 @@ export default function CatalogoPage() {
         body: JSON.stringify({ id: selected.id, plu: editPlu.trim() || null }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!json?.ok) { alert(`Error guardando PLU: ${json?.error ?? "desconocido"}`); return; }
+      if (!json?.ok) { toast.error(`Error guardando PLU: ${json?.error ?? "desconocido"}`); return; }
 
       const updated = { ...selected, plu: editPlu.trim() || null };
       setSelected(updated);
       setResults((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-      alert("PLU actualizado ✅");
+      toast.success("PLU actualizado");
     } finally {
       setWorking(false);
     }
@@ -319,7 +318,7 @@ export default function CatalogoPage() {
 
   async function deactivateProduct() {
     if (!isSupervisor) {
-      alert("Solo supervisor puede desactivar productos.");
+      toast.error("Solo supervisor puede desactivar productos.");
       return;
     }
     if (!selected?.id) return;
@@ -341,7 +340,7 @@ export default function CatalogoPage() {
 
       const json = await res.json().catch(() => ({}));
       if (!json?.ok) {
-        alert(`Error desactivando: ${json?.error ?? "desconocido"}`);
+        toast.error(`Error desactivando: ${json?.error ?? "desconocido"}`);
         return;
       }
 
@@ -357,7 +356,7 @@ export default function CatalogoPage() {
         await loadInactiveOnly();
       }
 
-      alert("Producto desactivado ✅");
+      toast.success("Producto desactivado");
     } finally {
       setWorking(false);
     }
@@ -365,7 +364,7 @@ export default function CatalogoPage() {
 
   async function reactivateProduct() {
     if (!isSupervisor) {
-      alert("Solo supervisor puede reactivar productos.");
+      toast.error("Solo supervisor puede reactivar productos.");
       return;
     }
     if (!selected?.id) return;
@@ -383,7 +382,7 @@ export default function CatalogoPage() {
 
       const json = await res.json().catch(() => ({}));
       if (!json?.ok) {
-        alert(`Error reactivando: ${json?.error ?? "desconocido"}`);
+        toast.error(`Error reactivando: ${json?.error ?? "desconocido"}`);
         return;
       }
 
@@ -397,7 +396,7 @@ export default function CatalogoPage() {
         setResults((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       }
 
-      alert("Producto reactivado ✅");
+      toast.success("Producto reactivado");
     } finally {
       setWorking(false);
     }

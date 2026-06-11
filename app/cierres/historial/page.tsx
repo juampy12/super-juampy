@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
 
 type Store = { id: string; name: string };
 type Register = { id: string; name: string; store_id?: string | null };
@@ -145,15 +146,15 @@ export default function CashClosuresHistoryPage() {
   async function applyFilters() {
     // validación básica de fechas
     if (fromDate && !isYmd(fromDate)) {
-      alert("La fecha 'Desde' es inválida.");
+      toast.error("La fecha 'Desde' es inválida.");
       return;
     }
     if (toDate && !isYmd(toDate)) {
-      alert("La fecha 'Hasta' es inválida.");
+      toast.error("La fecha 'Hasta' es inválida.");
       return;
     }
     if (fromDate && toDate && fromDate > toDate) {
-      alert("'Desde' no puede ser mayor que 'Hasta'.");
+      toast.error("'Desde' no puede ser mayor que 'Hasta'.");
       return;
     }
 

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import toast from "react-hot-toast";
 import { DayPicker } from "react-day-picker";
 import type { DateRange as RDPDateRange } from "react-day-picker";
 import "react-day-picker/dist/style.css";
@@ -89,7 +90,7 @@ export default function ReportsPage() {
       setRowsAll(Array.isArray(data.rows) ? (data.rows as Row[]) : []);
     } catch (err) {
       console.error("Error cargando reportes", err);
-      alert("Error cargando datos del reporte");
+      toast.error("Error cargando datos del reporte");
     } finally {
       setLoadingKpis(false);
     }

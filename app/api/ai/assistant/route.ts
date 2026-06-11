@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin as supabase } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, isSupervisor, unauthorized } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -10,36 +10,46 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
-// ── Cache en memoria del servidor ─────────────────────────────────────────
-// Clave: store_id o "all". TTL: 2 minutos. Evita repetir las 11 queries
-// de Supabase cuando el supervisor hace preguntas seguidas.
-type BusinessDataCache = {
-  data: Awaited<ReturnType<typeof getBusinessData>>;
-  expiresAt: number;
-};
-const businessCache = new Map<string, BusinessDataCache>();
-const CACHE_TTL = 2 * 60 * 1000; // 2 minutos en ms
+// Cache de datos del negocio en Supabase — persiste entre cold starts de Vercel.
+// Requiere la tabla ai_business_cache: key TEXT PK, data JSONB, expires_at TIMESTAMPTZ.
+const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutos
 
 async function getBusinessDataCached(cacheKey: string) {
-  const hit = businessCache.get(cacheKey);
-  if (hit && Date.now() < hit.expiresAt) return hit.data;
+  // 1. Buscar hit vigente en la DB (sobrevive cold starts)
+  const { data: cached } = await supabase
+    .from("ai_business_cache")
+    .select("data, expires_at")
+    .eq("key", cacheKey)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
 
-  // Limpiar entradas expiradas para no acumular memoria
-  for (const [k, v] of businessCache) {
-    if (Date.now() >= v.expiresAt) businessCache.delete(k);
+  if (cached?.data) {
+    return cached.data as Awaited<ReturnType<typeof getBusinessData>>;
   }
 
+  // 2. Cache miss: obtener datos frescos
   const data = await getBusinessData();
-  businessCache.set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL });
+
+  // 3. Persistir (upsert por si dos requests llegan simultáneamente)
+  await supabase
+    .from("ai_business_cache")
+    .upsert(
+      {
+        key: cacheKey,
+        data: data as any,
+        expires_at: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
+      },
+      { onConflict: "key" }
+    );
+
+  // 4. Limpieza de expirados (fire-and-forget, no bloquea la respuesta)
+  void supabase
+    .from("ai_business_cache")
+    .delete()
+    .lt("expires_at", new Date().toISOString());
+
   return data;
 }
-// ─────────────────────────────────────────────────────────────────────────
-
-const supabase = createClient(
-  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
 
 async function getBusinessData() {
   const now = new Date();

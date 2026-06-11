@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 
 type Store = { id: string; name: string };
 type Register = { id: string; name: string };
@@ -342,11 +343,11 @@ export default function CashClosurePage() {
   async function handleConfirmClosure() {
     try {
       if (!selectedDate || !selectedStore || !selectedRegister) {
-        alert("Falta seleccionar fecha, sucursal o caja.");
+        toast.error("Falta seleccionar fecha, sucursal o caja.");
         return;
       }
       if (kpis.tickets === 0) {
-        alert("No hay tickets para cerrar en esta fecha, sucursal y caja.");
+        toast.error("No hay tickets para cerrar en esta fecha, sucursal y caja.");
         return;
       }
 
@@ -392,15 +393,15 @@ export default function CashClosurePage() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        alert(json?.error ?? "Error al guardar el cierre.");
+        toast.error(json?.error ?? "Error al guardar el cierre.");
         return;
       }
 
-      alert("Cierre de caja guardado correctamente ✅");
+      toast.success("Cierre de caja guardado correctamente");
       await loadClosure();
     } catch (err) {
       console.error("Error confirmando cierre de caja", err);
-      alert("Error inesperado al guardar el cierre.");
+      toast.error("Error inesperado al guardar el cierre.");
     } finally {
       setSaving(false);
     }
@@ -409,15 +410,15 @@ export default function CashClosurePage() {
   async function handleReplaceClosure() {
     try {
       if (!selectedDate || !selectedStore || !selectedRegister) {
-        alert("Falta seleccionar fecha, sucursal o caja.");
+        toast.error("Falta seleccionar fecha, sucursal o caja.");
         return;
       }
       if (!kpis.tickets || kpis.tickets === 0) {
-        alert("No hay tickets para esta fecha, sucursal y caja.");
+        toast.error("No hay tickets para esta fecha, sucursal y caja.");
         return;
       }
       if (!existingClosure) {
-        alert("No hay un cierre previo para reemplazar.");
+        toast.error("No hay un cierre previo para reemplazar.");
         return;
       }
 
@@ -464,15 +465,15 @@ export default function CashClosurePage() {
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
         const msg = errJson?.error || `Error HTTP ${res.status}`;
-        alert(`Error reemplazando el cierre: ${msg}`);
+        toast.error(`Error reemplazando el cierre: ${msg}`);
         return;
       }
 
-      alert("Cierre de caja reemplazado correctamente ✅");
+      toast.success("Cierre de caja reemplazado correctamente");
       await loadClosure();
     } catch (e) {
       console.error("Error en handleReplaceClosure", e);
-      alert("Error inesperado reemplazando el cierre.");
+      toast.error("Error inesperado reemplazando el cierre.");
     } finally {
       setSaving(false);
     }
