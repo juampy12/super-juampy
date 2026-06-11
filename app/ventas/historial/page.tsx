@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getPosEmployee } from "@/lib/posSession";
 import { STORES as ALL_STORES } from "@/lib/stores";
+import toast from "react-hot-toast";
 
 const STORES = ALL_STORES.map((s) => ({ id: s.id, name: s.short }));
 
@@ -22,6 +23,9 @@ type SaleRow = {
   store_id: string | null;
   register_id: string | null;
   method: string;
+  status: string;
+  voided_at: string | null;
+  voided_by: string | null;
 };
 
 type SaleItem = {
@@ -59,6 +63,117 @@ function todayStr() {
     .join("-");
 }
 
+// ── Modal de anulación ────────────────────────────────────────────────────────
+
+type VoidModalProps = {
+  sale: SaleRow;
+  onClose: () => void;
+  onVoided: () => void;
+};
+
+function VoidModal({ sale, onClose, onVoided }: VoidModalProps) {
+  const [pin, setPin] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pin.trim()) { setError("Ingresá el PIN de supervisor"); return; }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/sales/void", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sale_id: sale.id, pin: pin.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setError(json.error ?? "Error al anular la venta");
+        return;
+      }
+      toast.success("Venta anulada correctamente");
+      onVoided();
+    } catch {
+      setError("Error de conexión. Intentá de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+        <h2 className="text-lg font-semibold mb-1">Anular venta</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          Esta acción devuelve el stock y marca la venta como anulada. No se puede deshacer.
+        </p>
+
+        <div className="rounded-xl border bg-neutral-50 p-3 mb-4 text-sm space-y-1">
+          <div className="text-neutral-500 text-xs">Venta a anular</div>
+          <div className="font-medium">{formatDateTime(sale.created_at)}</div>
+          <div className="text-neutral-600">
+            {STORES.find((s) => s.id === sale.store_id)?.name ?? "—"} &middot; {formatMoney(sale.total)}
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="text-sm font-medium text-neutral-700 block mb-1">
+              PIN de supervisor
+            </label>
+            <input
+              ref={inputRef}
+              type="password"
+              inputMode="numeric"
+              value={pin}
+              onChange={(e) => { setPin(e.target.value); setError(null); }}
+              className="w-full rounded-lg border px-3 py-2 text-lg tracking-widest text-center"
+              placeholder="••••"
+              disabled={loading}
+              maxLength={10}
+              autoComplete="off"
+            />
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="flex-1 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !pin.trim()}
+              className="flex-1 rounded-lg bg-red-600 text-white px-4 py-2 text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+            >
+              {loading ? "Anulando…" : "Confirmar anulación"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Página principal ──────────────────────────────────────────────────────────
+
 export default function SalesHistorialPage() {
   const [ready, setReady] = useState(false);
   const [isSupervisor, setIsSupervisor] = useState(false);
@@ -78,6 +193,8 @@ export default function SalesHistorialPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [itemsCache, setItemsCache] = useState<Record<string, SaleItem[]>>({});
   const [itemsLoading, setItemsLoading] = useState<string | null>(null);
+
+  const [voidTarget, setVoidTarget] = useState<SaleRow | null>(null);
 
   useEffect(() => {
     const emp = getPosEmployee();
@@ -122,6 +239,9 @@ export default function SalesHistorialPage() {
           store_id: r.store_id ?? null,
           register_id: r.register_id ?? null,
           method: r.payment?.method ?? "desconocido",
+          status: r.status ?? "confirmed",
+          voided_at: r.payment?.voided_at ?? null,
+          voided_by: r.payment?.voided_by ?? null,
         }))
       );
     } catch (e: any) {
@@ -133,10 +253,7 @@ export default function SalesHistorialPage() {
   }
 
   async function toggleExpand(saleId: string) {
-    if (expandedId === saleId) {
-      setExpandedId(null);
-      return;
-    }
+    if (expandedId === saleId) { setExpandedId(null); return; }
     setExpandedId(saleId);
     if (itemsCache[saleId]) return;
     try {
@@ -162,9 +279,14 @@ export default function SalesHistorialPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, isSupervisor]);
 
+  // KPIs solo sobre ventas confirmadas
   const summary = useMemo(() => {
-    const total = sales.reduce((acc, s) => acc + s.total, 0);
-    return { count: sales.length, total };
+    const confirmed = sales.filter((s) => s.status === "confirmed");
+    return {
+      count: confirmed.length,
+      total: confirmed.reduce((acc, s) => acc + s.total, 0),
+      anuladas: sales.length - confirmed.length,
+    };
   }, [sales]);
 
   const storeName = (id: string | null) => {
@@ -186,10 +308,18 @@ export default function SalesHistorialPage() {
 
   return (
     <main className="p-4 space-y-6">
+      {voidTarget && (
+        <VoidModal
+          sale={voidTarget}
+          onClose={() => setVoidTarget(null)}
+          onVoided={() => { setVoidTarget(null); void loadSales(); }}
+        />
+      )}
+
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Historial de ventas</h1>
-          <p className="text-sm text-neutral-500">Todas las ventas confirmadas, ticket a ticket.</p>
+          <p className="text-sm text-neutral-500">Todas las ventas confirmadas y anuladas, ticket a ticket.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
@@ -251,16 +381,22 @@ export default function SalesHistorialPage() {
         </div>
       </section>
 
-      {/* Resumen */}
-      <section className="rounded-xl border p-4 bg-white grid gap-3 md:grid-cols-2">
+      {/* Resumen — solo confirmadas */}
+      <section className="rounded-xl border p-4 bg-white grid gap-3 md:grid-cols-3">
         <div>
-          <div className="text-xs text-neutral-500">Tickets encontrados</div>
+          <div className="text-xs text-neutral-500">Tickets confirmados</div>
           <div className="text-xl font-semibold">{summary.count}</div>
         </div>
         <div>
-          <div className="text-xs text-neutral-500">Total ventas</div>
+          <div className="text-xs text-neutral-500">Total confirmado</div>
           <div className="text-xl font-semibold">{formatMoney(summary.total)}</div>
         </div>
+        {summary.anuladas > 0 && (
+          <div>
+            <div className="text-xs text-neutral-500">Anuladas</div>
+            <div className="text-xl font-semibold text-red-600">{summary.anuladas}</div>
+          </div>
+        )}
       </section>
 
       {/* Tabla */}
@@ -281,34 +417,72 @@ export default function SalesHistorialPage() {
                   <th className="text-left py-2 px-2">Caja</th>
                   <th className="text-right py-2 px-2">Total</th>
                   <th className="text-left py-2 px-2">Método</th>
+                  <th className="text-left py-2 px-2">Estado</th>
+                  <th className="py-2 px-2"></th>
                 </tr>
               </thead>
               <tbody>
                 {sales.map((s) => {
+                  const isVoided = s.status === "anulada";
                   const isExpanded = expandedId === s.id;
                   const items = itemsCache[s.id];
                   return (
                     <>
                       <tr
                         key={s.id}
-                        className="border-b last:border-0 cursor-pointer hover:bg-neutral-50"
+                        className={`border-b last:border-0 cursor-pointer hover:bg-neutral-50 ${isVoided ? "opacity-60" : ""}`}
                         onClick={() => toggleExpand(s.id)}
                       >
                         <td className="py-1 px-2 text-neutral-400">
                           {isExpanded ? "▼" : "▶"}
                         </td>
-                        <td className="py-1 px-2">{formatDateTime(s.created_at)}</td>
-                        <td className="py-1 px-2">{storeName(s.store_id)}</td>
-                        <td className="py-1 px-2">
+                        <td className={`py-1 px-2 ${isVoided ? "line-through text-neutral-400" : ""}`}>
+                          {formatDateTime(s.created_at)}
+                        </td>
+                        <td className={`py-1 px-2 ${isVoided ? "line-through text-neutral-400" : ""}`}>
+                          {storeName(s.store_id)}
+                        </td>
+                        <td className={`py-1 px-2 ${isVoided ? "line-through text-neutral-400" : ""}`}>
                           {s.register_id ? registerMap[s.register_id] ?? "Caja" : "—"}
                         </td>
-                        <td className="py-1 px-2 text-right font-medium">{formatMoney(s.total)}</td>
-                        <td className="py-1 px-2">{METHOD_LABELS[s.method] ?? s.method}</td>
+                        <td className={`py-1 px-2 text-right font-medium ${isVoided ? "line-through text-neutral-400" : ""}`}>
+                          {formatMoney(s.total)}
+                        </td>
+                        <td className={`py-1 px-2 ${isVoided ? "text-neutral-400" : ""}`}>
+                          {METHOD_LABELS[s.method] ?? s.method}
+                        </td>
+                        <td className="py-1 px-2">
+                          {isVoided ? (
+                            <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                              ANULADA
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                              OK
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-1 px-2" onClick={(e) => e.stopPropagation()}>
+                          {!isVoided && (
+                            <button
+                              type="button"
+                              onClick={() => setVoidTarget(s)}
+                              className="rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-100"
+                            >
+                              Anular
+                            </button>
+                          )}
+                        </td>
                       </tr>
                       {isExpanded && (
-                        <tr key={`${s.id}-items`} className="bg-blue-50 border-b">
+                        <tr key={`${s.id}-items`} className={`border-b ${isVoided ? "bg-red-50/40" : "bg-blue-50"}`}>
                           <td></td>
-                          <td colSpan={5} className="py-2 px-4">
+                          <td colSpan={7} className="py-2 px-4">
+                            {isVoided && s.voided_at && (
+                              <p className="text-[10px] text-red-600 mb-2 font-medium">
+                                Anulada el {formatDateTime(s.voided_at)}
+                              </p>
+                            )}
                             {itemsLoading === s.id ? (
                               <span className="text-neutral-400">Cargando productos…</span>
                             ) : !items || items.length === 0 ? (

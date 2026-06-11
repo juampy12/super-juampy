@@ -42,8 +42,8 @@ export async function GET(req: Request) {
 
     let q = supabaseAdmin
       .from("sales")
-      .select("id, created_at, total, store_id, register_id, payment")
-      .eq("status", "confirmed")
+      .select("id, created_at, total, store_id, register_id, payment, status")
+      .in("status", ["confirmed", "anulada"])
       .order("created_at", { ascending: false })
       .limit(500);
 
