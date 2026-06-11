@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getPosEmployee } from "@/lib/posSession";
 import { STORES as ALL_STORES } from "@/lib/stores";
 import toast from "react-hot-toast";
@@ -427,9 +427,8 @@ export default function SalesHistorialPage() {
                   const isExpanded = expandedId === s.id;
                   const items = itemsCache[s.id];
                   return (
-                    <>
+                    <React.Fragment key={s.id}>
                       <tr
-                        key={s.id}
                         className={`border-b last:border-0 cursor-pointer hover:bg-neutral-50 ${isVoided ? "opacity-60" : ""}`}
                         onClick={() => toggleExpand(s.id)}
                       >
@@ -475,7 +474,7 @@ export default function SalesHistorialPage() {
                         </td>
                       </tr>
                       {isExpanded && (
-                        <tr key={`${s.id}-items`} className={`border-b ${isVoided ? "bg-red-50/40" : "bg-blue-50"}`}>
+                        <tr className={`border-b ${isVoided ? "bg-red-50/40" : "bg-blue-50"}`}>
                           <td></td>
                           <td colSpan={7} className="py-2 px-4">
                             {isVoided && s.voided_at && (
@@ -512,7 +511,7 @@ export default function SalesHistorialPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </tbody>
