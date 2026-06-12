@@ -62,6 +62,10 @@ async function getBusinessData() {
   const twoMonthsAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
   const yesterdayAR = new Intl.DateTimeFormat("en-CA", { timeZone: tz })
     .format(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+  const sixMonthsAgoAR = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(sixMonthsAgo);
+  const twelveMonthsAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+  const twelveMonthsAgoAR = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(twelveMonthsAgo);
 
   const [
     salesToday, salesYesterday, salesWeek, salesMonth,
@@ -106,6 +110,30 @@ async function getBusinessData() {
 
   const storeMap: Record<string, string> = {};
   (stores.data ?? []).forEach((s: any) => { storeMap[s.id] = s.name; });
+
+  // 1B + 1C: bloque histórico secuencial (cacheado, latencia aceptable)
+  const [salesHistoryRes, topSixMonthsRes] = await Promise.all([
+    supabase.from("v_sales_daily")
+      .select("date, store_id, total_amount, tickets")
+      .gte("date", twelveMonthsAgoAR)
+      .order("date", { ascending: true }),
+    supabase.rpc("fn_top_products_range_all", { p_from: sixMonthsAgoAR, p_to: todayAR, p_limit: 50 }),
+  ]);
+
+  const top50Ids = (topSixMonthsRes.data ?? [])
+    .map((p: any) => p.product_id as string)
+    .filter(Boolean)
+    .slice(0, 50);
+
+  let productTrendsData: any[] = [];
+  if (top50Ids.length > 0) {
+    const { data: trendsData } = await supabase.from("v_sales_products")
+      .select("day, product_id, name, units, revenue")
+      .in("product_id", top50Ids)
+      .gte("day", sixMonthsAgoAR)
+      .order("day", { ascending: true });
+    productTrendsData = trendsData ?? [];
+  }
 
   const todaySales = salesToday.data ?? [];
   const yesterdaySales = salesYesterday.data ?? [];
@@ -172,6 +200,39 @@ async function getBusinessData() {
     }))
     .sort((a: any, b: any) => b.margen_pct - a.margen_pct);
 
+  // 1B: histórico mensual por sucursal (últimos 12 meses)
+  const mensualMap: Record<string, { mes: string; sucursal: string; total: number; tickets: number }> = {};
+  (salesHistoryRes.data ?? []).forEach((r: any) => {
+    const mes = String(r.date ?? "").slice(0, 7);
+    if (!mes) return;
+    const sucursal = storeMap[r.store_id] ?? (r.store_id ?? "general");
+    const key = `${mes}|${sucursal}`;
+    if (!mensualMap[key]) mensualMap[key] = { mes, sucursal, total: 0, tickets: 0 };
+    mensualMap[key].total += Number(r.total_amount ?? r.revenue ?? 0);
+    mensualMap[key].tickets += Number(r.tickets ?? 0);
+  });
+  const historico_mensual = Object.values(mensualMap)
+    .sort((a, b) => a.mes.localeCompare(b.mes) || a.sucursal.localeCompare(b.sucursal))
+    .map(m => ({ mes: m.mes, sucursal: m.sucursal, total: Math.round(m.total), tickets: m.tickets }));
+
+  // 1C: tendencias mensuales de los top 50 productos (últimos 6 meses)
+  const trendMap: Record<string, { nombre: string; por_mes: Record<string, { unidades: number; facturacion: number }> }> = {};
+  productTrendsData.forEach((r: any) => {
+    const mes = String(r.day ?? "").slice(0, 7);
+    if (!mes || !r.product_id) return;
+    if (!trendMap[r.product_id]) trendMap[r.product_id] = { nombre: r.name, por_mes: {} };
+    const m = trendMap[r.product_id].por_mes;
+    if (!m[mes]) m[mes] = { unidades: 0, facturacion: 0 };
+    m[mes].unidades += Number(r.units ?? 0);
+    m[mes].facturacion += Number(r.revenue ?? 0);
+  });
+  const tendencias_productos = Object.values(trendMap).map(p => ({
+    nombre: p.nombre,
+    por_mes: Object.fromEntries(
+      Object.entries(p.por_mes).map(([mes, v]) => [mes, { unidades: Math.round(v.unidades), facturacion: Math.round(v.facturacion) }])
+    ),
+  }));
+
   return {
     fecha_hoy: todayAR,
     ventas: {
@@ -234,6 +295,8 @@ async function getBusinessData() {
       desde: o.starts_at,
       hasta: o.ends_at,
     })),
+    historico_mensual,
+    tendencias_productos,
   };
 }
 
@@ -270,7 +333,9 @@ Reglas:
 - Podés hacer análisis, comparaciones y sugerencias basadas en los datos
 - Fecha actual: ${data!.fecha_hoy}
 - Las sucursales son: ${data!.sucursales.join(", ")}
-- Revisá siempre las diferencias entre ventas y efectivo en los cierres (ultimos_cierres). Si la discrepancia supera el 10%, alertá mencionando el porcentaje exacto y los montos.`
+- Revisá siempre las diferencias entre ventas y efectivo en los cierres (ultimos_cierres). Si la discrepancia supera el 10%, alertá mencionando el porcentaje exacto y los montos.
+- Tenés en "historico_mensual" el detalle mes a mes por sucursal de los últimos 12 meses: usalo para responder comparativas como "¿cómo fue diciembre vs enero?" o "¿cuánto crecimos este mes?".
+- Tenés en "tendencias_productos" la evolución mensual de los top 50 productos de los últimos 6 meses: usalo para detectar caídas o crecimientos por producto, como "¿cuánto bajaron las ventas del Villa del Sur?".`
       : `Sos el asistente de soporte del sistema POS de Super Juampy para cajeros.
 
 Tu función es ÚNICAMENTE ayudar con problemas técnicos y errores del sistema POS.
