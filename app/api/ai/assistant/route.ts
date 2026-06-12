@@ -66,7 +66,7 @@ async function getBusinessData() {
   const [
     salesToday, salesYesterday, salesWeek, salesMonth,
     salesPrevMonth, topWeek, topMonth, lowStock,
-    stores, allProducts, closures
+    stores, allProducts, closures, stockMovements, activeOffers
   ] = await Promise.all([
     supabase.from("sales").select("total, store_id, created_at, payment")
       .eq("status", "confirmed")
@@ -93,6 +93,15 @@ async function getBusinessData() {
     supabase.from("products").select("id, name, price, cost_net, markup_rate, active")
       .eq("active", true).gt("cost_net", 0).gt("price", 0),
     supabase.from("cash_closures").select("store_id, date, total_sales, total_cash, total_tickets").order("date", { ascending: false }).limit(10),
+    supabase.from("stock_movements")
+      .select("reason, product_id, qty, created_at, products(name)")
+      .gte("created_at", monthAgo.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(100),
+    supabase.from("product_offers")
+      .select("product_id, type, value, starts_at, ends_at, products(name)")
+      .gte("ends_at", new Date().toISOString())
+      .eq("active", true),
   ]);
 
   const storeMap: Record<string, string> = {};
@@ -129,6 +138,15 @@ async function getBusinessData() {
     if (!porDia[dia]) porDia[dia] = { total: 0, tickets: 0 };
     porDia[dia].total += Number(s.total);
     porDia[dia].tickets += 1;
+  });
+
+  // Ventas por hora del día (acumulado de la semana)
+  const porHora: Record<string, { total: number; tickets: number }> = {};
+  weekSales.forEach((s: any) => {
+    const hora = new Intl.DateTimeFormat("en-CA", { hour: "2-digit", hour12: false, timeZone: tz }).format(new Date(s.created_at));
+    if (!porHora[hora]) porHora[hora] = { total: 0, tickets: 0 };
+    porHora[hora].total += Number(s.total);
+    porHora[hora].tickets += 1;
   });
 
   // Métodos de pago hoy
@@ -200,6 +218,22 @@ async function getBusinessData() {
       ventas: Number(c.total_sales), efectivo: Number(c.total_cash), tickets: c.total_tickets,
     })),
     sucursales: Object.values(storeMap),
+    ventas_por_hora_semana: Object.entries(porHora)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([hora, v]) => ({ hora, total: Math.round(v.total), tickets: v.tickets })),
+    ajustes_stock_30d: (stockMovements.data ?? []).map((m: any) => ({
+      razon: m.reason,
+      producto: (m.products as any)?.name ?? m.product_id,
+      cantidad: Number(m.qty),
+      fecha: m.created_at,
+    })),
+    ofertas_activas: (activeOffers.data ?? []).map((o: any) => ({
+      producto: (o.products as any)?.name ?? o.product_id,
+      tipo: o.type,
+      valor: o.value,
+      desde: o.starts_at,
+      hasta: o.ends_at,
+    })),
   };
 }
 
@@ -235,7 +269,8 @@ Reglas:
 - Si no tenés datos para responder algo, decilo claramente
 - Podés hacer análisis, comparaciones y sugerencias basadas en los datos
 - Fecha actual: ${data!.fecha_hoy}
-- Las sucursales son: ${data!.sucursales.join(", ")}`
+- Las sucursales son: ${data!.sucursales.join(", ")}
+- Revisá siempre las diferencias entre ventas y efectivo en los cierres (ultimos_cierres). Si la discrepancia supera el 10%, alertá mencionando el porcentaje exacto y los montos.`
       : `Sos el asistente de soporte del sistema POS de Super Juampy para cajeros.
 
 Tu función es ÚNICAMENTE ayudar con problemas técnicos y errores del sistema POS.

@@ -17,13 +17,15 @@ export async function GET(req: Request) {
   try {
     const now = new Date();
     const todayAR = dateAR(now);
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayAR = dateAR(yesterday);
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const weekAgoAR = dateAR(weekAgo);
     const eightWeeksAgo = new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000);
     const todayDayName = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: tz }).format(now);
 
     // ── Round 1: todas las queries en paralelo ────────────────────────────
-    const [lowStockRes, recentSoldRes, todaySalesRes, pastSalesRes] = await Promise.all([
+    const [lowStockRes, recentSoldRes, todaySalesRes, pastSalesRes, closuresRes, stockDeficitRes] = await Promise.all([
       supabaseAdmin
         .from("product_stocks")
         .select("product_id, store_id, stock")
@@ -50,6 +52,22 @@ export async function GET(req: Request) {
         .eq("status", "confirmed")
         .gte("created_at", eightWeeksAgo.toISOString())
         .lt("created_at", `${todayAR}T00:00:00-03:00`),
+
+      // 2A: últimos cierres para detectar discrepancias
+      supabaseAdmin
+        .from("cash_closures")
+        .select("store_id, date, total_sales, total_cash")
+        .order("date", { ascending: false })
+        .limit(5),
+
+      // 2B: productos vendidos con stock insuficiente ayer
+      supabaseAdmin
+        .from("stock_movements")
+        .select("product_id, qty, products(name)")
+        .eq("reason", "sale_stock_deficit")
+        .gte("created_at", `${yesterdayAR}T00:00:00-03:00`)
+        .lte("created_at", `${yesterdayAR}T23:59:59-03:00`)
+        .limit(20),
     ]);
 
     // ── Productos con stock bajo y ventas recientes ───────────────────────
@@ -66,7 +84,13 @@ export async function GET(req: Request) {
 
     // ── Round 2: nombres de productos y sucursales ────────────────────────
     const productIds = [...new Set(lowStockItems.map((r: any) => r.product_id as string))];
-    const storeIds = [...new Set(lowStockItems.map((r: any) => r.store_id as string))];
+    const closureItems: any[] = closuresRes.data ?? [];
+    const storeIds = [
+      ...new Set([
+        ...lowStockItems.map((r: any) => r.store_id as string),
+        ...closureItems.map((c: any) => c.store_id as string),
+      ])
+    ];
 
     const [productsRes, storesRes] = await Promise.all([
       productIds.length > 0
@@ -114,7 +138,34 @@ export async function GET(req: Request) {
         ? Math.round((1 - todayTotal / avgSameDay) * 100)
         : null;
 
+    // ── 2A: Discrepancias en cierres de caja ─────────────────────────────
+    const discrepancyClosures = closureItems
+      .filter((c: any) => {
+        const sales = Number(c.total_sales);
+        if (sales <= 0) return false;
+        return Math.abs(Number(c.total_cash) - sales) / sales > 0.05;
+      })
+      .map((c: any) => {
+        const sales = Number(c.total_sales);
+        const cash = Number(c.total_cash);
+        return {
+          date: c.date,
+          storeName: storeNameMap[c.store_id] ?? c.store_id,
+          sales,
+          cash,
+          diff: cash - sales,
+          pct: Math.round(Math.abs(cash - sales) / sales * 100),
+        };
+      });
+
+    // ── 2B: Productos vendidos con stock insuficiente ayer ────────────────
+    const deficitItems = (stockDeficitRes.data ?? []).map((m: any) => ({
+      name: (m.products as any)?.name ?? m.product_id,
+      qty: Math.abs(Number(m.qty)),
+    }));
+
     // ── Construir mensaje en markdown ─────────────────────────────────────
+    const fmt = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
     const lines: string[] = [`**📊 Resumen proactivo — ${todayAR}**\n`];
 
     const storeEntries = Object.values(byStore);
@@ -131,8 +182,24 @@ export async function GET(req: Request) {
       lines.push("✅ Sin productos con stock crítico activo.\n");
     }
 
+    if (deficitItems.length > 0) {
+      lines.push("**📦 Productos vendidos con stock insuficiente ayer**");
+      for (const item of deficitItems) {
+        lines.push(`- ${item.name} (${item.qty} un. en déficit)`);
+      }
+      lines.push("");
+    }
+
+    if (discrepancyClosures.length > 0) {
+      lines.push("**🔴 Discrepancia en cierre de caja**");
+      for (const c of discrepancyClosures) {
+        const dir = c.diff > 0 ? "sobrante" : "faltante";
+        lines.push(`- *${c.storeName} — ${c.date}:* ventas ${fmt(c.sales)}, efectivo ${fmt(c.cash)} → **${c.pct}% de ${dir}**`);
+      }
+      lines.push("");
+    }
+
     if (salesDropPct !== null) {
-      const fmt = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
       lines.push("**📉 Alerta de ventas**");
       lines.push(
         `Las ventas de hoy (${fmt(todayTotal)}) están **${salesDropPct}% por debajo** del promedio del mismo día de la semana (${fmt(avgSameDay!)}).`

@@ -8,14 +8,58 @@ type Message = {
   content: string;
 };
 
-const SUGERENCIAS = [
-  "¿Cuánto vendimos hoy?",
-  "¿Cuál fue el producto más vendido esta semana?",
-  "¿Qué sucursal vendió más?",
-  "¿Qué productos tienen stock bajo?",
-  "¿Cuál es el ticket promedio de hoy?",
-  "¿Cómo van las ventas este mes?",
-];
+function getSugerencias(hour: number, hasAlert: boolean): string[] {
+  if (hasAlert) return [
+    "¿Qué alertas hay hoy?",
+    "¿Qué productos tengo que pedir?",
+    "¿Cómo está el stock?",
+    "Resumí la situación del negocio",
+    "¿Cuánto vendimos ayer?",
+    "¿Qué ofertas tenemos activas?",
+  ];
+  if (hour < 10) return [
+    "¿Cómo fue ayer?",
+    "¿Cómo arrancó la mañana?",
+    "¿Qué productos tienen stock bajo?",
+    "¿Cuál fue el producto más vendido ayer?",
+    "¿Cómo van las ventas este mes?",
+    "¿Qué ofertas tenemos activas?",
+  ];
+  if (hour >= 18) return [
+    "¿Cómo vamos hoy?",
+    "¿Qué vendimos esta tarde?",
+    "¿Cuánto falta para cerrar bien el día?",
+    "¿Cuál fue el producto más vendido hoy?",
+    "¿Cómo está el stock?",
+    "Resumí el día de hoy",
+  ];
+  return [
+    "¿Cuánto vendimos hoy?",
+    "¿Cuál es el producto más vendido esta semana?",
+    "¿Qué sucursal vendió más?",
+    "¿Qué productos tienen stock bajo?",
+    "¿Cuál es el ticket promedio de hoy?",
+    "¿Cómo van las ventas este mes?",
+  ];
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+  return (
+    <button
+      onClick={handleCopy}
+      className="mt-2 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+    >
+      {copied ? "✓ Copiado" : "Copiar"}
+    </button>
+  );
+}
 
 export default function AsistentePage() {
   const [messages, setMessages] = useState<Message[]>([
@@ -27,6 +71,7 @@ export default function AsistentePage() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [alertWasShown, setAlertWasShown] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const proactiveInjected = useRef(false);
   const { message: proactiveMsg, clear: clearProactive } = useProactiveAlert();
@@ -38,6 +83,7 @@ export default function AsistentePage() {
   useEffect(() => {
     if (!proactiveMsg || proactiveInjected.current) return;
     proactiveInjected.current = true;
+    setAlertWasShown(true);
     setMessages((prev) => [...prev, { role: "assistant", content: proactiveMsg }]);
     clearProactive();
   }, [proactiveMsg, clearProactive]);
@@ -75,6 +121,12 @@ export default function AsistentePage() {
     }
   }
 
+  const hourAR = parseInt(
+    new Intl.DateTimeFormat("en", { timeZone: "America/Argentina/Cordoba", hour: "numeric", hour12: false }).format(new Date()),
+    10
+  );
+  const sugerencias = getSugerencias(hourAR, alertWasShown);
+
   return (
     <div className="max-w-3xl mx-auto p-4 flex flex-col h-[calc(100vh-120px)]">
       <div className="mb-4">
@@ -104,7 +156,12 @@ export default function AsistentePage() {
                 </div>
               )}
               {msg.role === "assistant"
-                ? <ReactMarkdown>{msg.content}</ReactMarkdown>
+                ? (
+                  <>
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    <CopyButton text={msg.content} />
+                  </>
+                )
                 : msg.content}
             </div>
           </div>
@@ -124,9 +181,9 @@ export default function AsistentePage() {
       </div>
 
       {/* Sugerencias */}
-      {messages.length <= 1 && (
+      {!messages.some(m => m.role === "user") && (
         <div className="flex flex-wrap gap-2 mb-3">
-          {SUGERENCIAS.map((s) => (
+          {sugerencias.map((s) => (
             <button
               key={s}
               onClick={() => sendMessage(s)}
