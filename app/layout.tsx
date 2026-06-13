@@ -34,18 +34,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta charSet="utf-8" />
       </head>
       <body className={`${inter.className} min-h-dvh bg-[#f8fafc] text-[#111]`}>
+        <BrandTheme />
+        <HeaderNav />
 
-        <div className="mx-auto max-w-6xl px-4 py-4">
-          <BrandTheme />
-          <HeaderNav />
-
+        <div className="mx-auto max-w-6xl px-4 pb-4">
           <div className="max-w-7xl mx-auto">{children}</div>
 
           <Toaster position="bottom-center" containerStyle={{ bottom: 80 }} />
           <JsonLd />
-
-
         </div>
+
         <AIChat />
         <ServiceWorker />
     </body>

@@ -106,10 +106,10 @@ export default function AIChat() {
 
   return (
     <>
-      {/* Panel chat — siempre arriba del botón */}
+      {/* Panel chat — solo desktop */}
       {open && (
         <div
-          className="fixed z-[9998] w-[340px] bg-white rounded-2xl shadow-2xl border flex flex-col overflow-hidden"
+          className="hidden sm:flex fixed z-[9998] w-[340px] bg-white rounded-2xl shadow-2xl border flex-col overflow-hidden"
           style={{ right: pos.right, bottom: pos.bottom + 64 , maxHeight: "420px" }}
         >
           <div className="bg-[#c1674a] text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
@@ -168,11 +168,11 @@ export default function AIChat() {
         </div>
       )}
 
-      {/* Botón flotante arrastrable */}
+      {/* Botón flotante arrastrable — solo desktop */}
       <button
         onMouseDown={onMouseDown}
         onClick={() => { if (!didDrag.current) setOpen(prev => !prev); }}
-        className="fixed z-[9999] w-14 h-14 bg-[#c1674a] text-white rounded-full shadow-2xl flex items-center justify-center text-2xl select-none"
+        className="hidden sm:flex fixed z-[9999] w-14 h-14 bg-[#c1674a] text-white rounded-full shadow-2xl items-center justify-center text-2xl select-none"
         style={{ right: pos.right, bottom: pos.bottom, cursor: "grab" }}
         title="Asistente IA — arrastrá para mover"
       >

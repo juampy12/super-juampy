@@ -78,17 +78,16 @@ function todayStr() {
 
 export default function CashClosurePage() {
   const [selectedDate, setSelectedDate] = useState<string>(todayStr());
-  const [selectedStore, setSelectedStore] = useState<string>(STORES[0]?.id ?? "");
+  const [selectedStore, setSelectedStore] = useState<string>("");
 
   const [registers, setRegisters] = useState<Register[]>([]);
   const [selectedRegister, setSelectedRegister] = useState<string>("");
 
   useEffect(() => {
     const emp = getPosEmployee();
-    if (emp?.store_id) {
-      const found = STORES.find(s => s.id === emp.store_id);
-      if (found) setSelectedStore(found.id);
-    }
+    const storeId = emp?.store_id;
+    const match = storeId ? STORES.find(s => s.id === storeId) : null;
+    setSelectedStore(match ? match.id : (STORES[0]?.id ?? ""));
   }, []);
 
   useEffect(() => {

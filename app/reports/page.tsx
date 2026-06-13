@@ -168,14 +168,16 @@ export default function ReportsPage() {
       <section className="grid gap-4 lg:grid-cols-[minmax(380px,1fr)_minmax(480px,1fr)]">
         <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
           <h2 className="font-medium mb-2">Rango</h2>
-          <DayPicker
-            mode="range"
-            selected={range?.from ? range : undefined}
-            onSelect={setRange}
-            captionLayout="dropdown"
-            fromYear={today.getFullYear() - 1}
-            toYear={today.getFullYear()}
-          />
+          <div className="overflow-x-auto">
+            <DayPicker
+              mode="range"
+              selected={range?.from ? range : undefined}
+              onSelect={setRange}
+              captionLayout="dropdown"
+              fromYear={today.getFullYear() - 1}
+              toYear={today.getFullYear()}
+            />
+          </div>
         </div>
 
         <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
