@@ -18,18 +18,17 @@ const PUBLIC_PATHS = [
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseHost = supabaseUrl ? new URL(supabaseUrl).host : "";
 
-function buildCsp(nonce: string): string {
+// CSP estático (sin nonce): Next.js 16 App Router pre-renderiza páginas como HTML
+// estático en build-time — el middleware solo puede agregar headers, no modificar
+// el HTML generado. Los nonces requieren rendering dinámico por request para
+// inyectarse en los scripts; con páginas estáticas son incompatibles.
+// 'self' bloquea scripts de dominios externos (CDNs externos, third-party trackers).
+// 'unsafe-inline' es necesario para los RSC payload scripts de hidratación
+// (self.__next_f.push(...)) que Next.js genera inline y no puede externalizar.
+function buildCsp(): string {
   return [
     "default-src 'self'",
-    // nonce permite los inline scripts de hidratación del App Router; strict-dynamic
-    // propaga la confianza a los chunks cargados dinámicamente por Next.js.
-    // 'self' actúa como fallback para navegadores que no soporten strict-dynamic.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
-    // unsafe-inline en style-src es inevitable en una app React:
-    // (a) React convierte style={} JSX props en atributos style="" en el DOM,
-    // (b) BrandTheme usa element.style.setProperty() para CSS custom properties,
-    // (c) Next.js puede inyectar bloques <style> propios.
-    // Sin nonces de estilo (que requieren pasar nonce a cada componente) no hay alternativa.
+    "script-src 'self' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
@@ -41,21 +40,14 @@ function buildCsp(nonce: string): string {
   ].join("; ");
 }
 
+const CSP = buildCsp();
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const csp = buildCsp(nonce);
-
-  // Propagar nonce al layout server-side via header de request
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.set("x-nonce", nonce);
-
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
-    const response = NextResponse.next({
-      request: { headers: requestHeaders },
-    });
-    response.headers.set("Content-Security-Policy", csp);
+    const response = NextResponse.next();
+    response.headers.set("Content-Security-Policy", CSP);
     return response;
   }
 
@@ -71,21 +63,17 @@ export async function middleware(req: NextRequest) {
     const loginUrl = new URL("/pos-login", req.url);
     loginUrl.searchParams.set("redirect", pathname);
     const response = NextResponse.redirect(loginUrl);
-    // Borra la cookie inválida o expirada
     response.cookies.set("sj_pos_auth", "", { maxAge: 0, path: "/" });
     return response;
   }
 
-  const response = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
-  response.headers.set("Content-Security-Policy", csp);
+  const response = NextResponse.next();
+  response.headers.set("Content-Security-Policy", CSP);
   return response;
 }
 
 export const config = {
   matcher: [
-    // Excluye assets estáticos, SW, manifest, robots, well-known e íconos del guard de auth
     "/((?!_next/static|_next/image|favicon.ico|favicon.svg|sw.js|workbox-|manifest.json|robots.txt|sitemap.xml|\\.well-known/|icon-192.png|icon-512.png|logo.*\\.png|logo.*\\.svg|api/employee/login|api/health).*)",
   ],
 };

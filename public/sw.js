@@ -2,22 +2,17 @@
 // Estrategias: CacheFirst para assets estáticos, NetworkFirst para páginas, NetworkOnly para API.
 
 const STATIC_CACHE = 'pos-static-v1';
-const PAGES_CACHE  = 'pos-pages-v2';
+const PAGES_CACHE  = 'pos-pages-v3';
 const MEDIA_CACHE  = 'pos-media-v1';
 
 const ALL_CACHES = [STATIC_CACHE, PAGES_CACHE, MEDIA_CACHE];
 
-// ── INSTALL: precachear páginas esenciales ─────────────────────────────────
+// ── INSTALL: solo activar, sin pre-cachear páginas HTML ───────────────────
+// Las páginas se cachean orgánicamente en el primer fetch (NetworkFirst).
+// Pre-cachear HTML en install descargaría páginas fuera del contexto del
+// usuario activo y podría almacenar sesiones de otros empleados.
 self.addEventListener('install', event => {
   self.skipWaiting();
-  event.waitUntil(
-    caches.open(PAGES_CACHE)
-      .then(cache => cache.addAll([
-        '/ventas', '/pos-login', '/manifest.json',
-        '/cierres', '/reports', '/ventas/historial', '/inteligencia/asistente',
-      ]))
-      .catch(() => {})
-  );
 });
 
 // ── ACTIVATE: limpiar caches viejos ───────────────────────────────────────
