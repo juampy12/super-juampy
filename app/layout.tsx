@@ -16,6 +16,7 @@ export const metadata: Metadata = {
   title: "Super Juampy",
   description: "POS y reportes — Super Juampy",
   robots: { index: false, follow: false },
+  alternates: { canonical: "https://super-juampy.vercel.app" },
 };
 
 export const viewport: Viewport = {
@@ -28,11 +29,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="es">
-      <head>
-        {/* Tabler Icons se sirven desde self-hosted (npm @tabler/icons-webfont 3.44.0 via globals.css) */}
-        <meta charSet="utf-8" />
-        <link rel="canonical" href="https://super-juampy.vercel.app" />
-      </head>
       <body className={`${inter.className} min-h-dvh bg-[#f8fafc] text-[#111]`}>
         <BrandTheme />
         <HeaderNav />

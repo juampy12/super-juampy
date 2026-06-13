@@ -10,6 +10,8 @@ const PUBLIC_PATHS = [
   "/sw.js",
   "/workbox-",
   "/manifest.json",
+  "/robots.txt",
+  "/.well-known/",
 ];
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -78,7 +80,7 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // Excluye assets estáticos, SW, manifest e íconos PNG del guard de auth
-    "/((?!_next/static|_next/image|favicon.ico|favicon.svg|sw.js|workbox-|manifest.json|icon-192.png|icon-512.png|logo.*\\.png|logo.*\\.svg|api/employee/login|api/health).*)",
+    // Excluye assets estáticos, SW, manifest, robots, well-known e íconos del guard de auth
+    "/((?!_next/static|_next/image|favicon.ico|favicon.svg|sw.js|workbox-|manifest.json|robots.txt|\\.well-known/|icon-192.png|icon-512.png|logo.*\\.png|logo.*\\.svg|api/employee/login|api/health).*)",
   ],
 };

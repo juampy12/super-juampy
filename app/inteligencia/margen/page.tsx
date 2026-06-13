@@ -104,10 +104,9 @@ export default function Page() {
   useEffect(() => {
     if (!ready || !isSupervisor) return;
 
-    // cargar sucursales (branches)
     (async () => {
       const { data, error } = await supabase
-        .from("branches")
+        .from("stores")
         .select("id,name")
         .order("name", { ascending: true });
 
