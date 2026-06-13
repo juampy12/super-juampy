@@ -90,7 +90,7 @@ export default function AIChat() {
       const res = await fetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, history, role: getPosEmployee()?.role ?? "cashier" }),
+        body: JSON.stringify({ question, history }),
       });
       const json = await res.json();
       setMessages(prev => [...prev, {

@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   "/workbox-",
   "/manifest.json",
   "/robots.txt",
+  "/sitemap.xml",
   "/.well-known/",
 ];
 
@@ -24,7 +25,11 @@ function buildCsp(nonce: string): string {
     // propaga la confianza a los chunks cargados dinámicamente por Next.js.
     // 'self' actúa como fallback para navegadores que no soporten strict-dynamic.
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
-    // unsafe-inline necesario para atributos style="" (React) y bloques <style> de Next.js.
+    // unsafe-inline en style-src es inevitable en una app React:
+    // (a) React convierte style={} JSX props en atributos style="" en el DOM,
+    // (b) BrandTheme usa element.style.setProperty() para CSS custom properties,
+    // (c) Next.js puede inyectar bloques <style> propios.
+    // Sin nonces de estilo (que requieren pasar nonce a cada componente) no hay alternativa.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
@@ -81,6 +86,6 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     // Excluye assets estáticos, SW, manifest, robots, well-known e íconos del guard de auth
-    "/((?!_next/static|_next/image|favicon.ico|favicon.svg|sw.js|workbox-|manifest.json|robots.txt|\\.well-known/|icon-192.png|icon-512.png|logo.*\\.png|logo.*\\.svg|api/employee/login|api/health).*)",
+    "/((?!_next/static|_next/image|favicon.ico|favicon.svg|sw.js|workbox-|manifest.json|robots.txt|sitemap.xml|\\.well-known/|icon-192.png|icon-512.png|logo.*\\.png|logo.*\\.svg|api/employee/login|api/health).*)",
   ],
 };
