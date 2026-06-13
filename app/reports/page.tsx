@@ -205,19 +205,25 @@ export default function ReportsPage() {
             <div className="rounded-3xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Ingresos</div>
               <div className="mt-2 text-2xl font-semibold text-black">
-                {loadingKpis ? "Cargando..." : `$${kpis.totalAmount.toLocaleString("es-AR")}`}
+                {loadingKpis
+                  ? <div className="h-7 w-3/4 animate-pulse rounded-lg bg-neutral-200" />
+                  : `$${kpis.totalAmount.toLocaleString("es-AR")}`}
               </div>
             </div>
             <div className="rounded-3xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Tickets</div>
               <div className="mt-2 text-2xl font-semibold text-black">
-                {loadingKpis ? "Cargando..." : kpis.tickets}
+                {loadingKpis
+                  ? <div className="h-7 w-1/2 animate-pulse rounded-lg bg-neutral-200" />
+                  : kpis.tickets}
               </div>
             </div>
             <div className="rounded-3xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Ticket Prom.</div>
               <div className="mt-2 text-2xl font-semibold text-black">
-                {loadingKpis ? "Cargando..." : `$${kpis.avgTicket.toLocaleString("es-AR")}`}
+                {loadingKpis
+                  ? <div className="h-7 w-3/4 animate-pulse rounded-lg bg-neutral-200" />
+                  : `$${kpis.avgTicket.toLocaleString("es-AR")}`}
               </div>
             </div>
           </div>

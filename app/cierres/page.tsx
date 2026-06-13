@@ -65,6 +65,7 @@ type ExistingClosure = {
 };
 
 import { STORES as ALL_STORES } from "@/lib/stores";
+import { getPosEmployee } from "@/lib/posSession";
 const STORES: Store[] = ALL_STORES.map(s => ({ id: s.id, name: s.short }));
 
 function todayStr() {
@@ -81,6 +82,14 @@ export default function CashClosurePage() {
 
   const [registers, setRegisters] = useState<Register[]>([]);
   const [selectedRegister, setSelectedRegister] = useState<string>("");
+
+  useEffect(() => {
+    const emp = getPosEmployee();
+    if (emp?.store_id) {
+      const found = STORES.find(s => s.id === emp.store_id);
+      if (found) setSelectedStore(found.id);
+    }
+  }, []);
 
   useEffect(() => {
     setSelectedRegister(""); // resetea la caja al cambiar sucursal

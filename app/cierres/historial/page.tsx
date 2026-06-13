@@ -336,19 +336,27 @@ export default function CashClosuresHistoryPage() {
       <section className="rounded-xl border p-4 bg-white grid gap-3 md:grid-cols-4">
         <div>
           <div className="text-xs text-neutral-500">Cierres</div>
-          <div className="text-xl font-semibold">{summary.closures}</div>
+          <div className="text-xl font-semibold">
+            {loading ? <div className="h-6 w-12 animate-pulse rounded bg-neutral-200" /> : summary.closures}
+          </div>
         </div>
         <div>
           <div className="text-xs text-neutral-500">Tickets</div>
-          <div className="text-xl font-semibold">{summary.totalTickets}</div>
+          <div className="text-xl font-semibold">
+            {loading ? <div className="h-6 w-12 animate-pulse rounded bg-neutral-200" /> : summary.totalTickets}
+          </div>
         </div>
         <div>
           <div className="text-xs text-neutral-500">Total ventas</div>
-          <div className="text-xl font-semibold">{formatMoney(summary.totalSales)}</div>
+          <div className="text-xl font-semibold">
+            {loading ? <div className="h-6 w-24 animate-pulse rounded bg-neutral-200" /> : formatMoney(summary.totalSales)}
+          </div>
         </div>
         <div>
           <div className="text-xs text-neutral-500">Total efectivo</div>
-          <div className="text-xl font-semibold">{formatMoney(summary.totalCash)}</div>
+          <div className="text-xl font-semibold">
+            {loading ? <div className="h-6 w-24 animate-pulse rounded bg-neutral-200" /> : formatMoney(summary.totalCash)}
+          </div>
         </div>
       </section>
 
@@ -357,7 +365,19 @@ export default function CashClosuresHistoryPage() {
         {error && <p className="mb-3 text-sm text-red-600">Error: {error}</p>}
 
         {loading && rows.length === 0 ? (
-          <p className="text-sm text-neutral-500">Cargando cierres…</p>
+          <div className="space-y-2 animate-pulse">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex gap-3">
+                <div className="h-4 bg-neutral-200 rounded w-20" />
+                <div className="h-4 bg-neutral-200 rounded flex-1" />
+                <div className="h-4 bg-neutral-200 rounded flex-1" />
+                <div className="h-4 bg-neutral-200 rounded w-24" />
+                <div className="h-4 bg-neutral-200 rounded w-24" />
+                <div className="h-4 bg-neutral-200 rounded w-12" />
+                <div className="h-4 bg-neutral-200 rounded w-16" />
+              </div>
+            ))}
+          </div>
         ) : rows.length === 0 ? (
           <p className="text-sm text-neutral-500">No hay cierres con esos filtros.</p>
         ) : (

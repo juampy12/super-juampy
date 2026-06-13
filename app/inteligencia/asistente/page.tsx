@@ -208,20 +208,21 @@ export default function AsistentePage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Sugerencias */}
-      {!messages.some(m => m.role === "user") && (
-        <div className="flex flex-wrap gap-2 mb-3">
+      {/* Sugerencias — carrusel horizontal siempre visible */}
+      <div className="overflow-x-auto mb-3">
+        <div className="flex gap-2 pb-1">
           {sugerencias.map((s) => (
             <button
               key={s}
               onClick={() => sendMessage(s)}
-              className="text-xs border rounded-full px-3 py-2 hover:bg-gray-50 text-gray-600"
+              disabled={loading}
+              className="text-xs border rounded-full px-3 py-2 hover:bg-gray-50 text-gray-600 whitespace-nowrap shrink-0 disabled:opacity-50"
             >
               {s}
             </button>
           ))}
         </div>
-      )}
+      </div>
 
       {/* Input */}
       <div className="flex gap-2">

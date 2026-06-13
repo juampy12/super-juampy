@@ -2,7 +2,7 @@
 // Estrategias: CacheFirst para assets estáticos, NetworkFirst para páginas, NetworkOnly para API.
 
 const STATIC_CACHE = 'pos-static-v1';
-const PAGES_CACHE  = 'pos-pages-v1';
+const PAGES_CACHE  = 'pos-pages-v2';
 const MEDIA_CACHE  = 'pos-media-v1';
 
 const ALL_CACHES = [STATIC_CACHE, PAGES_CACHE, MEDIA_CACHE];
@@ -12,7 +12,10 @@ self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(PAGES_CACHE)
-      .then(cache => cache.addAll(['/ventas', '/pos-login', '/manifest.json']))
+      .then(cache => cache.addAll([
+        '/ventas', '/pos-login', '/manifest.json',
+        '/cierres', '/reports', '/ventas/historial', '/inteligencia/asistente',
+      ]))
       .catch(() => {})
   );
 });

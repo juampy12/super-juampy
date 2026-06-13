@@ -385,11 +385,15 @@ export default function SalesHistorialPage() {
       <section className="rounded-xl border p-4 bg-white grid gap-3 md:grid-cols-3">
         <div>
           <div className="text-xs text-neutral-500">Tickets confirmados</div>
-          <div className="text-xl font-semibold">{summary.count}</div>
+          <div className="text-xl font-semibold">
+            {loading ? <div className="h-6 w-12 animate-pulse rounded bg-neutral-200" /> : summary.count}
+          </div>
         </div>
         <div>
           <div className="text-xs text-neutral-500">Total confirmado</div>
-          <div className="text-xl font-semibold">{formatMoney(summary.total)}</div>
+          <div className="text-xl font-semibold">
+            {loading ? <div className="h-6 w-28 animate-pulse rounded bg-neutral-200" /> : formatMoney(summary.total)}
+          </div>
         </div>
         {summary.anuladas > 0 && (
           <div>
@@ -403,7 +407,19 @@ export default function SalesHistorialPage() {
       <section className="rounded-xl border p-4">
         {error && <p className="mb-3 text-sm text-red-600">Error: {error}</p>}
         {loading ? (
-          <p className="text-sm text-neutral-500">Cargando ventas…</p>
+          <div className="space-y-2 animate-pulse">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="flex gap-3">
+                <div className="h-4 bg-neutral-200 rounded w-4 shrink-0" />
+                <div className="h-4 bg-neutral-200 rounded flex-1" />
+                <div className="h-4 bg-neutral-200 rounded w-20" />
+                <div className="h-4 bg-neutral-200 rounded w-16" />
+                <div className="h-4 bg-neutral-200 rounded w-20" />
+                <div className="h-4 bg-neutral-200 rounded w-20" />
+                <div className="h-4 bg-neutral-200 rounded w-16" />
+              </div>
+            ))}
+          </div>
         ) : sales.length === 0 ? (
           <p className="text-sm text-neutral-500">No hay ventas con esos filtros.</p>
         ) : (
