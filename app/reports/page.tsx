@@ -201,7 +201,7 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-4">
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rounded-3xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Ingresos</div>
               <div className="mt-2 text-2xl font-semibold text-black">

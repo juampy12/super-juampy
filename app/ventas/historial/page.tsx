@@ -408,7 +408,7 @@ export default function SalesHistorialPage() {
           <p className="text-sm text-neutral-500">No hay ventas con esos filtros.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-xs">
+            <table className="min-w-[700px] text-xs">
               <thead>
                 <tr className="border-b bg-neutral-50">
                   <th className="text-left py-2 px-2 w-4"></th>
@@ -466,7 +466,7 @@ export default function SalesHistorialPage() {
                             <button
                               type="button"
                               onClick={() => setVoidTarget(s)}
-                              className="rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-100"
+                              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
                             >
                               Anular
                             </button>
@@ -487,7 +487,7 @@ export default function SalesHistorialPage() {
                             ) : !items || items.length === 0 ? (
                               <span className="text-neutral-400">Sin detalle de productos.</span>
                             ) : (
-                              <table className="min-w-full text-xs">
+                              <table className="min-w-[700px] text-xs">
                                 <thead>
                                   <tr className="text-neutral-500">
                                     <th className="text-left py-1 pr-4">Producto</th>

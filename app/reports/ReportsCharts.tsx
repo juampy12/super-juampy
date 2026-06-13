@@ -44,7 +44,7 @@ export default function ReportsCharts({
           <ResponsiveContainer width="100%" height={280}>
             <LineChart data={lineChartData} margin={{ top: 4, right: 20, left: 4, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} interval="preserveStartEnd" minTickGap={30} />
               <YAxis tickFormatter={fmtMoneyAxis} tick={{ fontSize: 11 }} width={60} />
               <Tooltip
                 formatter={(v, name) => [
@@ -94,7 +94,7 @@ export default function ReportsCharts({
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={barChartData} margin={{ top: 4, right: 20, left: 4, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+              <XAxis dataKey="name" tick={{ fontSize: 12 }} interval="preserveStartEnd" minTickGap={30} />
               <YAxis tickFormatter={fmtMoneyAxis} tick={{ fontSize: 11 }} width={60} />
               <Tooltip formatter={(v) => [tooltipMoney(v as number), "Ingresos"]} />
               <Bar dataKey="total" radius={[6, 6, 0, 0]}>

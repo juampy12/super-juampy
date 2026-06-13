@@ -502,7 +502,7 @@ export default function CashClosurePage() {
             <label className="text-neutral-500 mb-1">Fecha</label>
             <input
               type="date"
-              className="rounded border px-2 py-1 text-sm"
+              className="rounded border px-2 py-2.5 sm:py-1 text-sm"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
             />
@@ -511,7 +511,7 @@ export default function CashClosurePage() {
           <div className="flex flex-col text-sm">
             <label className="text-neutral-500 mb-1">Sucursal</label>
             <select
-              className="rounded border px-2 py-1 text-sm"
+              className="rounded border px-2 py-2.5 sm:py-1 text-sm"
               value={selectedStore}
               onChange={(e) => setSelectedStore(e.target.value)}
             >
@@ -526,7 +526,7 @@ export default function CashClosurePage() {
           <div className="flex flex-col text-sm">
             <label className="text-neutral-500 mb-1">Caja</label>
             <select
-              className="rounded border px-2 py-1 text-sm"
+              className="rounded border px-2 py-2.5 sm:py-1 text-sm"
               value={selectedRegister}
               onChange={(e) => setSelectedRegister(e.target.value)}
               disabled={registers.length === 0}
@@ -659,7 +659,7 @@ export default function CashClosurePage() {
           <p className="text-sm text-neutral-500">No hay tickets confirmados para esta fecha y sucursal.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-xs">
+            <table className="min-w-[800px] text-xs">
               <thead>
                 <tr className="border-b bg-neutral-50">
                   <th className="text-left py-2 px-2 w-4"></th>
@@ -704,7 +704,7 @@ export default function CashClosurePage() {
                             ) : !items || items.length === 0 ? (
                               <span className="text-neutral-400">Sin detalle de productos.</span>
                             ) : (
-                              <table className="min-w-full text-xs">
+                              <table className="min-w-[800px] text-xs">
                                 <thead>
                                   <tr className="text-neutral-500">
                                     <th className="text-left py-1 pr-6">Producto</th>

@@ -54,7 +54,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="mt-2 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+      className="mt-2 py-2 px-1 text-xs text-gray-400 hover:text-gray-600 transition-colors block"
     >
       {copied ? "✓ Copiado" : "Copiar"}
     </button>
@@ -128,7 +128,7 @@ export default function AsistentePage() {
   const sugerencias = getSugerencias(hourAR, alertWasShown);
 
   return (
-    <div className="max-w-3xl mx-auto p-4 flex flex-col h-[calc(100vh-120px)]">
+    <div className="max-w-3xl mx-auto p-4 flex flex-col h-[calc(100dvh-120px)]">
       <div className="mb-4">
         <h1 className="text-xl font-semibold">🤖 Asistente IA</h1>
         <p className="text-sm text-gray-500">
@@ -158,7 +158,15 @@ export default function AsistentePage() {
               {msg.role === "assistant"
                 ? (
                   <>
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    <ReactMarkdown
+                      components={{
+                        table: ({ node: _node, ...props }) => (
+                          <div className="overflow-x-auto">
+                            <table {...props} />
+                          </div>
+                        ),
+                      }}
+                    >{msg.content}</ReactMarkdown>
                     <CopyButton text={msg.content} />
                   </>
                 )
@@ -187,7 +195,7 @@ export default function AsistentePage() {
             <button
               key={s}
               onClick={() => sendMessage(s)}
-              className="text-xs border rounded-full px-3 py-1 hover:bg-gray-50 text-gray-600"
+              className="text-xs border rounded-full px-3 py-2 hover:bg-gray-50 text-gray-600"
             >
               {s}
             </button>
