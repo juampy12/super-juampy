@@ -1,6 +1,6 @@
 const SITE_URL = "https://super-juampy.vercel.app";
 
-export default function JsonLd({ nonce }: { nonce?: string }) {
+export default function JsonLd() {
   const data = [
     {
       "@context": "https://schema.org",
@@ -19,7 +19,6 @@ export default function JsonLd({ nonce }: { nonce?: string }) {
   return (
     <script
       type="application/ld+json"
-      nonce={nonce}
       dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
     />
   );

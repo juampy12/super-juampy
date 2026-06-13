@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import JsonLd from "./seo-jsonld";
 import "./globals.css";
 import AIChat from "@/app/_components/AIChat";
@@ -23,10 +22,7 @@ export const viewport: Viewport = {
   themeColor: "#CC2020",
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const headersList = await headers();
-  const nonce = headersList.get("x-nonce") ?? "";
-
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
       <body className={`${inter.className} min-h-dvh bg-[#f8fafc] text-[#111]`}>
@@ -37,7 +33,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="max-w-7xl mx-auto">{children}</div>
 
           <Toaster position="bottom-center" containerStyle={{ bottom: 80 }} />
-          <JsonLd nonce={nonce} />
+          <JsonLd />
         </div>
 
         <AIChat />
