@@ -120,12 +120,17 @@ export default function ProductsPage() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc("products_with_stock", {
-        p_store: useId,
-        p_query: query?.trim() ? query.trim() : null,
-        p_limit: useLimit,
+      const res = await fetch("/api/products/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: useId,
+          query: query?.trim() ? query.trim() : null,
+          limit: useLimit,
+        }),
       });
-      if (error) throw error;
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
 
       // ✅ Ocultar desactivados (active=false). Si no viene active => se muestra (modo seguro).
       const list = ((data ?? []) as any[]).filter((x) => x?.active !== false) as Row[];

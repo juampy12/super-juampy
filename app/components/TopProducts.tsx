@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
 
 type TopItem = {
   product_id: string;
@@ -30,11 +29,23 @@ export default function TopProducts({ storeId: initialStoreId, from: initialFrom
   const loadTop = async (storeId = currentStore, from = currentFrom, to = currentTo) => {
     if (!from || !to) { setItems([]); return; }
     setLoading(true);
-    const resp = storeId && storeId.length > 0
-      ? await supabase.rpc("fn_top_products_range", { p_store: storeId, p_from: from, p_to: to, p_limit: 8 })
-      : await supabase.rpc("fn_top_products_range_all", { p_from: from, p_to: to, p_limit: 8 });
-    if (!resp.error) setItems((resp.data ?? []) as TopItem[]);
-    else { console.error("Error cargando top productos", resp.error); setItems([]); }
+    try {
+      const res = await fetch("/api/reports/top-products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: storeId && storeId.length > 0 ? storeId : null,
+          from,
+          to,
+          limit: 8,
+        }),
+      });
+      if (res.ok) setItems((await res.json()) as TopItem[]);
+      else { console.error("Error cargando top productos", res.status); setItems([]); }
+    } catch (e) {
+      console.error("Error cargando top productos", e);
+      setItems([]);
+    }
     setLoading(false);
   };
 

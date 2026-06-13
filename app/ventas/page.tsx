@@ -608,7 +608,7 @@ export default function VentasPage() {
   const [cacheSyncedAt, setCacheSyncedAt] = useState<number | null>(null);
   const { isOnline, pendingCount, syncing, sync, updatePending } = useOnlineSync(() => {
     if (selectedStoreIdRef.current) {
-      void warmCache(supabase, selectedStoreIdRef.current).then(() => {
+      void warmCache(selectedStoreIdRef.current).then(() => {
         const sid = selectedStoreIdRef.current;
         if (sid) setCacheSyncedAt(getCacheSavedAt(sid));
       });
@@ -656,7 +656,7 @@ export default function VentasPage() {
     });
     // Actualizar cache desde Supabase cuando hay conexión
     if (isOnline) {
-      void warmCache(supabase, selectedStoreId).then(() => {
+      void warmCache(selectedStoreId).then(() => {
         setCacheSyncedAt(getCacheSavedAt(selectedStoreId));
       });
     }
@@ -828,13 +828,13 @@ async function handleSearch(opts?: {
       let data: any[] | null = null;
       let fetchError: any = null;
       try {
-        const resp = await supabase.rpc("products_with_stock", {
-          p_store: selectedStoreId,
-          p_query: term || null,
-          p_limit: 100,
+        const res = await fetch("/api/products/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ store_id: selectedStoreId, query: term || null, limit: 100 }),
         });
-        data = resp.data;
-        fetchError = resp.error;
+        if (!res.ok) { fetchError = { message: `${res.status}` }; }
+        else { data = await res.json(); }
       } catch {
         fetchError = { message: "Sin conexión" };
       }

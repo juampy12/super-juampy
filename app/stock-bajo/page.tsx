@@ -75,19 +75,23 @@ export default function StockBajoPage() {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc("low_stock_products", {
-        p_store: selectedStoreId,
-        p_query: query.trim() || null,
-        p_limit: 400,
+      const res = await fetch("/api/stock/low", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: selectedStoreId,
+          query: query.trim() || null,
+          limit: 400,
+        }),
       });
 
-      if (error) {
-        console.error(error);
-        alert("Error buscando stock bajo: " + error.message);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert("Error buscando stock bajo: " + (err?.error ?? res.status));
         return;
       }
 
-      const base = ((data ?? []) as Row[]) ?? [];
+      const base = ((await res.json()) as Row[]) ?? [];
 
       // ✅ 2do paso: traer active desde products para filtrar desactivados
       const ids = Array.from(new Set(base.map((r) => r.id).filter(Boolean)));

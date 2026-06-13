@@ -173,15 +173,15 @@ useEffect(() => {
           return;
         }
 
-        const { error } = await supabase.rpc("set_min_stock", {
-          p_store: storeId,
-          p_product: id,
-          p_min: n,
+        const res = await fetch("/api/stock/min", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ store_id: storeId, product_id: id, min_stock: n }),
         });
 
-        if (error) {
-          console.error(error);
-          setMsg("Error guardando mínimos: " + error.message);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          setMsg("Error guardando mínimos: " + (err?.error ?? res.status));
           setSaving(false);
           return;
         }

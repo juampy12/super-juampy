@@ -172,12 +172,12 @@ export default function StockPage() {
       // pedimos 1 más para detectar si hay más páginas
       const askLimit = useLimit + 1;
 
-      const body = { p_store: effectiveStoreId, p_query: q, p_limit: askLimit };
-
-      const res = await supaFetch(`/rest/v1/rpc/products_with_stock`, {
+      const res = await fetch("/api/products/search", {
         method: "POST",
-        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store_id: effectiveStoreId, query: q, limit: askLimit }),
       });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
 
       const data = (await res.json()) as any[];
 

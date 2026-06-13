@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 const DB_NAME = "pos_idb_v1";
 const DB_STORE = "product_cache";
@@ -99,14 +98,16 @@ export function searchCachedProducts(storeId: string, term: string): CachedProdu
     .slice(0, 20);
 }
 
-export async function warmCache(supabase: SupabaseClient, storeId: string): Promise<void> {
+export async function warmCache(storeId: string): Promise<void> {
   try {
-    const { data, error } = await supabase.rpc("products_with_stock", {
-      p_store: storeId,
-      p_query: null,
-      p_limit: CACHE_LIMIT,
+    const res = await fetch("/api/products/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ store_id: storeId, query: null, limit: CACHE_LIMIT }),
     });
-    if (error || !data) return;
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
     persist(storeId, data);
   } catch { }
 }

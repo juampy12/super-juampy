@@ -83,18 +83,11 @@ export default function EtiquetasPage() {
     if (!storeId) return;
     setLoading(true);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/products_with_stock`,
-        {
-          method: "POST",
-          headers: {
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ p_store: storeId, p_query: query || null, p_limit: 40 }),
-        }
-      );
+      const res = await fetch("/api/products/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store_id: storeId, query: query || null, limit: 40 }),
+      });
       const data = await res.json();
       const rows: ProductRow[] = Array.isArray(data)
         ? (data as ProductRow[]).filter((r) => r.active !== false)
@@ -111,18 +104,11 @@ export default function EtiquetasPage() {
     if (!storeId) return;
     setLoadingAll(true);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/products_with_stock`,
-        {
-          method: "POST",
-          headers: {
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ p_store: storeId, p_query: null, p_limit: 999 }),
-        }
-      );
+      const res = await fetch("/api/products/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store_id: storeId, query: null, limit: 999 }),
+      });
       const data = await res.json();
       const rows: ProductRow[] = Array.isArray(data)
         ? (data as ProductRow[]).filter((r) => r.active !== false)
