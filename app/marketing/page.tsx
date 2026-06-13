@@ -776,7 +776,7 @@ export default function MarketingPage() {
 
       {/* ─── Textos generados ─────────────────────────────────────────────────── */}
       {texts && (
-        <section className="grid gap-4 md:grid-cols-2">
+        <section className="grid gap-4 grid-cols-1 md:grid-cols-2">
           {(["instagram", "facebook"] as const).map((platform) => (
             <div key={platform} className="rounded-xl border p-4 bg-white space-y-3">
               <div className="flex items-center justify-between">

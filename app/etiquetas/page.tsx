@@ -281,9 +281,9 @@ export default function EtiquetasPage() {
         <h1 className="text-2xl font-semibold mb-4">Etiquetas de góndola</h1>
 
         {/* Controls row */}
-        <div className="flex flex-wrap gap-3 items-center mb-4">
+        <div className="flex flex-col gap-2 mb-4">
           <select
-            className="border rounded-lg px-3 py-2 min-w-[200px]"
+            className="border rounded-lg px-3 py-2 w-full sm:w-auto sm:self-start"
             value={storeId}
             onChange={(e) => setStoreId(e.target.value)}
           >
@@ -291,38 +291,42 @@ export default function EtiquetasPage() {
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
-          <input
-            className="border rounded-lg px-3 py-2 min-w-[240px]"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por nombre o SKU"
-            onKeyDown={(e) => { if (e.key === "Enter") searchProducts(); }}
-          />
-          <button
-            className="px-4 py-2 rounded-lg bg-black text-white hover:bg-black/80 disabled:opacity-60"
-            onClick={searchProducts}
-            disabled={loading || !storeId}
-          >
-            Buscar
-          </button>
-          <button
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2"
-            onClick={loadAllProducts}
-            disabled={loadingAll || !storeId}
-            title="Carga todos los productos activos del catálogo con 1 etiqueta cada uno"
-          >
-            <i className="ti ti-stack-2" aria-hidden="true" />
-            {loadingAll ? "Cargando…" : "Todo el catálogo"}
-          </button>
-          {items.length > 0 && (
+          <div className="flex gap-2">
+            <input
+              className="border rounded-lg px-3 py-2 flex-1 min-w-0"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por nombre o SKU"
+              onKeyDown={(e) => { if (e.key === "Enter") searchProducts(); }}
+            />
             <button
-              className="px-5 py-2 rounded-lg bg-[#CC2020] text-white font-semibold hover:bg-[#a81a1a] ml-auto flex items-center gap-2"
-              onClick={printLabels}
+              className="px-4 py-2 rounded-lg bg-black text-white hover:bg-black/80 disabled:opacity-60 shrink-0"
+              onClick={searchProducts}
+              disabled={loading || !storeId}
             >
-              <i className="ti ti-printer" aria-hidden="true" />
-              Imprimir ({totalLabels} {totalLabels === 1 ? "etiqueta" : "etiquetas"})
+              Buscar
             </button>
-          )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2"
+              onClick={loadAllProducts}
+              disabled={loadingAll || !storeId}
+              title="Carga todos los productos activos del catálogo con 1 etiqueta cada uno"
+            >
+              <i className="ti ti-stack-2" aria-hidden="true" />
+              {loadingAll ? "Cargando…" : "Todo el catálogo"}
+            </button>
+            {items.length > 0 && (
+              <button
+                className="px-5 py-2 rounded-lg bg-[#CC2020] text-white font-semibold hover:bg-[#a81a1a] flex items-center gap-2 ml-auto"
+                onClick={printLabels}
+              >
+                <i className="ti ti-printer" aria-hidden="true" />
+                Imprimir ({totalLabels} {totalLabels === 1 ? "etiqueta" : "etiquetas"})
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -571,17 +571,17 @@ export default function StockPage() {
                     <td className="p-2 text-gray-700">{r.sku ?? "-"}</td>
 
                     <td className="p-2 text-right tabular-nums">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex flex-wrap items-center justify-end gap-1">
                         <span className={current < 0 ? "text-red-700 font-semibold" : "text-black"}>
                           {current}
                         </span>
                         {current < 0 ? (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full border bg-red-50 text-red-700">
+                          <span className="text-[11px] px-2 py-0.5 rounded-full border bg-red-50 text-red-700 whitespace-nowrap">
                             NEGATIVO
                           </span>
                         ) : null}
                         {dbMismatch ? (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full border bg-yellow-50 text-yellow-800">
+                          <span className="text-[11px] px-2 py-0.5 rounded-full border bg-yellow-50 text-yellow-800 whitespace-nowrap">
                             NO COINCIDE
                           </span>
                         ) : null}

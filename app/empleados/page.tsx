@@ -136,7 +136,7 @@ export default function EmpleadosPage() {
       {showForm && (
         <div className="border rounded-2xl p-4 bg-white space-y-3 shadow-sm">
           <h2 className="font-semibold text-lg">{editingId ? "Editar empleado" : "Nuevo empleado"}</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-sm text-neutral-600">Nombre</label>
               <input className="border rounded-lg px-3 py-2 w-full" value={form.name}
@@ -201,8 +201,8 @@ export default function EmpleadosPage() {
       {loading ? (
         <p className="text-neutral-500 text-sm">Cargando...</p>
       ) : (
-        <div className="border rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="border rounded-2xl overflow-hidden overflow-x-auto">
+          <table className="min-w-[600px] w-full text-sm">
             <thead className="bg-neutral-50 border-b">
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-neutral-600">Nombre</th>

@@ -64,7 +64,7 @@ export default async function TopProductsPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col gap-3">
         <div>
           <h1 className="text-xl font-semibold">Top de productos</h1>
           <p className="text-sm text-neutral-600">
@@ -72,17 +72,17 @@ export default async function TopProductsPage({ searchParams }: PageProps) {
           </p>
         </div>
 
-        <form className="flex flex-wrap items-center gap-3" method="get">
+        <form className="flex flex-col sm:flex-row flex-wrap gap-2" method="get">
           {/* Sucursal */}
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium" htmlFor="storeId">
+          <div className="flex items-center gap-2 min-w-0">
+            <label className="text-sm font-medium shrink-0" htmlFor="storeId">
               Sucursal
             </label>
             <select
               id="storeId"
               name="storeId"
               defaultValue={storeId}
-              className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm"
+              className="rounded-md border border-neutral-300 bg-white px-2 py-2 text-sm flex-1 min-w-0"
             >
               {STORE_OPTIONS.map((s) => (
                 <option key={s.id || "all"} value={s.id}>
@@ -94,7 +94,7 @@ export default async function TopProductsPage({ searchParams }: PageProps) {
 
           {/* Rango de fechas */}
           <div className="flex items-center gap-2">
-            <label className="text-sm font-medium" htmlFor="from">
+            <label className="text-sm font-medium shrink-0" htmlFor="from">
               Desde
             </label>
             <input
@@ -102,12 +102,12 @@ export default async function TopProductsPage({ searchParams }: PageProps) {
               name="from"
               type="date"
               defaultValue={from}
-              className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm"
+              className="rounded-md border border-neutral-300 bg-white px-2 py-2 text-sm"
             />
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-sm font-medium" htmlFor="to">
+            <label className="text-sm font-medium shrink-0" htmlFor="to">
               Hasta
             </label>
             <input
@@ -115,11 +115,11 @@ export default async function TopProductsPage({ searchParams }: PageProps) {
               name="to"
               type="date"
               defaultValue={to}
-              className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm"
+              className="rounded-md border border-neutral-300 bg-white px-2 py-2 text-sm"
             />
           </div>
 
-          <button type="submit" className="rounded-md border border-neutral-300 px-3 py-1 text-sm">
+          <button type="submit" className="rounded-md border border-neutral-300 px-3 py-2 text-sm self-start sm:self-auto">
             Aplicar
           </button>
         </form>

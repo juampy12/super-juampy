@@ -268,7 +268,7 @@ export default function OfertasPage() {
         <div className="flex items-center gap-2">
           <span className="text-sm opacity-80">Sucursal:</span>
           <select
-            className="border rounded-lg px-3 py-2 min-w-[260px]"
+            className="border rounded-lg px-3 py-2 w-full sm:w-auto sm:min-w-[200px]"
             value={storeId}
             onChange={(e) => setStoreId(e.target.value)}
           >
