@@ -1,32 +1,26 @@
-﻿'use client';
-import React from 'react';
+const SITE_URL = "https://super-juampy.vercel.app";
 
-export default function JsonLd() {
+export default function JsonLd({ nonce }: { nonce?: string }) {
   const data = [
     {
       "@context": "https://schema.org",
       "@type": "Organization",
       "name": "Super Juampy",
-      "url": "System.Management.Automation.Internal.Host.InternalHost",
-      "logo": "System.Management.Automation.Internal.Host.InternalHost/logo.png"
+      "url": SITE_URL,
+      "logo": `${SITE_URL}/logo-super-juampy.png`,
     },
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
       "name": "Super Juampy",
-      "url": "System.Management.Automation.Internal.Host.InternalHost",
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "System.Management.Automation.Internal.Host.InternalHost/search?q={query}",
-        "query-input": "required name=query"
-      }
-    }
+      "url": SITE_URL,
+    },
   ];
   return (
     <script
       type="application/ld+json"
+      nonce={nonce}
       dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
     />
   );
 }
-

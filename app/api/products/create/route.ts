@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -36,6 +37,10 @@ async function generateOwnSku() {
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionFromRequest(req);
+    if (!session) return unauthorized();
+    if (!isSupervisor(session)) return forbidden("Solo supervisores pueden crear productos");
+
     const body = await req.json();
 
     const name = String(body?.name ?? "").trim();

@@ -9,6 +9,9 @@ function jsonError(message: string, status = 400) {
 }
 
 export async function GET(req: NextRequest) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
+
   try {
     const { searchParams } = new URL(req.url);
     const store_id = searchParams.get("store_id"); // opcional

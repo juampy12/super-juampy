@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSessionFromRequest, unauthorized } from "@/lib/session";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
+
   const { data, error } = await supabaseAdmin
     .from("stores")
     .select("id, name")

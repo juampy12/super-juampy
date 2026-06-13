@@ -1,27 +1,4 @@
 /** @type {import('next').NextConfig} */
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const supabaseHost = supabaseUrl ? new URL(supabaseUrl).host : "";
-
-const csp = [
-  "default-src 'self'",
-  // Next.js App Router necesita unsafe-inline para la hidratación (sin nonce)
-  "script-src 'self' 'unsafe-inline'",
-  // Tailwind usa estilos inline en runtime
-  "style-src 'self' 'unsafe-inline'",
-  // Íconos PNG/SVG en base64 y blobs del PWA
-  "img-src 'self' data: blob:",
-  "font-src 'self'",
-  // API routes propias + Supabase (REST y WebSocket para realtime)
-  `connect-src 'self' https://${supabaseHost} wss://${supabaseHost}`,
-  // Service worker del PWA
-  "worker-src 'self'",
-  // Anti-clickjacking (refuerza X-Frame-Options)
-  "frame-ancestors 'none'",
-  "frame-src 'none'",
-  "form-action 'self'",
-].join("; ");
-
-/** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   typedRoutes: true,
@@ -29,6 +6,7 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // Headers de seguridad para todos los paths
         source: "/(.*)",
         headers: [
           { key: "X-Frame-Options", value: "DENY" },
@@ -38,7 +16,21 @@ const nextConfig = {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=()",
           },
-          { key: "Content-Security-Policy", value: csp },
+          // Impide que este documento comparta contexto de navegación con popups/iframes
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          // Impide que otros orígenes embeben recursos de este sitio (fetch, iframe, etc.)
+          { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+          // CSP se inyecta por request en middleware.ts (con nonce único por request)
+        ],
+      },
+      {
+        // API routes: CORP same-origin impide que otros orígenes embeben o lean
+        // respuestas de estas rutas. No se emite Access-Control-Allow-Origin
+        // porque este es un sistema interno sin acceso cross-origin autorizado;
+        // la ausencia del header es la restricción correcta (el browser deniega por defecto).
+        source: "/api/(.*)",
+        headers: [
+          { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
         ],
       },
     ];

@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import JsonLd from "./seo-jsonld";
 import "./globals.css";
 import AIChat from "@/app/_components/AIChat";
@@ -14,24 +15,23 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   title: "Super Juampy",
   description: "POS y reportes — Super Juampy",
+  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {
   themeColor: "#CC2020",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const headersList = await headers();
+  const nonce = headersList.get("x-nonce") ?? "";
+
   return (
     <html lang="es">
       <head>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
-        <meta
-          name="description"
-          content="Super Juampy ofrece panificados frescos, fiambrería y productos de supermercado en Charata, Chaco."
-        />
-        <link rel="canonical" href="https://super-juampy.vercel.app" />
-        <meta name="robots" content="index,follow" />
+        {/* Tabler Icons se sirven desde self-hosted (npm @tabler/icons-webfont 3.44.0 via globals.css) */}
         <meta charSet="utf-8" />
+        <link rel="canonical" href="https://super-juampy.vercel.app" />
       </head>
       <body className={`${inter.className} min-h-dvh bg-[#f8fafc] text-[#111]`}>
         <BrandTheme />
@@ -41,12 +41,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="max-w-7xl mx-auto">{children}</div>
 
           <Toaster position="bottom-center" containerStyle={{ bottom: 80 }} />
-          <JsonLd />
+          <JsonLd nonce={nonce} />
         </div>
 
         <AIChat />
         <ServiceWorker />
-    </body>
+      </body>
     </html>
   );
 }
