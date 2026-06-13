@@ -67,7 +67,19 @@ export default function HeaderNav() {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileOpenGroup, setMobileOpenGroup] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
   const navRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const update = () => setIsOnline(navigator.onLine);
+    update();
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
 
   useEffect(() => {
     setEmp(getPosEmployee());
@@ -395,6 +407,25 @@ export default function HeaderNav() {
               );
             })
           )}
+        </div>
+      )}
+
+      {/* Banner offline — visible en todas las páginas */}
+      {!isOnline && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            background: '#DC2626', color: 'white', fontSize: '12px',
+            padding: '5px 16px', textAlign: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+            <line x1="1" y1="1" x2="23" y2="23" />
+            <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01" />
+          </svg>
+          Sin conexión — los cambios se sincronizan al reconectar
         </div>
       )}
     </nav>

@@ -8,7 +8,7 @@
   "display": "standalone",
   "background_color": "#CC2020",
   "theme_color": "#CC2020",
-  "orientation": "landscape",
+  "orientation": "any",
   "icons": [
     {
       "src": "/icon-192.png",

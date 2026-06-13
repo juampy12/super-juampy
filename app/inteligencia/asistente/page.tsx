@@ -71,9 +71,25 @@ export default function AsistentePage() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [slowMsg, setSlowMsg] = useState<string | null>(null);
   const [alertWasShown, setAlertWasShown] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const proactiveInjected = useRef(false);
+  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (loading) {
+      slowTimerRef.current = setTimeout(() => {
+        setSlowMsg("Consultando datos de ventas…");
+      }, 5000);
+    } else {
+      if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
+      setSlowMsg(null);
+    }
+    return () => {
+      if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
+    };
+  }, [loading]);
   const { message: proactiveMsg, clear: clearProactive } = useProactiveAlert();
 
   useEffect(() => {
@@ -177,11 +193,15 @@ export default function AsistentePage() {
         {loading && (
           <div className="flex justify-start">
             <div className="bg-white border rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm">
-              <div className="flex gap-1 items-center">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
+              {slowMsg ? (
+                <span className="text-xs text-gray-500 italic">{slowMsg}</span>
+              ) : (
+                <div className="flex gap-1 items-center">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+              )}
             </div>
           </div>
         )}

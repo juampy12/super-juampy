@@ -499,6 +499,7 @@ export default function VentasPage() {
   }>(null);
 
   const confirmLockRef = useRef(false);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function showSaleFeedback(payload: {
     total: number;
@@ -514,7 +515,20 @@ export default function VentasPage() {
       confirmLockRef.current = false;
     }, 650);
 
+    // Auto-cierre del feedback en 2.5s
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = setTimeout(() => {
+      setSaleFeedback(null);
+      feedbackTimerRef.current = null;
+    }, 2500);
+  }
 
+  function closeSaleFeedback() {
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
+    setSaleFeedback(null);
   }
 
   // =========================
@@ -1215,8 +1229,8 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
   return (
     <div className="mx-auto max-w-6xl p-4">
       {saleFeedback && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
-          <div className="w-[380px] rounded-2xl bg-white p-5 shadow-2xl border">
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl border">
             <div className="text-center">
               <div className="text-2xl font-bold">✅ VENTA CONFIRMADA</div>
               <div className="mt-1 text-sm text-gray-600">
@@ -1239,18 +1253,19 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
               </div>
 
               <div className="mt-3 text-xs text-gray-500">
-                {quickMode ? "Modo cajero rápido" : "POS"}
+                {quickMode ? "Modo cajero rápido" : "POS"} · Se cierra automáticamente
               </div>
               <div className="mt-4 flex gap-2">
                 <button
                   className="flex-1 rounded-lg border px-3 py-2 text-sm"
-                  onClick={() => setSaleFeedback(null)}
+                  onClick={closeSaleFeedback}
                 >
                   Cerrar
                 </button>
                 <button
                   className="flex-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white"
                   onClick={async () => {
+                    closeSaleFeedback();
                     const { exportReceiptPDF } = await import("@/app/_utils/receipt");
                     await exportReceiptPDF({
                       saleId: saleFeedback.saleId ?? undefined,
@@ -1266,7 +1281,6 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                       change: saleFeedback.change,
                       total: saleFeedback.total,
                     });
-                    setSaleFeedback(null);
                   }}
                 >
                   🖨️ Imprimir ticket
@@ -1635,9 +1649,17 @@ onKeyDown={(e) => {
                   })
                 }
                 disabled={searching}
-                className="rounded px-3 py-2 text-sm font-medium text-white disabled:opacity-60" style={{background:"#CC2020"}}
+                className="rounded px-3 py-2 text-sm font-medium text-white disabled:opacity-60 flex items-center gap-1.5" style={{background:"#CC2020"}}
               >
-                {searching ? "..." : "Buscar"}
+                {searching ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" opacity=".25"/>
+                      <path fill="currentColor" opacity=".75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    Buscando
+                  </>
+                ) : "Buscar"}
               </button>
             </div>
 
@@ -1774,7 +1796,7 @@ onKeyDown={(e) => {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               type="button"
-                              className="px-2 py-1 rounded border text-xs"
+                              className="px-4 py-2 min-w-[44px] min-h-[44px] rounded border text-sm"
                               onClick={() => {
                                 if ((it as any).is_balanza) return; // precio fijo de etiqueta
                                 if ((it as any).is_weighted) {
@@ -1805,7 +1827,7 @@ onKeyDown={(e) => {
 
                             <button
                               type="button"
-                              className="px-2 py-1 rounded border text-xs"
+                              className="px-4 py-2 min-w-[44px] min-h-[44px] rounded border text-sm"
                               onClick={() => {
                                 if ((it as any).is_balanza) return; // precio fijo de etiqueta
                                 if ((it as any).is_weighted) {
@@ -1855,7 +1877,7 @@ onKeyDown={(e) => {
                         <td className="py-2 px-2 text-right">
                           <button
                             type="button"
-                            className="px-2 py-1 rounded border text-xs text-red-600 hover:bg-red-50"
+                            className="px-3 py-2 min-w-[44px] min-h-[44px] rounded border text-sm text-red-600 hover:bg-red-50"
                             onClick={() => removeItem(lineKey(it))}
                           >
                             Quitar

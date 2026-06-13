@@ -35,13 +35,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={`${inter.className} min-h-dvh bg-[#f8fafc] text-[#111]`}>
 
-        <div className="mx-auto max-w-6xl px-4 py-6">
+        <div className="mx-auto max-w-6xl px-4 py-4">
           <BrandTheme />
           <HeaderNav />
 
           <div className="max-w-7xl mx-auto">{children}</div>
 
-          <Toaster position="top-right" />
+          <Toaster position="bottom-center" containerStyle={{ bottom: 80 }} />
           <JsonLd />
 
 
