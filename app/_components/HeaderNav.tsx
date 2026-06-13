@@ -255,18 +255,31 @@ export default function HeaderNav() {
 
           {/* Botón hamburguesa — solo mobile */}
           <button
-            className="flex md:hidden"
+            className="md:hidden"
             onClick={() => setMobileMenuOpen(v => !v)}
             aria-label={mobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
             aria-expanded={mobileMenuOpen}
             style={{
-              background: mobileMenuOpen ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.12)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: mobileMenuOpen ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)',
               border: 'none', color: 'white', borderRadius: '6px', cursor: 'pointer',
-              minHeight: '44px', minWidth: '44px',
-              alignItems: 'center', justifyContent: 'center',
+              minHeight: '44px', minWidth: '44px', flexShrink: 0,
             }}
           >
-            <i className={`ti ${mobileMenuOpen ? 'ti-x' : 'ti-menu-2'}`} style={{ fontSize: '20px' }} aria-hidden='true' />
+            {mobileMenuOpen ? (
+              /* X para cerrar */
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            ) : (
+              /* ☰ tres líneas */
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            )}
           </button>
         </div>
 
