@@ -210,7 +210,7 @@ export default function AsistentePage() {
 
       {/* Sugerencias — carrusel horizontal siempre visible */}
       <div className="overflow-x-auto mb-3">
-        <div className="flex gap-2 pb-1">
+        <div className="flex gap-2 pb-1 min-w-max">
           {sugerencias.map((s) => (
             <button
               key={s}
