@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import ConfirmSaleButton from "@/components/ConfirmSaleButton";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { getPosEmployee } from "@/lib/posSession";
+import { getPosEmployee, type PosEmployee } from "@/lib/posSession";
 import { addToQueue } from "@/lib/offlineQueue";
 import { warmCache, searchCachedProducts, mergeIntoCachedProducts, initProductCache, getCacheSavedAt } from "@/lib/productCache";
 import { useOnlineSync } from "@/lib/useOnlineSync";
@@ -242,9 +242,17 @@ export default function VentasPage() {
   const quickMode = false;
   const router = useRouter();
 
+  // posEmployeeRef: readable synchronously by effects (after the login effect runs first).
+  // posEmployee state: drives JSX conditionals — initialized null so server and client
+  // first-render produce identical HTML, avoiding hydration mismatch (#418).
+  const posEmployeeRef = useRef<PosEmployee | null>(null);
+  const [posEmployee, setPosEmployee] = useState<PosEmployee | null>(null);
+
   useEffect(() => {
     const emp = getPosEmployee();
+    posEmployeeRef.current = emp;
     if (!emp) router.replace("/pos-login");
+    else setPosEmployee(emp);
   }, [router]);
 
   // ================= ROLES POS =================
@@ -617,9 +625,9 @@ export default function VentasPage() {
   const isOnlineRef = useRef(true);
   useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
   useEffect(() => { selectedStoreIdRef.current = selectedStoreId; }, [selectedStoreId]);
-  const empStoreId = getPosEmployee()?.store_id ?? null;
-  const empRegisterId = getPosEmployee()?.register_id ?? null;
-  const isSupervisorRole = (getPosEmployee()?.role ?? "") === "supervisor";
+  const empStoreId = posEmployee?.store_id ?? null;
+  const empRegisterId = posEmployee?.register_id ?? null;
+  const isSupervisorRole = (posEmployee?.role ?? "") === "supervisor";
 
   // Cargar sucursales
   useEffect(() => {
@@ -636,7 +644,7 @@ export default function VentasPage() {
         setStores(list);
         // Si el empleado tiene sucursal asignada, usar esa
         // Si es supervisor (sin restricción), usar la primera
-        const defaultStore = empStoreId ?? list[0]?.id ?? null;
+        const defaultStore = posEmployeeRef.current?.store_id ?? list[0]?.id ?? null;
         if (!selectedStoreId) setSelectedStoreId(defaultStore);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -677,7 +685,9 @@ export default function VentasPage() {
         const list = (data ?? []) as { id: string; name: string }[];
         setRegisters(list);
         // Si el empleado tiene caja asignada y existe en esta sucursal, usarla
-        const matchedRegister = empRegisterId ? list.find(r => r.id === empRegisterId) : null;
+        const matchedRegister = posEmployeeRef.current?.register_id
+          ? list.find(r => r.id === posEmployeeRef.current!.register_id)
+          : null;
         setSelectedRegisterId(matchedRegister?.id ?? (list.length ? list[0].id : null));
       });
   }, [selectedStoreId]);
