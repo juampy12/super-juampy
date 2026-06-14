@@ -33,5 +33,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Error consultando stock bajo" }, { status: 500 });
   }
 
-  return NextResponse.json(data ?? []);
+  // Normalize: the DB function may return product_id instead of id
+  const rows = (data ?? []).map((r: Record<string, unknown>) => ({
+    ...r,
+    id: (r.id ?? r.product_id) as string,
+  }));
+
+  return NextResponse.json(rows);
 }

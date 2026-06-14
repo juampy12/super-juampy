@@ -322,12 +322,16 @@ export default function StockBajoPage() {
           <div className="flex min-h-[180px] flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-neutral-300 bg-neutral-50 px-6 py-10 text-center text-sm text-neutral-600">
             <div className="text-3xl">📦</div>
             <div className="max-w-xl text-base font-medium text-neutral-800">
-              {onlyMissing
+              {rows.length > 0 && onlyMissing
+                ? `Hay ${rows.length} producto${rows.length === 1 ? "" : "s"} con mínimo configurado, pero ninguno está bajo el mínimo todavía.`
+                : onlyMissing
                 ? "No hay faltantes vs mínimo para esta sucursal."
                 : "Sin datos (o no configuraste mínimos)."}
             </div>
             <div className="text-sm text-neutral-500">
-              Probá cambiar de sucursal o desactivar el filtro "Solo faltantes" para explorar más productos.
+              {rows.length > 0 && onlyMissing
+                ? "Desactivá «Solo faltantes» para verlos todos igualmente."
+                : "Probá cambiar de sucursal o desactivar «Solo faltantes» para explorar más productos."}
             </div>
           </div>
         ) : (
