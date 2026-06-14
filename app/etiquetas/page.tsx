@@ -158,51 +158,55 @@ export default function EtiquetasPage() {
     <>
       {/* ── Print styles ───────────────────────────────────────────── */}
       <style>{`
+        @page {
+          size: A4 portrait;
+          margin: 10mm 8mm;
+        }
+
         @media print {
-          body > div > div > nav,
-          body > div > div > .no-print,
-          .no-print {
-            display: none !important;
-          }
-          body, html {
+          /* HeaderNav renders as <nav> direct child of <body> */
+          body > nav { display: none !important; }
+          /* Screen-only UI (controls, search, list) */
+          .no-print { display: none !important; }
+          /* AIChat and any other fixed-positioned element (Tailwind .fixed class) */
+          .fixed { display: none !important; }
+
+          html, body {
             background: white !important;
             margin: 0 !important;
             padding: 0 !important;
           }
-          body > div {
-            max-width: none !important;
-            padding: 0 !important;
-          }
+          /* Remove max-width and padding from layout wrappers */
+          body > div,
           body > div > div {
-            padding: 0 !important;
             max-width: none !important;
+            width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
           }
           .print-area {
             display: block !important;
-          }
-          .screen-only {
-            display: none !important;
+            width: 100%;
           }
         }
 
         @media screen {
-          .print-area {
-            display: none;
-          }
+          .print-area { display: none; }
         }
 
-        /* Label grid */
+        /* Label grid — flex instead of grid for reliable page-break support */
         .labels-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 0;
-          width: 210mm;
-          margin: 0 auto;
-          padding: 4mm;
+          display: flex;
+          flex-wrap: wrap;
+          width: 100%;
+          margin: 0;
+          padding: 0;
           box-sizing: border-box;
         }
 
         .label-cell {
+          width: 25%;
+          box-sizing: border-box;
           border: 1px dashed #bbb;
           padding: 6mm 4mm;
           display: flex;
@@ -212,7 +216,6 @@ export default function EtiquetasPage() {
           min-height: 52mm;
           text-align: center;
           background: white;
-          box-sizing: border-box;
           break-inside: avoid;
           page-break-inside: avoid;
         }
