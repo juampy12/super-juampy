@@ -22,22 +22,81 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Falta store_id" }, { status: 400 });
   }
 
-  const { data, error } = await supabaseAdmin.rpc("low_stock_products", {
-    p_store: store_id,
-    p_query: query || null,
-    p_limit: limit,
-  });
+  // Fetch minimums configured for this store
+  const { data: minRows, error: minErr } = await supabaseAdmin
+    .from("product_min_stock")
+    .select("product_id, min_stock")
+    .eq("store_id", store_id);
 
-  if (error) {
-    console.error("stock/low RPC error:", error);
-    return NextResponse.json({ error: "Error consultando stock bajo" }, { status: 500 });
+  if (minErr) {
+    console.error("stock/low min_stock error:", minErr);
+    return NextResponse.json({ error: "Error consultando mínimos" }, { status: 500 });
   }
 
-  // Normalize: the DB function may return product_id instead of id
-  const rows = (data ?? []).map((r: Record<string, unknown>) => ({
-    ...r,
-    id: (r.id ?? r.product_id) as string,
-  }));
+  if (!minRows || minRows.length === 0) {
+    return NextResponse.json([]);
+  }
+
+  const productIds = minRows.map((r) => r.product_id as string);
+
+  // Fetch per-store stocks and product info in parallel
+  const [stockRes, productRes] = await Promise.all([
+    supabaseAdmin
+      .from("product_stocks")
+      .select("product_id, stock")
+      .eq("store_id", store_id)
+      .in("product_id", productIds),
+    supabaseAdmin
+      .from("products")
+      .select("id, name, sku, price, active")
+      .in("id", productIds)
+      .eq("active", true),
+  ]);
+
+  if (stockRes.error) {
+    console.error("stock/low product_stocks error:", stockRes.error);
+    return NextResponse.json({ error: "Error consultando stock" }, { status: 500 });
+  }
+  if (productRes.error) {
+    console.error("stock/low products error:", productRes.error);
+    return NextResponse.json({ error: "Error consultando productos" }, { status: 500 });
+  }
+
+  const stockMap = new Map<string, number>(
+    (stockRes.data ?? []).map((s) => [s.product_id as string, Number(s.stock ?? 0)])
+  );
+  const productMap = new Map(
+    (productRes.data ?? []).map((p) => [p.id as string, p])
+  );
+
+  const lowerQuery = query ? query.toLowerCase() : null;
+
+  const rows = minRows
+    .filter((m) => productMap.has(m.product_id as string))
+    .map((m) => {
+      const p = productMap.get(m.product_id as string)!;
+      const stock = stockMap.get(m.product_id as string) ?? 0;
+      const min_stock = Number(m.min_stock ?? 0);
+      const missing = Math.max(min_stock - stock, 0);
+      return {
+        id: p.id as string,
+        name: p.name as string,
+        sku: (p.sku ?? null) as string | null,
+        price: p.price != null ? Number(p.price) : null,
+        stock,
+        min_stock,
+        missing,
+      };
+    })
+    .filter((r) => {
+      if (!lowerQuery) return true;
+      return (
+        r.name.toLowerCase().includes(lowerQuery) ||
+        (r.sku ?? "").toLowerCase().includes(lowerQuery)
+      );
+    })
+    .sort((a, b) => b.missing - a.missing || a.name.localeCompare(b.name))
+    .slice(0, limit);
 
   return NextResponse.json(rows);
 }
