@@ -19,22 +19,41 @@
 
 -- ── PASO 1: Auditoría previa ────────────────────────────────────────────────
 -- Ver el estado actual antes de cualquier cambio. No modifica nada.
+-- La columna is_trigger identifica las funciones que serán EXCLUIDAS del PASO 2.
 
 SELECT
-  p.proname                                         AS function_name,
-  pg_get_function_identity_arguments(p.oid)         AS arguments,
+  p.proname                                                   AS function_name,
+  pg_get_function_identity_arguments(p.oid)                   AS arguments,
+  CASE WHEN p.prorettype IN (2279, 3838) THEN 'TRIGGER (excluida)' ELSE 'rpc' END AS kind,
   CASE WHEN has_function_privilege('anon',          p.oid, 'EXECUTE') THEN '⚠ anon'          END AS anon_access,
   CASE WHEN has_function_privilege('authenticated', p.oid, 'EXECUTE') THEN '⚠ authenticated' END AS auth_access
 FROM pg_proc p
 JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public'
   AND p.prosecdef = true
-ORDER BY p.proname;
+ORDER BY kind, p.proname;
 
 
--- ── PASO 2: Autodescubrimiento — cubre todo el schema public ───────────────
--- Garantiza que cualquier función SECURITY DEFINER quede hardened,
--- incluso si no aparece en la lista explícita de abajo.
+-- ── PASO 2: Autodescubrimiento — solo funciones RPC, no triggers ───────────
+--
+-- POR QUÉ se excluyen las funciones trigger:
+--   PostgreSQL NO verifica EXECUTE privilege al disparar un trigger.
+--   El motor invoca la función directamente (ExecCallTriggerFunc) sin
+--   pasar por has_function_privilege. Solo importa el privilege TRIGGER
+--   sobre la tabla, no EXECUTE sobre la función.
+--   Revocar EXECUTE de funciones trigger es un no-op de seguridad que
+--   solo añade ruido y podría romper herramientas de monitoreo.
+--
+-- Funciones excluidas por prorettype = 'trigger':
+--   trg_sync_stock_from_sale_items, trg_sync_stock_from_sales_status,
+--   fn_sync_sale_item_to_stock, fn_update_product_stocks_from_movements,
+--   handle_new_user, sale_items_compat_bridge, refresh_resumen_diario_mv
+--   (y cualquier otra que devuelva trigger o event_trigger)
+--
+-- POR QUÉ my_store_id() puede no aparecer acá:
+--   Si está en policies RLS, service_role las bypasea completamente.
+--   Si no tiene SECURITY DEFINER, no entra en el filtro prosecdef = true.
+--   Si SÍ tiene SECURITY DEFINER, el DO block la cubre automáticamente.
 
 DO $$
 DECLARE
@@ -48,6 +67,9 @@ BEGIN
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
       AND p.prosecdef = true
+      -- Excluir funciones trigger: no necesitan EXECUTE privilege para dispararse
+      AND p.prorettype <> 2279  -- trigger
+      AND p.prorettype <> 3838  -- event_trigger
   LOOP
     fn := 'public.' || quote_ident(r.proname) || '(' || r.args || ')';
 
