@@ -32,21 +32,36 @@ export async function POST(req: NextRequest) {
     // ── 2. Parsear y validar body ────────────────────────────────
     const body = await req.json().catch(() => ({}));
     const saleId = String(body.sale_id ?? "").trim();
+    const supervisorCode = String(body.supervisor_code ?? body.code ?? "").trim();
     const pin = String(body.pin ?? "").trim();
+    const reason = String(body.reason ?? "").trim();
 
     if (!UUID_RE.test(saleId)) {
       return NextResponse.json({ ok: false, error: "sale_id inválido" }, { status: 400 });
     }
-    if (!pin) {
-      return NextResponse.json({ ok: false, error: "Falta el PIN" }, { status: 400 });
+    if (!supervisorCode || !pin) {
+      return NextResponse.json({ ok: false, error: "Falta código o PIN de supervisor" }, { status: 400 });
+    }
+    if (!reason) {
+      return NextResponse.json({ ok: false, error: "Falta el motivo de anulación" }, { status: 400 });
+    }
+    if (reason.length > 200) {
+      return NextResponse.json({ ok: false, error: "El motivo no puede superar 200 caracteres" }, { status: 400 });
     }
 
-    // ── 3. Validar PIN de supervisor ─────────────────────────────
-    const serverPin = process.env.SUPERVISOR_PIN ?? "";
-    if (!serverPin) {
-      return NextResponse.json({ ok: false, error: "PIN no configurado" }, { status: 500 });
+    // ── 3. Validar override de supervisor ────────────────────────
+    const { data: supervisorData, error: supervisorErr } = await supabaseAdmin.rpc("verify_employee_pin", {
+      p_code: supervisorCode,
+      p_pin: pin,
+    });
+
+    if (supervisorErr) {
+      console.error("Error validando supervisor:", supervisorErr);
+      return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
     }
-    if (pin !== serverPin) {
+
+    const supervisor = Array.isArray(supervisorData) ? supervisorData[0] : null;
+    if (!supervisor?.employee_id || supervisor.role !== "supervisor") {
       const { blocked } = recordFailure(ip);
       if (blocked) {
         return NextResponse.json(
@@ -54,14 +69,14 @@ export async function POST(req: NextRequest) {
           { status: 429 }
         );
       }
-      return NextResponse.json({ ok: false, error: "PIN incorrecto" }, { status: 401 });
+      return NextResponse.json({ ok: false, error: "Código o PIN de supervisor incorrecto" }, { status: 401 });
     }
     resetFailures(ip);
 
     // ── 4. Cargar la venta ───────────────────────────────────────
     const { data: sale, error: saleErr } = await supabaseAdmin
       .from("sales")
-      .select("id, status, store_id, total, payment")
+      .select("id, status, store_id, register_id, total, payment")
       .eq("id", saleId)
       .maybeSingle();
 
@@ -146,7 +161,7 @@ export async function POST(req: NextRequest) {
             qty_delta: Number(item.quantity),
             delta: Number(item.quantity),
             reason: "void_sale",
-            note: `Anulación de venta ${saleId}`,
+            note: `Anulación de venta ${saleId}. Autorizó ${supervisorCode}. Motivo: ${reason}`,
             created_at: now,
           }))
         );
@@ -163,6 +178,15 @@ export async function POST(req: NextRequest) {
       ...(typeof sale.payment === "object" && sale.payment !== null ? sale.payment : {}),
       voided_at: voidedAt,
       voided_by: session.employee_id,
+      voided_by_role: session.role,
+      voided_from_store_id: session.store_id,
+      voided_from_register_id: session.register_id,
+      void_authorized_by: supervisor.employee_id,
+      void_authorized_code: supervisorCode,
+      void_authorized_name: supervisor.name ?? null,
+      void_reason: reason,
+      void_sale_store_id: sale.store_id,
+      void_sale_register_id: sale.register_id,
     };
 
     const { error: updateErr } = await supabaseAdmin

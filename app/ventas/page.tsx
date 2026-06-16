@@ -144,7 +144,9 @@ type PosVoidModalProps = {
 };
 
 function PosVoidModal({ sale, storeName, onClose, onVoided }: PosVoidModalProps) {
+  const [supervisorCode, setSupervisorCode] = useState("900");
   const [pin, setPin] = useState("");
+  const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -153,14 +155,20 @@ function PosVoidModal({ sale, storeName, onClose, onVoided }: PosVoidModalProps)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!pin.trim()) { setError("Ingresá el PIN de supervisor"); return; }
+    if (!supervisorCode.trim() || !pin.trim()) { setError("Ingresá código y PIN de supervisor"); return; }
+    if (!reason.trim()) { setError("Ingresá el motivo de anulación"); return; }
     setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/sales/void", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sale_id: sale.id, pin: pin.trim() }),
+        body: JSON.stringify({
+          sale_id: sale.id,
+          supervisor_code: supervisorCode.trim(),
+          pin: pin.trim(),
+          reason: reason.trim(),
+        }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) {
@@ -194,7 +202,23 @@ function PosVoidModal({ sale, storeName, onClose, onVoided }: PosVoidModalProps)
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="text-sm font-medium text-neutral-700 block mb-1">
-              PIN de supervisor
+              Código supervisor
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={supervisorCode}
+              onChange={(e) => { setSupervisorCode(e.target.value); setError(null); }}
+              className="w-full rounded-lg border px-3 py-2 text-center"
+              placeholder="900"
+              disabled={loading}
+              maxLength={10}
+              autoComplete="off"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-neutral-700 block mb-1">
+              PIN supervisor
             </label>
             <input
               ref={inputRef}
@@ -207,6 +231,20 @@ function PosVoidModal({ sale, storeName, onClose, onVoided }: PosVoidModalProps)
               disabled={loading}
               maxLength={10}
               autoComplete="off"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-neutral-700 block mb-1">
+              Motivo
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => { setReason(e.target.value); setError(null); }}
+              className="w-full rounded-lg border px-3 py-2 text-sm"
+              placeholder="Ej: producto duplicado, error de carga..."
+              disabled={loading}
+              maxLength={200}
+              rows={3}
             />
           </div>
           {error && (
@@ -223,7 +261,7 @@ function PosVoidModal({ sale, storeName, onClose, onVoided }: PosVoidModalProps)
             </button>
             <button
               type="submit"
-              disabled={loading || !pin.trim()}
+              disabled={loading || !supervisorCode.trim() || !pin.trim() || !reason.trim()}
               className="flex-1 rounded-lg bg-red-600 text-white px-4 py-2 text-sm font-medium hover:bg-red-700 disabled:opacity-50"
             >
               {loading ? "Anulando…" : "Confirmar anulación"}

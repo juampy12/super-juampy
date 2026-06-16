@@ -15,6 +15,25 @@ function isUuid(v: string) {
   );
 }
 
+function auditNote(
+  previousNotes: unknown,
+  action: "cierre" | "reemplazo",
+  session: { employee_id: string; role: string; store_id: string | null; register_id: string | null },
+  reason?: string | null
+) {
+  const base = typeof previousNotes === "string" && previousNotes.trim() ? `${previousNotes.trim()}\n` : "";
+  const parts = [
+    `[AUDITORIA ${action.toUpperCase()}]`,
+    `at=${new Date().toISOString()}`,
+    `by=${session.employee_id}`,
+    `role=${session.role}`,
+    `store=${session.store_id ?? "-"}`,
+    `register=${session.register_id ?? "-"}`,
+  ];
+  if (reason?.trim()) parts.push(`reason=${reason.trim().slice(0, 200)}`);
+  return `${base}${parts.join(" ")}`;
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getSessionFromRequest(req);
@@ -105,6 +124,7 @@ export async function POST(req: Request) {
 
     // Recalcular totales desde la DB — ignorar los del body
     const totals = await computeClosureTotals(storeId, body.date, registerId);
+    const notes = auditNote(body.notes ?? null, "cierre", session);
 
     const { data, error } = await supabaseAdmin
       .from("cash_closures")
@@ -115,7 +135,7 @@ export async function POST(req: Request) {
         ...totals,
         first_ticket_at: body.first_ticket_at ?? null,
         last_ticket_at: body.last_ticket_at ?? null,
-        notes: body.notes ?? null,
+        notes,
       })
       .select()
       .single();
@@ -155,9 +175,33 @@ export async function PUT(req: Request) {
     if (!storeId || !body.date || !registerId) {
       return NextResponse.json({ error: "Faltan campos obligatorios (store_id, date, register_id)" }, { status: 400 });
     }
+    const replaceReason = String(body.reason ?? "").trim();
+    if (!replaceReason) {
+      return NextResponse.json({ error: "Falta el motivo del reemplazo" }, { status: 400 });
+    }
+    if (replaceReason.length > 200) {
+      return NextResponse.json({ error: "El motivo no puede superar 200 caracteres" }, { status: 400 });
+    }
+
+    const { data: existing, error: existingErr } = await supabaseAdmin
+      .from("cash_closures")
+      .select("id, notes")
+      .eq("store_id", storeId)
+      .eq("register_id", registerId)
+      .eq("date", body.date)
+      .maybeSingle();
+
+    if (existingErr) {
+      console.error("Error leyendo cierre existente:", existingErr);
+      return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
+    }
+    if (!existing) {
+      return NextResponse.json({ error: "No existe un cierre previo para reemplazar" }, { status: 404 });
+    }
 
     // Recalcular totales desde la DB — ignorar los del body
     const totals = await computeClosureTotals(storeId, body.date, registerId);
+    const notes = auditNote(existing.notes, "reemplazo", session, replaceReason);
 
     const { data, error } = await supabaseAdmin
       .from("cash_closures")
@@ -169,7 +213,7 @@ export async function PUT(req: Request) {
           ...totals,
           first_ticket_at: body.first_ticket_at ?? null,
           last_ticket_at: body.last_ticket_at ?? null,
-          notes: body.notes ?? null,
+          notes,
         },
         { onConflict: "store_id,register_id,date" }
       )

@@ -19,6 +19,7 @@ type ClosureRow = {
   total_sales: number;
   total_tickets: number;
   total_cash: number;
+  notes: string | null;
 };
 
 function formatMoney(n: number) {
@@ -131,6 +132,7 @@ export default function CashClosuresHistoryPage() {
         total_sales: Number(r.total_sales ?? 0),
         total_tickets: Number(r.total_tickets ?? 0),
         total_cash: Number(r.total_cash ?? 0),
+        notes: r.notes ? String(r.notes) : null,
       }));
 
       setRowsAll(mapped);
@@ -392,6 +394,7 @@ export default function CashClosuresHistoryPage() {
                   <th className="text-right py-2 px-2">Efectivo</th>
                   <th className="text-right py-2 px-2">Tickets</th>
                   <th className="text-left py-2 px-2">Hora de cierre</th>
+                  <th className="text-left py-2 px-2">Auditoría</th>
                 </tr>
               </thead>
               <tbody>
@@ -404,6 +407,7 @@ export default function CashClosuresHistoryPage() {
                     <td className="py-1 px-2 text-right">{formatMoney(r.total_cash)}</td>
                     <td className="py-1 px-2 text-right">{r.total_tickets}</td>
                     <td className="py-1 px-2">{formatTime(r.closed_at)}</td>
+                    <td className="py-1 px-2 whitespace-pre-wrap text-[10px] text-neutral-500">{r.notes ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>

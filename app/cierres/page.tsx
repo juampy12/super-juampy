@@ -62,6 +62,7 @@ type ExistingClosure = {
   total_sales: number;
   total_tickets: number;
   total_cash: number;
+  notes?: string | null;
 };
 
 import { STORES as ALL_STORES } from "@/lib/stores";
@@ -434,6 +435,11 @@ export default function CashClosurePage() {
         "Esto va a reemplazar el cierre existente con los datos actuales que ves en pantalla. ¿Continuar?"
       );
       if (!ok) return;
+      const reason = window.prompt("Motivo del reemplazo de cierre:");
+      if (!reason?.trim()) {
+        toast.error("Ingresá un motivo para reemplazar el cierre.");
+        return;
+      }
 
       setSaving(true);
 
@@ -461,7 +467,7 @@ export default function CashClosurePage() {
         total_mixto: meta?.mixtoTotal ?? 0,
         first_ticket_at: null,
         last_ticket_at: null,
-        notes: null,
+        reason: reason.trim(),
       };
 
       const res = await fetch("/api/cash-closures", {
@@ -574,6 +580,11 @@ export default function CashClosurePage() {
               >
                 Reemplazar cierre con datos actuales
               </button>
+              {existingClosure.notes && (
+                <pre className="mt-2 whitespace-pre-wrap rounded-md bg-neutral-50 p-2 text-[10px] text-neutral-600">
+                  {existingClosure.notes}
+                </pre>
+              )}
             </div>
           )}
         </div>

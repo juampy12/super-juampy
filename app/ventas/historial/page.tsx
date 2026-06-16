@@ -26,6 +26,12 @@ type SaleRow = {
   status: string;
   voided_at: string | null;
   voided_by: string | null;
+  voided_by_role: string | null;
+  void_authorized_by: string | null;
+  void_authorized_code: string | null;
+  void_authorized_name: string | null;
+  void_reason: string | null;
+  voided_from_register_id: string | null;
 };
 
 type SaleItem = {
@@ -72,7 +78,9 @@ type VoidModalProps = {
 };
 
 function VoidModal({ sale, onClose, onVoided }: VoidModalProps) {
+  const [supervisorCode, setSupervisorCode] = useState("900");
   const [pin, setPin] = useState("");
+  const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -83,7 +91,8 @@ function VoidModal({ sale, onClose, onVoided }: VoidModalProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!pin.trim()) { setError("Ingresá el PIN de supervisor"); return; }
+    if (!supervisorCode.trim() || !pin.trim()) { setError("Ingresá código y PIN de supervisor"); return; }
+    if (!reason.trim()) { setError("Ingresá el motivo de anulación"); return; }
 
     setLoading(true);
     setError(null);
@@ -91,7 +100,12 @@ function VoidModal({ sale, onClose, onVoided }: VoidModalProps) {
       const res = await fetch("/api/sales/void", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sale_id: sale.id, pin: pin.trim() }),
+        body: JSON.stringify({
+          sale_id: sale.id,
+          supervisor_code: supervisorCode.trim(),
+          pin: pin.trim(),
+          reason: reason.trim(),
+        }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) {
@@ -129,7 +143,24 @@ function VoidModal({ sale, onClose, onVoided }: VoidModalProps) {
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="text-sm font-medium text-neutral-700 block mb-1">
-              PIN de supervisor
+              Código supervisor
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={supervisorCode}
+              onChange={(e) => { setSupervisorCode(e.target.value); setError(null); }}
+              className="w-full rounded-lg border px-3 py-2 text-center"
+              placeholder="900"
+              disabled={loading}
+              maxLength={10}
+              autoComplete="off"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-neutral-700 block mb-1">
+              PIN supervisor
             </label>
             <input
               ref={inputRef}
@@ -142,6 +173,21 @@ function VoidModal({ sale, onClose, onVoided }: VoidModalProps) {
               disabled={loading}
               maxLength={10}
               autoComplete="off"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-neutral-700 block mb-1">
+              Motivo
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => { setReason(e.target.value); setError(null); }}
+              className="w-full rounded-lg border px-3 py-2 text-sm"
+              placeholder="Ej: producto duplicado, error de carga..."
+              disabled={loading}
+              maxLength={200}
+              rows={3}
             />
           </div>
 
@@ -160,7 +206,7 @@ function VoidModal({ sale, onClose, onVoided }: VoidModalProps) {
             </button>
             <button
               type="submit"
-              disabled={loading || !pin.trim()}
+              disabled={loading || !supervisorCode.trim() || !pin.trim() || !reason.trim()}
               className="flex-1 rounded-lg bg-red-600 text-white px-4 py-2 text-sm font-medium hover:bg-red-700 disabled:opacity-50"
             >
               {loading ? "Anulando…" : "Confirmar anulación"}
@@ -240,9 +286,15 @@ export default function SalesHistorialPage() {
           register_id: r.register_id ?? null,
           method: r.payment?.method ?? "desconocido",
           status: r.status ?? "confirmed",
-          voided_at: r.payment?.voided_at ?? null,
-          voided_by: r.payment?.voided_by ?? null,
-        }))
+            voided_at: r.payment?.voided_at ?? null,
+            voided_by: r.payment?.voided_by ?? null,
+            voided_by_role: r.payment?.voided_by_role ?? null,
+            void_authorized_by: r.payment?.void_authorized_by ?? null,
+            void_authorized_code: r.payment?.void_authorized_code ?? null,
+            void_authorized_name: r.payment?.void_authorized_name ?? null,
+            void_reason: r.payment?.void_reason ?? null,
+            voided_from_register_id: r.payment?.voided_from_register_id ?? null,
+          }))
       );
     } catch (e: any) {
       setError(e?.message ?? "Error inesperado");
@@ -494,9 +546,17 @@ export default function SalesHistorialPage() {
                           <td></td>
                           <td colSpan={7} className="py-2 px-4">
                             {isVoided && s.voided_at && (
-                              <p className="text-[10px] text-red-600 mb-2 font-medium">
-                                Anulada el {formatDateTime(s.voided_at)}
-                              </p>
+                              <div className="text-[10px] text-red-700 mb-2 space-y-0.5">
+                                <p className="font-medium">Anulada el {formatDateTime(s.voided_at)}</p>
+                                <p>
+                                  Ejecutó: {s.voided_by ? s.voided_by.slice(0, 8) : "—"}
+                                  {s.voided_from_register_id ? ` desde ${registerMap[s.voided_from_register_id] ?? "otra caja"}` : ""}
+                                </p>
+                                <p>
+                                  Autorizó supervisor: {s.void_authorized_name ?? s.void_authorized_code ?? s.void_authorized_by?.slice(0, 8) ?? "—"}
+                                </p>
+                                {s.void_reason && <p>Motivo: {s.void_reason}</p>}
+                              </div>
                             )}
                             {itemsLoading === s.id ? (
                               <span className="text-neutral-400">Cargando productos…</span>
