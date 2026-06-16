@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
       employee_id: emp.employee_id,
       role: emp.role,
       store_id: emp.store_id ?? null,
+      register_id: emp.register_id ?? null,
     });
 
     const response = NextResponse.json({

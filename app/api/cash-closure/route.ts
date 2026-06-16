@@ -2,7 +2,13 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getSessionFromRequest, unauthorized } from "@/lib/session";
+import {
+  forbidCashierRegisterMismatch,
+  forbidCashierStoreMismatch,
+  getSessionFromRequest,
+  isSupervisor,
+  unauthorized,
+} from "@/lib/session";
 
 type PaymentBreakdown = {
   cash?: number;
@@ -82,8 +88,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
 
     const dateParam = searchParams.get("date"); // YYYY-MM-DD (Argentina)
-    const storeId = searchParams.get("store_id");
-    const registerId = searchParams.get("register_id");
+    const requestedStoreId = searchParams.get("store_id");
+    const requestedRegisterId = searchParams.get("register_id");
+    const storeId = isSupervisor(session) ? requestedStoreId : (session.store_id ?? null);
+    const registerId = isSupervisor(session) ? requestedRegisterId : (session.register_id ?? null);
 
     if (!dateParam || !storeId) {
       return NextResponse.json({ error: "Falta date o store_id" }, { status: 400 });
@@ -94,6 +102,10 @@ export async function GET(req: NextRequest) {
     if (!isUuid(storeId)) {
       return NextResponse.json({ error: "store_id inválido (debe ser UUID)" }, { status: 400 });
     }
+    const storeMismatch = forbidCashierStoreMismatch(session, requestedStoreId);
+    if (storeMismatch) return storeMismatch;
+    const registerMismatch = forbidCashierRegisterMismatch(session, requestedRegisterId);
+    if (registerMismatch) return registerMismatch;
     if (registerId && !isUuid(registerId)) {
       return NextResponse.json({ error: "register_id inválido (debe ser UUID)" }, { status: 400 });
     }

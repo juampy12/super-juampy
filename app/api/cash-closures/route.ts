@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
+import {
+  forbidCashierRegisterMismatch,
+  forbidCashierStoreMismatch,
+  getSessionFromRequest,
+  isSupervisor,
+  unauthorized,
+} from "@/lib/session";
 import { computeClosureTotals } from "@/lib/computeClosureTotals";
 
 function isUuid(v: string) {
@@ -16,13 +22,16 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date");
-    const store_id = searchParams.get("store_id");
-    const register_id = searchParams.get("register_id");
+    const requestedStoreId = searchParams.get("store_id");
+    const requestedRegisterId = searchParams.get("register_id");
+    const store_id = isSupervisor(session) ? requestedStoreId : (session.store_id ?? null);
+    const register_id = isSupervisor(session) ? requestedRegisterId : (session.register_id ?? null);
 
     // Cajeros solo pueden consultar su propia sucursal
-    if (!isSupervisor(session) && store_id && session.store_id !== store_id) {
-      return forbidden("No podés consultar cierres de otra sucursal");
-    }
+    const storeMismatch = forbidCashierStoreMismatch(session, requestedStoreId);
+    if (storeMismatch) return storeMismatch;
+    const registerMismatch = forbidCashierRegisterMismatch(session, requestedRegisterId);
+    if (registerMismatch) return registerMismatch;
 
     // ✅ Validaciones estrictas (evita devolver datos de otra caja por error)
     if (store_id && !isUuid(store_id)) {
@@ -80,23 +89,28 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    // Cajeros solo pueden crear cierres de su propia sucursal
-    if (!isSupervisor(session) && session.store_id !== body.store_id) {
-      return forbidden("No podés crear cierres de otra sucursal");
-    }
+    const requestedStoreId = body.store_id ?? null;
+    const requestedRegisterId = body.register_id ?? null;
+    const storeId = isSupervisor(session) ? requestedStoreId : (session.store_id ?? null);
+    const registerId = isSupervisor(session) ? requestedRegisterId : (session.register_id ?? null);
 
-    if (!body.store_id || !body.date || !body.register_id) {
+    const storeMismatch = forbidCashierStoreMismatch(session, requestedStoreId);
+    if (storeMismatch) return storeMismatch;
+    const registerMismatch = forbidCashierRegisterMismatch(session, requestedRegisterId);
+    if (registerMismatch) return registerMismatch;
+
+    if (!storeId || !body.date || !registerId) {
       return NextResponse.json({ error: "Faltan campos obligatorios (store_id, date, register_id)" }, { status: 400 });
     }
 
     // Recalcular totales desde la DB — ignorar los del body
-    const totals = await computeClosureTotals(body.store_id, body.date, body.register_id);
+    const totals = await computeClosureTotals(storeId, body.date, registerId);
 
     const { data, error } = await supabaseAdmin
       .from("cash_closures")
       .insert({
-        store_id: body.store_id,
-        register_id: body.register_id,
+        store_id: storeId,
+        register_id: registerId,
         date: body.date,
         ...totals,
         first_ticket_at: body.first_ticket_at ?? null,
@@ -128,24 +142,29 @@ export async function PUT(req: Request) {
 
     const body = await req.json();
 
-    // Cajeros solo pueden actualizar cierres de su propia sucursal
-    if (!isSupervisor(session) && session.store_id !== body.store_id) {
-      return forbidden("No podés modificar cierres de otra sucursal");
-    }
+    const requestedStoreId = body.store_id ?? null;
+    const requestedRegisterId = body.register_id ?? null;
+    const storeId = isSupervisor(session) ? requestedStoreId : (session.store_id ?? null);
+    const registerId = isSupervisor(session) ? requestedRegisterId : (session.register_id ?? null);
 
-    if (!body.store_id || !body.date || !body.register_id) {
+    const storeMismatch = forbidCashierStoreMismatch(session, requestedStoreId);
+    if (storeMismatch) return storeMismatch;
+    const registerMismatch = forbidCashierRegisterMismatch(session, requestedRegisterId);
+    if (registerMismatch) return registerMismatch;
+
+    if (!storeId || !body.date || !registerId) {
       return NextResponse.json({ error: "Faltan campos obligatorios (store_id, date, register_id)" }, { status: 400 });
     }
 
     // Recalcular totales desde la DB — ignorar los del body
-    const totals = await computeClosureTotals(body.store_id, body.date, body.register_id);
+    const totals = await computeClosureTotals(storeId, body.date, registerId);
 
     const { data, error } = await supabaseAdmin
       .from("cash_closures")
       .upsert(
         {
-          store_id: body.store_id,
-          register_id: body.register_id,
+          store_id: storeId,
+          register_id: registerId,
           date: body.date,
           ...totals,
           first_ticket_at: body.first_ticket_at ?? null,

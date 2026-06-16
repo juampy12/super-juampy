@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getSessionFromRequest, unauthorized, isSupervisor } from "@/lib/session";
+import {
+  forbidCashierRegisterMismatch,
+  getSessionFromRequest,
+  isSupervisor,
+  unauthorized,
+} from "@/lib/session";
 
 type InItem = {
   product_id?: string;
@@ -131,7 +136,8 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const bodyStoreId = resolveStoreId(body);
-    const register_id = body.register_id ?? body.registerId ?? null;
+    const bodyRegisterId = body.register_id ?? body.registerId ?? null;
+    const register_id = isSupervisor(session) ? bodyRegisterId : (session.register_id ?? null);
     // Cajeros no pueden especificar una sucursal distinta a la de su sesión
     const storeId = isSupervisor(session) ? bodyStoreId : (session.store_id ?? null);
 
@@ -144,6 +150,8 @@ export async function POST(req: Request) {
     if (!storeId) {
       return NextResponse.json({ error: "store_id es obligatorio" }, { status: 400 });
     }
+    const registerMismatch = forbidCashierRegisterMismatch(session, bodyRegisterId);
+    if (registerMismatch) return registerMismatch;
     if (!register_id) {
       return NextResponse.json({ error: "register_id es obligatorio (falta caja)" }, { status: 400 });
     }

@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 
     const { data: sale, error: saleErr } = await supabaseAdmin
       .from("sales")
-      .select("id, store_id")
+      .select("id, store_id, register_id")
       .eq("id", sale_id)
       .maybeSingle();
 
@@ -29,6 +29,9 @@ export async function GET(req: Request) {
     }
 
     if (session.role !== "supervisor" && session.store_id !== sale.store_id) {
+      return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+    }
+    if (session.role !== "supervisor" && (!session.register_id || session.register_id !== sale.register_id)) {
       return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
     }
 

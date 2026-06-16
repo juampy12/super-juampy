@@ -4,6 +4,7 @@ export interface SessionPayload {
   employee_id: string;
   role: string;
   store_id: string | null;
+  register_id: string | null;
 }
 
 function getSecret() {

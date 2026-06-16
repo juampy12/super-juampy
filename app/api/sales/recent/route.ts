@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getSessionFromRequest, unauthorized, forbidden } from "@/lib/session";
+import {
+  forbidCashierRegisterMismatch,
+  getSessionFromRequest,
+  isSupervisor,
+  unauthorized,
+  forbidden,
+} from "@/lib/session";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -10,8 +16,11 @@ export async function GET(req: Request) {
     if (!session) return unauthorized();
 
     const { searchParams } = new URL(req.url);
-    const register_id = searchParams.get("register_id");
+    const requestedRegisterId = searchParams.get("register_id");
+    const register_id = isSupervisor(session) ? requestedRegisterId : (session.register_id ?? null);
 
+    const registerMismatch = forbidCashierRegisterMismatch(session, requestedRegisterId);
+    if (registerMismatch) return registerMismatch;
     if (!register_id || !UUID_RE.test(register_id)) {
       return NextResponse.json({ error: "register_id inválido" }, { status: 400 });
     }
