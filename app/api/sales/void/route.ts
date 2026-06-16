@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getSessionFromRequest, unauthorized } from "@/lib/session";
+import { getSessionFromRequest, unauthorized, isSupervisor, forbidden } from "@/lib/session";
 import { isBlocked, recordFailure, resetFailures } from "@/lib/rateLimiter";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +72,8 @@ export async function POST(req: NextRequest) {
     if (!sale) {
       return NextResponse.json({ ok: false, error: "Venta no encontrada" }, { status: 404 });
     }
+    if (!isSupervisor(session) && sale.store_id !== session.store_id) return forbidden();
+
     if (sale.status === "anulada") {
       return NextResponse.json({ ok: false, error: "La venta ya está anulada" }, { status: 409 });
     }

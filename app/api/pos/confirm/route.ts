@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getSessionFromRequest, unauthorized } from "@/lib/session";
+import { getSessionFromRequest, unauthorized, isSupervisor } from "@/lib/session";
 
 type InItem = {
   product_id?: string;
@@ -130,8 +130,10 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const storeId = resolveStoreId(body);
+    const bodyStoreId = resolveStoreId(body);
     const register_id = body.register_id ?? body.registerId ?? null;
+    // Cajeros no pueden especificar una sucursal distinta a la de su sesión
+    const storeId = isSupervisor(session) ? bodyStoreId : (session.store_id ?? null);
 
     // Validar y extraer la clave de idempotencia enviada por el cliente.
     // Debe ser un UUID válido; se ignora si no cumple el formato.

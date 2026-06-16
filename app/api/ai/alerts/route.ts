@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getSessionFromRequest, unauthorized } from "@/lib/session";
+import { getSessionFromRequest, unauthorized, isSupervisor, forbidden } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +14,7 @@ function dateAR(d: Date) {
 export async function GET(req: Request) {
   const session = await getSessionFromRequest(req);
   if (!session) return unauthorized();
+  if (!isSupervisor(session)) return forbidden();
   try {
     const now = new Date();
     const todayAR = dateAR(now);
