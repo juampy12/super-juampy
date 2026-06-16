@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import toast from "react-hot-toast";
 
 function n(v: any, d = 0) {
@@ -164,19 +163,15 @@ export default function CatalogoPage() {
     setResults([]);
     setSelected(null);
     try {
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, sku, plu, name, price, active")
-        .eq("active", false)
-        .order("name", { ascending: true })
-        .limit(300);
+      const res = await fetch("/api/products/catalog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: "false", limit: 300 }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error("Error buscando: " + (json.error ?? res.status)); return; }
 
-      if (error) {
-        toast.error("Error buscando: " + error.message);
-        return;
-      }
-
-      const list = (data ?? []) as ProductMini[];
+      const list = (json.data ?? []) as ProductMini[];
       setResults(list);
       if (list.length === 1) pick(list[0]);
       if (list.length === 0) toast("No hay productos desactivados.");
@@ -208,47 +203,17 @@ export default function CatalogoPage() {
     setSelected(null);
 
     try {
-      const isNumeric = /^\d+$/.test(term);
-      const desiredActive = showInactive ? false : true;
+      const desiredActive = showInactive ? "false" : "true";
+      // El endpoint maneja SKU exacto primero (si es numérico) con fallback a nombre
+      const res = await fetch("/api/products/catalog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: term, active: desiredActive, limit: 50 }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error("Error buscando: " + (json.error ?? res.status)); return; }
 
-      // 1) si es numérico -> buscar por sku exacto primero
-      if (isNumeric) {
-        const { data, error } = await supabase
-          .from("products")
-          .select("id, sku, plu, name, price, active")
-          .eq("sku", term)
-          .eq("active", desiredActive)
-          .limit(20);
-
-        if (error) {
-          toast.error("Error buscando: " + error.message);
-          return;
-        }
-
-        const list = (data ?? []) as ProductMini[];
-        if (list.length > 0) {
-          setResults(list);
-          pick(list[0]);
-          return;
-        }
-        // si no encontró por SKU, caemos a nombre
-      }
-
-      // 2) buscar por nombre (ilike)
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, sku, plu, name, price, active")
-        .eq("active", desiredActive)
-        .ilike("name", `%${term}%`)
-        .order("name", { ascending: true })
-        .limit(50);
-
-      if (error) {
-        toast.error("Error buscando: " + error.message);
-        return;
-      }
-
-      const list = (data ?? []) as ProductMini[];
+      const list = (json.data ?? []) as ProductMini[];
       setResults(list);
       if (list.length === 1) pick(list[0]);
       if (list.length === 0) toast("No se encontraron productos.");

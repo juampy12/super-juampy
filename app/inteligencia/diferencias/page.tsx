@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import { getPosEmployee } from "@/lib/posSession";
 
 type Store = { id: string; name: string };
@@ -87,10 +86,10 @@ export default function InteligenciaDiferenciasPage() {
   }, []);
 
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.from("stores").select("id,name").order("name");
-      setStores((data as any) ?? []);
-    })();
+    fetch("/api/stores")
+      .then((r) => r.json())
+      .then((j) => setStores(j.stores ?? []))
+      .catch(console.error);
   }, []);
 
   async function load() {

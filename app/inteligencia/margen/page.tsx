@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import { getPosEmployee } from "@/lib/posSession";
 
 type Store = { id: string; name: string };
@@ -103,15 +102,10 @@ export default function Page() {
 
   useEffect(() => {
     if (!ready || !isSupervisor) return;
-
-    (async () => {
-      const { data, error } = await supabase
-        .from("stores")
-        .select("id,name")
-        .order("name", { ascending: true });
-
-      if (!error) setStores((data ?? []) as Store[]);
-    })();
+    fetch("/api/stores")
+      .then((r) => r.json())
+      .then((j) => setStores((j.stores ?? []) as Store[]))
+      .catch(console.error);
   }, [ready, isSupervisor]);
 
   async function load() {

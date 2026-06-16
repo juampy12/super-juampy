@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, Fragment } from "react";
-import { supabase } from "@/lib/supabase";
 import { getPosEmployee } from "@/lib/posSession";
 
 type Store = { id: string; name: string };
@@ -76,13 +75,10 @@ export default function IntelligenceControlPage() {
 
   // Cargar sucursales
   useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from("stores")
-        .select("id,name")
-        .order("name");
-      if (!error) setStores((data as any) ?? []);
-    })();
+    fetch("/api/stores")
+      .then((r) => r.json())
+      .then((j) => setStores(j.stores ?? []))
+      .catch(console.error);
   }, []);
 
   async function load() {

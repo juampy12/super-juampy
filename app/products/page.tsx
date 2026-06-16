@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
 
 type Store = { id: string; name: string };
 
@@ -178,12 +177,14 @@ export default function ProductsPage() {
   }
 
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.from("stores").select("id,name").order("name");
-      const list = (data ?? []) as Store[];
-      setStores(list);
-      if (!storeId && list[0]?.id) setStoreId(list[0].id);
-    })();
+    fetch("/api/stores")
+      .then((r) => r.json())
+      .then((j) => {
+        const list = (j.stores ?? []) as Store[];
+        setStores(list);
+        if (!storeId && list[0]?.id) setStoreId(list[0].id);
+      })
+      .catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

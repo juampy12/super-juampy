@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPosEmployee } from "@/lib/posSession";
-import { supabase } from "@/lib/supabase";
 
 type ExcelRow = Record<string, string | number | null>;
 
@@ -204,13 +203,14 @@ export default function ImportarPreciosPage() {
 
       for (let i = 0; i < skus.length; i += batchSize) {
         const batch = skus.slice(i, i + batchSize);
-        const { data, error } = await supabase
-          .from("products")
-          .select("id, sku, name, price")
-          .in("sku", batch)
-          .eq("active", true);
-        if (error) throw error;
-        dbProducts.push(...((data ?? []) as typeof dbProducts));
+        const res = await fetch("/api/products/catalog", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skus: batch, active: "true" }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? "Error al buscar productos");
+        dbProducts.push(...((json.data ?? []) as typeof dbProducts));
       }
 
       const dbBySku: Record<string, typeof dbProducts[0]> = {};

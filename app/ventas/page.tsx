@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import toast from "react-hot-toast";
 import ConfirmSaleButton from "@/components/ConfirmSaleButton";
-import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { getPosEmployee, type PosEmployee } from "@/lib/posSession";
 import { addToQueue } from "@/lib/offlineQueue";
@@ -631,22 +630,15 @@ export default function VentasPage() {
 
   // Cargar sucursales
   useEffect(() => {
-    supabase
-      .from("stores")
-      .select("id,name")
-      .order("name", { ascending: true })
-      .then(({ data, error }) => {
-        if (error) {
-          toast.error("Error cargando sucursales: " + error.message);
-          return;
-        }
-        const list = (data ?? []) as Store[];
+    fetch("/api/stores")
+      .then((r) => r.json())
+      .then((j) => {
+        const list = (j.stores ?? []) as Store[];
         setStores(list);
-        // Si el empleado tiene sucursal asignada, usar esa
-        // Si es supervisor (sin restricción), usar la primera
         const defaultStore = posEmployeeRef.current?.store_id ?? list[0]?.id ?? null;
         if (!selectedStoreId) setSelectedStoreId(defaultStore);
-      });
+      })
+      .catch((e) => toast.error("Error cargando sucursales: " + e.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -669,27 +661,17 @@ export default function VentasPage() {
       });
     }
 
-    supabase
-      .from("registers")
-      .select("id, name")
-      .eq("store_id", selectedStoreId)
-      .eq("active", true)
-      .order("name", { ascending: true })
-      .then(({ data, error }) => {
-        if (error) {
-          console.error(error);
-          toast.error("Error cargando cajas: " + error.message);
-          return;
-        }
-
-        const list = (data ?? []) as { id: string; name: string }[];
+    fetch(`/api/registers?store_id=${selectedStoreId}`)
+      .then((r) => r.json())
+      .then((j) => {
+        const list = (j.registers ?? []) as { id: string; name: string }[];
         setRegisters(list);
-        // Si el empleado tiene caja asignada y existe en esta sucursal, usarla
         const matchedRegister = posEmployeeRef.current?.register_id
           ? list.find(r => r.id === posEmployeeRef.current!.register_id)
           : null;
         setSelectedRegisterId(matchedRegister?.id ?? (list.length ? list[0].id : null));
-      });
+      })
+      .catch((e) => { console.error(e); toast.error("Error cargando cajas"); });
   }, [selectedStoreId]);
 
   function getUnitPrice(p: ProductRow) {

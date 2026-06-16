@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
 import { getPosEmployee } from "@/lib/posSession";
 
 type Store = { id: string; name: string };
@@ -51,20 +50,14 @@ export default function StockBajoPage() {
   }, []);
 
   useEffect(() => {
-    supabase
-      .from("stores")
-      .select("id,name")
-      .order("name", { ascending: true })
-      .then(({ data, error }) => {
-        if (error) {
-          console.error(error);
-          alert("Error cargando sucursales: " + error.message);
-          return;
-        }
-        const list = (data ?? []) as Store[];
+    fetch("/api/stores")
+      .then((r) => r.json())
+      .then((j) => {
+        const list = (j.stores ?? []) as Store[];
         setStores(list);
         if (list.length && !selectedStoreId) setSelectedStoreId(list[0].id);
-      });
+      })
+      .catch((e) => { console.error(e); alert("Error cargando sucursales"); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -91,41 +84,9 @@ export default function StockBajoPage() {
         return;
       }
 
-      const base = ((await res.json()) as Row[]) ?? [];
-
-      // ✅ 2do paso: traer active desde products para filtrar desactivados
-      const ids = Array.from(new Set(base.map((r) => r.id).filter(Boolean)));
-      if (ids.length === 0) {
-        setRows([]);
-        return;
-      }
-
-      const { data: prodData, error: prodErr } = await supabase
-        .from("products")
-        .select("id,active")
-        .in("id", ids);
-
-      if (prodErr) {
-        // Si falla por RLS o algo, NO rompemos: mostramos todo (modo seguro)
-        console.warn("No se pudo leer products.active, se muestra todo:", prodErr);
-        setRows(base);
-        return;
-      }
-
-      const activeMap = new Map<string, boolean | null>();
-      for (const p of (prodData ?? []) as any[]) {
-        activeMap.set(p.id, typeof p.active === "boolean" ? p.active : null);
-      }
-
-      const withActive = base.map((r) => ({
-        ...r,
-        active: activeMap.has(r.id) ? (activeMap.get(r.id) as any) : null,
-      }));
-
-      // ✅ ocultar desactivados (active=false). Si active viene null => se considera activo.
-      const filteredActive = withActive.filter((r) => r.active !== false);
-
-      setRows(filteredActive);
+      // stock/low ya filtra active=true server-side; usamos el resultado directo
+      const rows = ((await res.json()) as Row[]) ?? [];
+      setRows(rows);
     } finally {
       setLoading(false);
     }

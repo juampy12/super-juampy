@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
 
 type Store = { id: string; name: string };
 type ProductRow = { id: string; sku: string | null; name: string };
@@ -32,20 +31,14 @@ export default function MinimosPage() {
   }, [totalCount]);
 
   useEffect(() => {
-    supabase
-      .from("stores")
-      .select("id,name")
-      .order("name", { ascending: true })
-      .then(({ data, error }) => {
-        if (error) {
-          console.error(error);
-          setMsg("Error cargando sucursales: " + error.message);
-          return;
-        }
-        const list = (data ?? []) as Store[];
+    fetch("/api/stores")
+      .then((r) => r.json())
+      .then((j) => {
+        const list = (j.stores ?? []) as Store[];
         setStores(list);
         if (list.length && !storeId) setStoreId(list[0].id);
-      });
+      })
+      .catch((e) => { console.error(e); setMsg("Error cargando sucursales"); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -68,24 +61,20 @@ useEffect(() => {
   async function loadMins(productIds: string[]) {
     if (!storeId || productIds.length === 0) return;
 
-    const { data, error } = await supabase
-      .from("product_min_stock")
-      .select("product_id,min_stock")
-      .eq("store_id", storeId)
-      .in("product_id", productIds);
-
-    if (error) {
-      console.error(error);
-      setMsg("Error cargando mínimos: " + error.message);
+    const ids = productIds.join(",");
+    const res = await fetch(`/api/stock/min?store_id=${storeId}&product_ids=${ids}`);
+    const json = await res.json();
+    if (!res.ok) {
+      console.error(json.error);
+      setMsg("Error cargando mínimos: " + (json.error ?? res.status));
       return;
     }
 
     const map: Record<string, string> = {};
-    for (const row of data ?? []) {
+    for (const row of (json.data ?? []) as { product_id: string; min_stock: number }[]) {
       map[row.product_id] = String(row.min_stock ?? "");
     }
 
-    // guardamos originales y también completamos inputs
     setMinOrig((prev) => ({ ...prev, ...map }));
     setMinValue((prev) => ({ ...prev, ...map }));
   }
@@ -101,35 +90,32 @@ useEffect(() => {
       const from = p * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
-      let query = supabase
-        .from("products")
-        .select("id,sku,name", { count: "exact" })
-        .order("name", { ascending: true });
+      const res = await fetch("/api/products/catalog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: term || null, active: "all", limit: PAGE_SIZE, offset: from, include_count: true }),
+      });
+      const json = await res.json();
 
-      if (term) {
-        query = query.or(`name.ilike.%${term}%,sku.ilike.%${term}%`);
-      }
-
-      const { data, error, count } = await query.range(from, to);
-
-      if (error) {
-        console.error(error);
-        setMsg("Error buscando productos: " + error.message);
+      if (!res.ok) {
+        console.error(json.error);
+        setMsg("Error buscando productos: " + (json.error ?? res.status));
         return;
       }
 
-      const list = (data ?? []) as ProductRow[];
+      const list = (json.data ?? []) as ProductRow[];
       setRows(list);
-      setTotalCount(count ?? 0);
+      setTotalCount(json.count ?? 0);
       setPage(p);
 
       // cargar mínimos para los productos de la página
       await loadMins(list.map((x) => x.id));
 
+      const total = json.count ?? 0;
       setMsg(
         term
-          ? `Resultados: ${count ?? 0} — página ${p + 1}/${Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE))}`
-          : `Mostrando catálogo — página ${p + 1}/${Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE))}`
+          ? `Resultados: ${total} — página ${p + 1}/${Math.max(1, Math.ceil(total / PAGE_SIZE))}`
+          : `Mostrando catálogo — página ${p + 1}/${Math.max(1, Math.ceil(total / PAGE_SIZE))}`
       );
     } finally {
       setLoading(false);

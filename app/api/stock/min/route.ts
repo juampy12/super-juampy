@@ -2,6 +2,38 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
+// GET /api/stock/min?store_id=X&product_ids=id1,id2,...
+export async function GET(req: Request) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
+
+  const { searchParams } = new URL(req.url);
+  const store_id = searchParams.get("store_id") ?? "";
+  const ids = (searchParams.get("product_ids") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (!store_id) return NextResponse.json({ error: "Falta store_id" }, { status: 400 });
+  if (!isSupervisor(session) && session.store_id !== store_id) {
+    return forbidden("Sin acceso a esa sucursal");
+  }
+  if (ids.length === 0) return NextResponse.json({ data: [] });
+
+  const { data, error } = await supabaseAdmin
+    .from("product_min_stock")
+    .select("product_id, min_stock")
+    .eq("store_id", store_id)
+    .in("product_id", ids);
+
+  if (error) {
+    console.error("stock/min GET error:", error);
+    return NextResponse.json({ error: "Error consultando mínimos" }, { status: 500 });
+  }
+
+  return NextResponse.json({ data: data ?? [] });
+}
+
 export async function POST(req: Request) {
   const session = await getSessionFromRequest(req);
   if (!session) return unauthorized();
