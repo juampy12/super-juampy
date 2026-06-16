@@ -7,6 +7,12 @@ export const dynamic = "force-dynamic";
 
 type PriceUpdate = { productId: string; price: number };
 
+// Tope por request: el cliente ya divide en lotes (ver importar-precios/page.tsx),
+// esto es una segunda barrera por si alguien llama el endpoint directo con un
+// array gigante — un solo UPDATE...unnest() con miles de filas sigue siendo
+// rápido, pero el payload/parseo de JSON no debería crecer sin límite.
+const MAX_BATCH = 1000;
+
 export async function POST(req: Request) {
   try {
     const session = await getSessionFromRequest(req);
@@ -19,8 +25,15 @@ export async function POST(req: Request) {
     if (!Array.isArray(updates) || updates.length === 0) {
       return NextResponse.json({ ok: false, error: "Sin actualizaciones" }, { status: 400 });
     }
+    if (updates.length > MAX_BATCH) {
+      return NextResponse.json(
+        { ok: false, error: `Máximo ${MAX_BATCH} productos por request — dividí en lotes más chicos` },
+        { status: 400 }
+      );
+    }
 
-    let updated = 0;
+    const ids: string[] = [];
+    const prices: number[] = [];
     const errors: string[] = [];
 
     for (const item of updates) {
@@ -29,17 +42,24 @@ export async function POST(req: Request) {
         errors.push(`Dato inválido: ${JSON.stringify(item)}`);
         continue;
       }
+      ids.push(item.productId);
+      prices.push(price);
+    }
 
-      const { error } = await supabaseAdmin
-        .from("products")
-        .update({ price })
-        .eq("id", item.productId);
+    // Un solo UPDATE ... FROM unnest() para todo el lote en vez de N updates
+    // secuenciales — evita el timeout de la función serverless con imports grandes.
+    let updated = 0;
+    if (ids.length > 0) {
+      const { data, error } = await supabaseAdmin.rpc("bulk_update_product_prices", {
+        p_ids: ids,
+        p_prices: prices,
+      });
 
       if (error) {
-        errors.push(`Error en ${item.productId}: ${error.message}`);
-      } else {
-        updated++;
+        console.error("Error en bulk_update_product_prices:", error);
+        return NextResponse.json({ ok: false, error: "Error actualizando precios" }, { status: 500 });
       }
+      updated = data ?? 0;
     }
 
     return NextResponse.json({ ok: true, updated, errors });

@@ -73,6 +73,12 @@ function parsePrice(v: string | number | null | undefined): number {
 
 const PDF_HEADERS = ["Cod.Barra", "Detalle", "Precio/SI", "Precio/CI"];
 
+// Aplicar precios en lotes: cada request hace un solo UPDATE en lote server-side,
+// pero igual lo dividimos acá para mostrar progreso real y no perder todo el
+// trabajo si un lote individual tarda demasiado.
+const APPLY_CHUNK_SIZE = 500;
+const APPLY_CHUNK_TIMEOUT_MS = 25_000;
+
 export default function ImportarPreciosPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -268,25 +274,58 @@ export default function ImportarPreciosPage() {
     if (matched.length === 0) return;
     if (!window.confirm(`¿Aplicar precios a ${matched.length} productos?`)) return;
 
-    setLoading(true);
-    setLoadingMsg("Aplicando precios...");
-    try {
-      const updates = matched.map((m) => ({ productId: m.dbId, price: m.finalPrice }));
-      const res = await fetch("/api/products/bulk-price-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ updates }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!json?.ok) { alert(`Error aplicando precios: ${json?.error ?? "desconocido"}`); return; }
-      setApplySummary({ updated: json.updated, notFound: notFound.length, errors: json.errors ?? [] });
-      setStep("done");
-    } catch (e: any) {
-      alert(`Error: ${e?.message ?? e}`);
-    } finally {
-      setLoading(false);
-      setLoadingMsg("");
+    const chunks: ProductMatch[][] = [];
+    for (let i = 0; i < matched.length; i += APPLY_CHUNK_SIZE) {
+      chunks.push(matched.slice(i, i + APPLY_CHUNK_SIZE));
     }
+
+    setLoading(true);
+    let totalUpdated = 0;
+    const allErrors: string[] = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      setLoadingMsg(
+        chunks.length > 1
+          ? `Aplicando ${totalUpdated} de ${matched.length}...`
+          : "Aplicando precios..."
+      );
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), APPLY_CHUNK_TIMEOUT_MS);
+      try {
+        const updates = chunk.map((m) => ({ productId: m.dbId, price: m.finalPrice }));
+        const res = await fetch("/api/products/bulk-price-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ updates }),
+          signal: controller.signal,
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.ok) throw new Error(json?.error ?? `Error HTTP ${res.status}`);
+
+        totalUpdated += json.updated ?? 0;
+        if (json.errors?.length) allErrors.push(...json.errors);
+      } catch (e: any) {
+        const reason =
+          e?.name === "AbortError" ? "se agotó el tiempo de espera" : e?.message ?? "error desconocido";
+        allErrors.push(
+          `Lote ${i + 1}/${chunks.length} (${chunk.length} productos): ${reason}`
+        );
+        alert(
+          `Se aplicaron ${totalUpdated} de ${matched.length} precios antes de que fallara el lote ${i + 1}/${chunks.length}: ${reason}.\n\n` +
+          `Los precios ya aplicados quedan guardados — podés reintentar la importación para completar el resto.`
+        );
+        break;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    setLoading(false);
+    setLoadingMsg("");
+    setApplySummary({ updated: totalUpdated, notFound: notFound.length, errors: allErrors });
+    setStep("done");
   }
 
   async function handleAddNew() {
