@@ -177,15 +177,43 @@ export async function POST(req: Request) {
 
     // ✅ Siempre consultar precios y estado de la DB — nunca confiar en el cliente
     const productIds = Array.from(new Set(items.map((x) => x.product_id)));
-    const { data: prods, error: prodErr } = await supabaseAdmin
-      .from("products")
-      .select("id, price, active")
-      .in("id", productIds);
+    const nowIso = new Date().toISOString();
+    const [{ data: prods, error: prodErr }, { data: offerRows }] = await Promise.all([
+      supabaseAdmin
+        .from("products")
+        .select("id, price, active")
+        .in("id", productIds),
+      supabaseAdmin
+        .from("product_offers")
+        .select("product_id, store_id, type, value")
+        .in("product_id", productIds)
+        .eq("is_active", true)
+        .lte("starts_at", nowIso)
+        .gte("ends_at", nowIso)
+        .or(`store_id.eq.${storeId},store_id.is.null`),
+    ]);
 
     if (prodErr) {
       console.error("Error leyendo productos en confirm:", prodErr);
       return NextResponse.json({ error: "Error al procesar la venta" }, { status: 500 });
     }
+
+    // Ofertas: store-specific gana sobre global (store_id = null)
+    const offerMap = new Map<string, { type: string; value: number; storeSpecific: boolean }>();
+    for (const o of offerRows ?? []) {
+      const pid = String(o.product_id);
+      const storeSpecific = o.store_id === storeId;
+      const prev = offerMap.get(pid);
+      if (!prev || storeSpecific) offerMap.set(pid, { type: String(o.type), value: toNum(o.value), storeSpecific });
+    }
+
+    const effectivePrice = (basePrice: number, pid: string): number => {
+      const o = offerMap.get(pid);
+      if (!o) return basePrice;
+      if (o.type === "fixed_price") return toNum(o.value);
+      if (o.type === "percent") return Math.max(0, basePrice * (1 - o.value / 100));
+      return basePrice;
+    };
 
     const productMap = new Map<string, { price: number }>();
     for (const p of prods ?? []) {
@@ -195,7 +223,7 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      productMap.set(String(p.id), { price: toNum(p.price, 0) });
+      productMap.set(String(p.id), { price: effectivePrice(toNum(p.price, 0), String(p.id)) });
     }
 
     for (const item of items) {

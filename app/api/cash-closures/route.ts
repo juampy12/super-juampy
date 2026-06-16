@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
+import { computeClosureTotals } from "@/lib/computeClosureTotals";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -84,20 +85,20 @@ export async function POST(req: Request) {
       return forbidden("No podés crear cierres de otra sucursal");
     }
 
+    if (!body.store_id || !body.date || !body.register_id) {
+      return NextResponse.json({ error: "Faltan campos obligatorios (store_id, date, register_id)" }, { status: 400 });
+    }
+
+    // Recalcular totales desde la DB — ignorar los del body
+    const totals = await computeClosureTotals(body.store_id, body.date, body.register_id);
+
     const { data, error } = await supabaseAdmin
       .from("cash_closures")
       .insert({
         store_id: body.store_id,
         register_id: body.register_id,
         date: body.date,
-        total_sales: body.total_sales,
-        total_tickets: body.total_tickets,
-        total_cash: body.total_cash,
-        total_debit: body.total_debit,
-        total_credit: body.total_credit,
-        total_mp: body.total_mp,
-        total_cuenta_corriente: body.total_cuenta_corriente,
-        total_mixto: body.total_mixto,
+        ...totals,
         first_ticket_at: body.first_ticket_at ?? null,
         last_ticket_at: body.last_ticket_at ?? null,
         notes: body.notes ?? null,
@@ -132,6 +133,13 @@ export async function PUT(req: Request) {
       return forbidden("No podés modificar cierres de otra sucursal");
     }
 
+    if (!body.store_id || !body.date || !body.register_id) {
+      return NextResponse.json({ error: "Faltan campos obligatorios (store_id, date, register_id)" }, { status: 400 });
+    }
+
+    // Recalcular totales desde la DB — ignorar los del body
+    const totals = await computeClosureTotals(body.store_id, body.date, body.register_id);
+
     const { data, error } = await supabaseAdmin
       .from("cash_closures")
       .upsert(
@@ -139,14 +147,7 @@ export async function PUT(req: Request) {
           store_id: body.store_id,
           register_id: body.register_id,
           date: body.date,
-          total_sales: body.total_sales,
-          total_tickets: body.total_tickets,
-          total_cash: body.total_cash,
-          total_debit: body.total_debit,
-          total_credit: body.total_credit,
-          total_mp: body.total_mp,
-          total_cuenta_corriente: body.total_cuenta_corriente,
-          total_mixto: body.total_mixto,
+          ...totals,
           first_ticket_at: body.first_ticket_at ?? null,
           last_ticket_at: body.last_ticket_at ?? null,
           notes: body.notes ?? null,
