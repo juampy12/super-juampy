@@ -64,40 +64,58 @@ function isYmd(s: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
-function AuditCell({ notes }: { notes: string | null }) {
+function AuditCell({ notes, open, onToggle }: { notes: string | null; open: boolean; onToggle: () => void }) {
   const audit = parseAuditNotes(notes);
   const total = audit.entries.length;
   if (total === 0 && audit.legacy.length === 0) return <span className="text-neutral-400">—</span>;
 
   return (
-    <details className="min-w-[220px]">
-      <summary className="cursor-pointer text-xs font-medium text-blue-700">
+    <div className="relative inline-block">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+      >
         {total > 0 ? `Ver auditoría (${total})` : "Ver notas"}
-      </summary>
-      <div className="mt-2 space-y-2 rounded-lg border bg-white p-2 text-[11px] text-neutral-700 shadow-sm">
-        {audit.legacy.length > 0 && (
-          <div className="rounded-md border border-blue-100 bg-blue-50 p-2">
-            <div className="mb-1 font-semibold text-blue-900">Notas</div>
-            {audit.legacy.map((line, idx) => (
-              <p key={`legacy-${idx}`} className="text-blue-800">{line}</p>
+      </button>
+      {open && (
+        <div className="absolute right-0 z-30 mt-2 max-h-80 w-[360px] overflow-auto rounded-lg border bg-white p-3 text-[11px] text-neutral-700 shadow-xl">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="font-semibold text-neutral-900">Detalle de auditoría</div>
+            <button
+              type="button"
+              onClick={onToggle}
+              className="rounded px-2 py-0.5 text-[11px] text-neutral-500 hover:bg-neutral-100"
+            >
+              Cerrar
+            </button>
+          </div>
+          <div className="space-y-2">
+            {audit.legacy.length > 0 && (
+              <div className="rounded-md border border-blue-100 bg-blue-50 p-2">
+                <div className="mb-1 font-semibold text-blue-900">Notas</div>
+                {audit.legacy.map((line, idx) => (
+                  <p key={`legacy-${idx}`} className="text-blue-800">{line}</p>
+                ))}
+              </div>
+            )}
+            {audit.entries.length > 0 && (
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                Auditoría automática
+              </div>
+            )}
+            {audit.entries.map((entry, idx) => (
+              <div key={idx} className="rounded-md bg-neutral-50 p-2">
+                <div className="font-semibold">{auditActionLabel(entry.action)} · {formatAuditDate(entry.at)}</div>
+                <div>Empleado: {shortId(entry.by)} {entry.role ? `(${entry.role})` : ""}</div>
+                <div>Caja: {shortId(entry.register)} · Sucursal: {shortId(entry.store)}</div>
+                {entry.reason && <div>Motivo: {entry.reason}</div>}
+              </div>
             ))}
           </div>
-        )}
-        {audit.entries.length > 0 && (
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-            Auditoría automática
-          </div>
-        )}
-        {audit.entries.map((entry, idx) => (
-          <div key={idx} className="rounded-md bg-neutral-50 p-2">
-            <div className="font-semibold">{auditActionLabel(entry.action)} · {formatAuditDate(entry.at)}</div>
-            <div>Empleado: {shortId(entry.by)} {entry.role ? `(${entry.role})` : ""}</div>
-            <div>Caja: {shortId(entry.register)} · Sucursal: {shortId(entry.store)}</div>
-            {entry.reason && <div>Motivo: {entry.reason}</div>}
-          </div>
-        ))}
-      </div>
-    </details>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -114,6 +132,7 @@ export default function CashClosuresHistoryPage() {
   const [filterRegister, setFilterRegister] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [openAuditId, setOpenAuditId] = useState<string | null>(null);
 
   async function loadRegisters(storeId?: string) {
     try {
@@ -434,7 +453,7 @@ export default function CashClosuresHistoryPage() {
         ) : rows.length === 0 ? (
           <p className="text-sm text-neutral-500">No hay cierres con esos filtros.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-visible pb-36">
             <table className="min-w-full text-xs">
               <thead>
                 <tr className="border-b bg-neutral-50">
@@ -458,7 +477,13 @@ export default function CashClosuresHistoryPage() {
                     <td className="py-1 px-2 text-right">{formatMoney(r.total_cash)}</td>
                     <td className="py-1 px-2 text-right">{r.total_tickets}</td>
                     <td className="py-1 px-2">{formatTime(r.closed_at)}</td>
-                    <td className="py-1 px-2"><AuditCell notes={r.notes} /></td>
+                    <td className="py-1 px-2">
+                      <AuditCell
+                        notes={r.notes}
+                        open={openAuditId === r.id}
+                        onToggle={() => setOpenAuditId((current) => (current === r.id ? null : r.id))}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
