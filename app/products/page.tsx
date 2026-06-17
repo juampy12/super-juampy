@@ -44,6 +44,29 @@ function calcFinalPrice(costNet: number, vatRate: number, markupRate: number) {
   return Math.round(withMarkup * 100) / 100;
 }
 
+function formatMoney(value: number) {
+  return `$${Number(value || 0).toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function priceFlags(row: Row) {
+  const cost = n(row.cost_net, 0);
+  const margin = n(row.markup_rate, 0);
+  const price = n(row.price, 0);
+  const suggested = calcFinalPrice(cost, n(row.vat_rate, 21), margin);
+  const manual = Math.abs(price - suggested) > 0.009;
+
+  return {
+    suggested,
+    manual,
+    noCost: cost <= 0,
+    noMargin: margin <= 0,
+    belowCost: cost > 0 && price > 0 && price < cost,
+  };
+}
+
 function payloadEqualsRow(p: DirtyPayload, r: Row) {
   const finalOk = p.use_final_price
     ? n(p.final_price, n(r.price, 0)) === n(r.price, 0)
@@ -64,6 +87,7 @@ export default function ProductsPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [storeId, setStoreId] = useState("");
   const [query, setQuery] = useState("");
+  const [viewFilter, setViewFilter] = useState("all");
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
@@ -247,11 +271,50 @@ export default function ProductsPage() {
     }
   };
 
-  const pageRows = rows.slice(page * pageSize, (page + 1) * pageSize);
+  const stats = useMemo(() => {
+    return rows.reduce(
+      (acc, row) => {
+        const flags = priceFlags(row);
+        if (flags.manual) acc.manual++;
+        if (flags.noCost) acc.noCost++;
+        if (flags.noMargin) acc.noMargin++;
+        if (flags.belowCost) acc.belowCost++;
+        return acc;
+      },
+      { total: rows.length, manual: 0, noCost: 0, noMargin: 0, belowCost: 0 }
+    );
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    if (viewFilter === "all") return rows;
+    if (viewFilter === "changed") return rows.filter((row) => dirtyById[row.id]);
+    return rows.filter((row) => {
+      const flags = priceFlags(row);
+      if (viewFilter === "manual") return flags.manual;
+      if (viewFilter === "no_cost") return flags.noCost;
+      if (viewFilter === "no_margin") return flags.noMargin;
+      if (viewFilter === "below_cost") return flags.belowCost;
+      if (viewFilter === "review") return flags.noCost || flags.noMargin || flags.belowCost;
+      return true;
+    });
+  }, [dirtyById, rows, viewFilter]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [viewFilter]);
+
+  const maxPage = Math.max(0, Math.ceil(filteredRows.length / pageSize) - 1);
+  const safePage = Math.min(page, maxPage);
+  const pageRows = filteredRows.slice(safePage * pageSize, (safePage + 1) * pageSize);
 
   return (
     <div className="mx-auto max-w-6xl p-4">
       <h1 className="text-2xl font-semibold mb-4">Precios</h1>
+
+      <p className="mb-4 max-w-3xl text-sm text-neutral-600">
+        Editá precios base por sucursal. El precio sugerido es solo una referencia calculada con costo, IVA y margen;
+        el POS sigue cobrando el precio final.
+      </p>
 
       <div className="flex gap-3 mb-4 items-end flex-wrap">
         <select
@@ -295,7 +358,7 @@ export default function ProductsPage() {
           </button>
 
           <span className="text-sm text-gray-700">
-            Página <b>{page + 1}</b>
+            Página <b>{safePage + 1}</b>
           </span>
 
           <button
@@ -313,11 +376,11 @@ export default function ProductsPage() {
           onClick={saveAll}
           disabled={dirtyCount === 0 || loading}
         >
-          {dirtyCount === 0 ? "Sin cambios" : `Guardar cambios (${dirtyCount})`}
+          {dirtyCount === 0 ? "Guardar cambios" : `Guardar ${dirtyCount} cambio${dirtyCount === 1 ? "" : "s"}`}
         </button>
 
         <span className="text-sm text-gray-700">
-          Cambios: <b>{dirtyCount}</b>{" "}
+          {dirtyCount === 0 ? "0 cambios pendientes" : <><b>{dirtyCount}</b> cambios pendientes</>}{" "}
           {dirtyCount > 0 && (
             <>
               | <span className="text-emerald-700">↑ {changesSummary.up}</span>{" "}
@@ -327,9 +390,55 @@ export default function ProductsPage() {
         </span>
 
         <span className="text-sm text-gray-600">
-          Mostrando {rows.length === 0 ? 0 : page * pageSize + 1}–
-          {Math.min((page + 1) * pageSize, rows.length)} de {rows.length} cargados
+          Mostrando {filteredRows.length === 0 ? 0 : safePage * pageSize + 1}–
+          {Math.min((safePage + 1) * pageSize, filteredRows.length)} de {filteredRows.length} visibles
         </span>
+      </div>
+
+      <div className="mb-4 grid gap-3 md:grid-cols-5">
+        <div className="rounded-2xl border bg-white p-3">
+          <div className="text-xs uppercase tracking-wide text-neutral-500">Productos</div>
+          <div className="text-2xl font-semibold">{stats.total}</div>
+        </div>
+        <div className="rounded-2xl border bg-white p-3">
+          <div className="text-xs uppercase tracking-wide text-neutral-500">Manuales</div>
+          <div className="text-2xl font-semibold">{stats.manual}</div>
+        </div>
+        <div className="rounded-2xl border bg-white p-3">
+          <div className="text-xs uppercase tracking-wide text-neutral-500">Sin costo</div>
+          <div className="text-2xl font-semibold">{stats.noCost}</div>
+        </div>
+        <div className="rounded-2xl border bg-white p-3">
+          <div className="text-xs uppercase tracking-wide text-neutral-500">Sin margen</div>
+          <div className="text-2xl font-semibold">{stats.noMargin}</div>
+        </div>
+        <div className="rounded-2xl border bg-white p-3">
+          <div className="text-xs uppercase tracking-wide text-neutral-500">Bajo costo</div>
+          <div className="text-2xl font-semibold text-red-600">{stats.belowCost}</div>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        {[
+          ["all", "Todos"],
+          ["changed", "Con cambios"],
+          ["manual", "Manuales"],
+          ["no_cost", "Sin costo"],
+          ["no_margin", "Sin margen"],
+          ["below_cost", "Bajo costo"],
+          ["review", "Revisar"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setViewFilter(value)}
+            className={`rounded-xl border px-3 py-2 text-sm font-medium ${
+              viewFilter === value ? "bg-black text-white" : "bg-white hover:bg-neutral-50"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="border rounded bg-white overflow-auto">
@@ -341,6 +450,10 @@ export default function ProductsPage() {
               <th className="p-2 text-right">Costo</th>
               <th className="p-2 text-right">IVA %</th>
               <th className="p-2 text-right">Margen %</th>
+              <th className="p-2 text-right">
+                Precio sugerido
+                <div className="text-xs text-gray-500">(costo + IVA + margen)</div>
+              </th>
               <th className="p-2 text-right">
                 Precio final
                 <div className="text-xs text-gray-500">(editable)</div>
@@ -372,7 +485,7 @@ export default function ProductsPage() {
 
             {pageRows.length === 0 && (
               <tr>
-                <td className="p-4 text-gray-600" colSpan={6}>
+                <td className="p-4 text-gray-600" colSpan={7}>
                   No hay resultados para esta búsqueda.
                 </td>
               </tr>
@@ -439,6 +552,9 @@ function RowLine({
 
   const calcPrice = calcFinalPrice(cost, vat, margin);
   const shownPrice = useFinalPrice ? finalManual : calcPrice;
+  const belowCost = cost > 0 && shownPrice > 0 && shownPrice < cost;
+  const noCost = cost <= 0;
+  const noMargin = margin <= 0;
 
   useEffect(() => {
     onDirtyChange({
@@ -453,9 +569,43 @@ function RowLine({
   }, [cost, vat, margin, useFinalPrice, finalManual, unitsCaseFixed]);
 
   return (
-    <tr className={isDirty ? "bg-amber-50" : ""}>
-      <td className="p-2">{row.name}</td>
-      <td className="p-2">{row.sku ?? "-"}</td>
+    <tr className={`${isDirty ? "bg-amber-50" : ""} ${belowCost ? "bg-red-50" : ""}`}>
+      <td className="p-2">
+        <div className="font-medium">{row.name}</div>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {useFinalPrice && (
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+              Manual
+            </span>
+          )}
+          {!useFinalPrice && (
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+              Calculado
+            </span>
+          )}
+          {noCost && (
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+              Sin costo
+            </span>
+          )}
+          {noMargin && (
+            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600">
+              Sin margen
+            </span>
+          )}
+          {belowCost && (
+            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
+              Bajo costo
+            </span>
+          )}
+          {isDirty && (
+            <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-medium text-orange-700">
+              Sin guardar
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="p-2 text-neutral-600">{row.sku ?? "-"}</td>
 
       <td className="p-2 text-right">
         <input
@@ -513,9 +663,18 @@ function RowLine({
       </td>
 
       <td className="p-2 text-right">
+        <div className="font-semibold">{formatMoney(calcPrice)}</div>
+        <div className="text-[11px] text-neutral-500">
+          {noCost || noMargin ? "Faltan datos" : "Referencia"}
+        </div>
+      </td>
+
+      <td className="p-2 text-right">
         <input
           data-price-input="1"
-          className="border rounded px-2 py-1 w-24 text-right font-semibold"
+          className={`border rounded px-2 py-1 w-24 text-right font-semibold ${
+            belowCost ? "border-red-400 bg-red-50 text-red-700" : ""
+          }`}
           value={shownPrice}
           onChange={(e) => {
             setFinalManual(n(e.target.value, 0));
@@ -529,8 +688,8 @@ function RowLine({
             }
           }}
         />
-        <div className="text-[11px] text-neutral-500 mt-1">
-          {useFinalPrice ? "Manual" : "Auto"}
+        <div className={`text-[11px] mt-1 ${belowCost ? "text-red-600 font-medium" : "text-neutral-500"}`}>
+          {belowCost ? "Revisar" : useFinalPrice ? "Manual" : "Auto"}
         </div>
       </td>
     </tr>
