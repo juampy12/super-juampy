@@ -33,6 +33,7 @@ const supervisorGroups: NavGroup[] = [
       { href: '/ventas/historial', label: 'Historial ventas', icon: 'ti-receipt' },
       { href: '/cierres', label: 'Cierre de caja', icon: 'ti-calculator' },
       { href: '/cierres/historial', label: 'Historial cierres', icon: 'ti-history' },
+      { href: '/reports/auditoria', label: 'Auditoría operaciones', icon: 'ti-history' },
     ],
   },
   {
