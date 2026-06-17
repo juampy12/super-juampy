@@ -66,18 +66,28 @@ function isYmd(s: string) {
 
 function AuditCell({ notes }: { notes: string | null }) {
   const audit = parseAuditNotes(notes);
-  const total = audit.entries.length + audit.legacy.length;
-  if (total === 0) return <span className="text-neutral-400">—</span>;
+  const total = audit.entries.length;
+  if (total === 0 && audit.legacy.length === 0) return <span className="text-neutral-400">—</span>;
 
   return (
     <details className="min-w-[220px]">
       <summary className="cursor-pointer text-xs font-medium text-blue-700">
-        Ver auditoría ({total})
+        {total > 0 ? `Ver auditoría (${total})` : "Ver notas"}
       </summary>
       <div className="mt-2 space-y-2 rounded-lg border bg-white p-2 text-[11px] text-neutral-700 shadow-sm">
-        {audit.legacy.map((line, idx) => (
-          <p key={`legacy-${idx}`} className="text-neutral-500">{line}</p>
-        ))}
+        {audit.legacy.length > 0 && (
+          <div className="rounded-md border border-blue-100 bg-blue-50 p-2">
+            <div className="mb-1 font-semibold text-blue-900">Notas</div>
+            {audit.legacy.map((line, idx) => (
+              <p key={`legacy-${idx}`} className="text-blue-800">{line}</p>
+            ))}
+          </div>
+        )}
+        {audit.entries.length > 0 && (
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+            Auditoría automática
+          </div>
+        )}
         {audit.entries.map((entry, idx) => (
           <div key={idx} className="rounded-md bg-neutral-50 p-2">
             <div className="font-semibold">{auditActionLabel(entry.action)} · {formatAuditDate(entry.at)}</div>

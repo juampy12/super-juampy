@@ -150,9 +150,19 @@ export default function CashClosurePage() {
       <details className="mt-3 rounded-lg border bg-white p-3 text-xs text-neutral-700">
         <summary className="cursor-pointer font-medium text-neutral-900">Ver auditoría del cierre</summary>
         <div className="mt-3 space-y-2">
-          {audit.legacy.map((line, idx) => (
-            <p key={`legacy-${idx}`} className="text-neutral-500">{line}</p>
-          ))}
+          {audit.legacy.length > 0 && (
+            <div className="rounded-md border border-blue-100 bg-blue-50 p-2">
+              <div className="mb-1 font-semibold text-blue-900">Notas</div>
+              {audit.legacy.map((line, idx) => (
+                <p key={`legacy-${idx}`} className="text-blue-800">{line}</p>
+              ))}
+            </div>
+          )}
+          {audit.entries.length > 0 && (
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+              Auditoría automática
+            </div>
+          )}
           {audit.entries.map((entry, idx) => (
             <div key={idx} className="rounded-md bg-neutral-50 p-2">
               <div className="font-semibold">{auditActionLabel(entry.action)} · {formatAuditDate(entry.at)}</div>
