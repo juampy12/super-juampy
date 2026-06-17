@@ -105,7 +105,7 @@ export async function GET(req: Request) {
         ? (() => {
             let q = supabaseAdmin
               .from("cash_closures")
-              .select("id, date, store_id, register_id, total_sales, total_cash, ticket_count, closed_at, notes")
+              .select("id, date, store_id, register_id, total_sales, total_cash, total_tickets, closed_at, notes")
               .gte("date", from)
               .lte("date", to)
               .order("date", { ascending: false })
@@ -160,7 +160,7 @@ export async function GET(req: Request) {
         register_id: closure.register_id,
         total: numberValue(closure.total_sales),
         total_cash: numberValue(closure.total_cash),
-        tickets: Number(closure.ticket_count ?? 0),
+        tickets: Number(closure.total_tickets ?? 0),
         actor_id: entry.by ?? null,
         actor_role: entry.role ?? null,
         from_store_id: entry.store ?? null,
