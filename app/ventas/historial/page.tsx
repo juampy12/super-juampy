@@ -277,25 +277,25 @@ export default function SalesHistorialPage() {
       const res = await fetch(`/api/sales?${sp.toString()}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Error al cargar ventas");
-      setSales(
-        (json.data ?? []).map((r: any) => ({
-          id: r.id,
-          created_at: r.created_at,
-          total: Number(r.total ?? 0),
-          store_id: r.store_id ?? null,
-          register_id: r.register_id ?? null,
-          method: r.payment?.method ?? "desconocido",
-          status: r.status ?? "confirmed",
-            voided_at: r.payment?.voided_at ?? null,
-            voided_by: r.payment?.voided_by ?? null,
-            voided_by_role: r.payment?.voided_by_role ?? null,
-            void_authorized_by: r.payment?.void_authorized_by ?? null,
-            void_authorized_code: r.payment?.void_authorized_code ?? null,
-            void_authorized_name: r.payment?.void_authorized_name ?? null,
-            void_reason: r.payment?.void_reason ?? null,
-            voided_from_register_id: r.payment?.voided_from_register_id ?? null,
-          }))
-      );
+	      setSales(
+	        (json.data ?? []).map((r: any) => ({
+	          id: r.id,
+	          created_at: r.created_at,
+	          total: Number(r.total ?? 0),
+	          store_id: r.store_id ?? null,
+	          register_id: r.register_id ?? null,
+	          method: r.payment?.method ?? "desconocido",
+	          status: r.status ?? "confirmed",
+	          voided_at: r.payment?.voided_at ?? null,
+	          voided_by: r.payment?.voided_by ?? null,
+	          voided_by_role: r.payment?.voided_by_role ?? null,
+	          void_authorized_by: r.payment?.void_authorized_by ?? null,
+	          void_authorized_code: r.payment?.void_authorized_code ?? null,
+	          void_authorized_name: r.payment?.void_authorized_name ?? null,
+	          void_reason: r.payment?.void_reason ?? null,
+	          voided_from_register_id: r.payment?.voided_from_register_id ?? null,
+	        }))
+	      );
     } catch (e: any) {
       setError(e?.message ?? "Error inesperado");
       setSales([]);
@@ -341,10 +341,20 @@ export default function SalesHistorialPage() {
     };
   }, [sales]);
 
-  const storeName = (id: string | null) => {
-    if (!id) return "—";
-    return STORES.find((s) => s.id === id)?.name ?? id.slice(0, 8);
-  };
+	  const storeName = (id: string | null) => {
+	    if (!id) return "—";
+	    return STORES.find((s) => s.id === id)?.name ?? id.slice(0, 8);
+	  };
+
+	  const registerName = (id: string | null) => {
+	    if (!id) return "—";
+	    return registerMap[id] ?? "Caja";
+	  };
+
+	  const scopeLabel = [
+	    filterStore ? storeName(filterStore) : "todas las sucursales",
+	    filterRegister ? registerName(filterRegister) : "todas las cajas",
+	  ].join(" · ");
 
   if (!ready) return null;
 
@@ -384,8 +394,8 @@ export default function SalesHistorialPage() {
         </div>
       </div>
 
-      {/* Filtros */}
-      <section className="rounded-xl border p-4 bg-white grid gap-3 md:grid-cols-4">
+	      {/* Filtros */}
+	      <section className="rounded-xl border p-4 bg-white grid gap-3 md:grid-cols-4">
         <div className="flex flex-col text-sm">
           <label className="text-neutral-500 mb-1">Sucursal</label>
           <select
@@ -431,7 +441,14 @@ export default function SalesHistorialPage() {
             onChange={(e) => setToDate(e.target.value)}
           />
         </div>
-      </section>
+	      </section>
+
+	      <section className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+	        Mostrando <span className="font-semibold">{scopeLabel}</span>.
+	        {!filterStore && !filterRegister && (
+	          <span> Si querés revisar una caja puntual, elegí sucursal y caja en los filtros.</span>
+	        )}
+	      </section>
 
       {/* Resumen — solo confirmadas */}
       <section className="rounded-xl border p-4 bg-white grid gap-3 md:grid-cols-3">
@@ -474,9 +491,9 @@ export default function SalesHistorialPage() {
           </div>
         ) : sales.length === 0 ? (
           <p className="text-sm text-neutral-500">No hay ventas con esos filtros.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-[700px] text-xs">
+	        ) : (
+	          <div className="overflow-x-auto">
+	            <table className="w-full min-w-[980px] text-xs">
               <thead>
                 <tr className="border-b bg-neutral-50">
                   <th className="text-left py-2 px-2 w-4"></th>
@@ -495,30 +512,30 @@ export default function SalesHistorialPage() {
                   const isExpanded = expandedId === s.id;
                   const items = itemsCache[s.id];
                   return (
-                    <React.Fragment key={s.id}>
-                      <tr
-                        className={`border-b last:border-0 cursor-pointer hover:bg-neutral-50 ${isVoided ? "opacity-60" : ""}`}
-                        onClick={() => toggleExpand(s.id)}
-                      >
+	                    <React.Fragment key={s.id}>
+	                      <tr
+	                        className={`border-b last:border-0 cursor-pointer hover:bg-neutral-50 ${isVoided ? "bg-red-50/40 text-neutral-500" : ""}`}
+	                        onClick={() => toggleExpand(s.id)}
+	                      >
                         <td className="py-1 px-2 text-neutral-400">
                           {isExpanded ? "▼" : "▶"}
                         </td>
-                        <td className={`py-1 px-2 ${isVoided ? "line-through text-neutral-400" : ""}`}>
-                          {formatDateTime(s.created_at)}
-                        </td>
-                        <td className={`py-1 px-2 ${isVoided ? "line-through text-neutral-400" : ""}`}>
-                          {storeName(s.store_id)}
-                        </td>
-                        <td className={`py-1 px-2 ${isVoided ? "line-through text-neutral-400" : ""}`}>
-                          {s.register_id ? registerMap[s.register_id] ?? "Caja" : "—"}
-                        </td>
-                        <td className={`py-1 px-2 text-right font-medium ${isVoided ? "line-through text-neutral-400" : ""}`}>
-                          {formatMoney(s.total)}
-                        </td>
-                        <td className={`py-1 px-2 ${isVoided ? "text-neutral-400" : ""}`}>
-                          {METHOD_LABELS[s.method] ?? s.method}
-                        </td>
-                        <td className="py-1 px-2">
+	                        <td className="py-2 px-2">
+	                          {formatDateTime(s.created_at)}
+	                        </td>
+	                        <td className="py-2 px-2">
+	                          {storeName(s.store_id)}
+	                        </td>
+	                        <td className="py-2 px-2">
+	                          {registerName(s.register_id)}
+	                        </td>
+	                        <td className={`py-2 px-2 text-right font-medium ${isVoided ? "line-through text-neutral-400" : ""}`}>
+	                          {formatMoney(s.total)}
+	                        </td>
+	                        <td className="py-2 px-2">
+	                          {METHOD_LABELS[s.method] ?? s.method}
+	                        </td>
+	                        <td className="py-2 px-2">
                           {isVoided ? (
                             <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
                               ANULADA
@@ -529,12 +546,12 @@ export default function SalesHistorialPage() {
                             </span>
                           )}
                         </td>
-                        <td className="py-1 px-2" onClick={(e) => e.stopPropagation()}>
+	                        <td className="py-2 px-2 text-right" onClick={(e) => e.stopPropagation()}>
                           {!isVoided && (
                             <button
                               type="button"
                               onClick={() => setVoidTarget(s)}
-                              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+	                              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
                             >
                               Anular
                             </button>
@@ -543,8 +560,8 @@ export default function SalesHistorialPage() {
                       </tr>
                       {isExpanded && (
                         <tr className={`border-b ${isVoided ? "bg-red-50/40" : "bg-blue-50"}`}>
-                          <td></td>
-                          <td colSpan={7} className="py-2 px-4">
+	                          <td></td>
+	                          <td colSpan={7} className="py-3 px-4">
                             {isVoided && s.voided_at && (
                               <div className="text-[10px] text-red-700 mb-2 space-y-0.5">
                                 <p className="font-medium">Anulada el {formatDateTime(s.voided_at)}</p>

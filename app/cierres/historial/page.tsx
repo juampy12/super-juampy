@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { auditActionLabel, formatAuditDate, parseAuditNotes, shortId } from "@/lib/auditNotes";
 
 type Store = { id: string; name: string };
 type Register = { id: string; name: string; store_id?: string | null };
@@ -61,6 +62,33 @@ function storeName(storeId: string | null) {
 
 function isYmd(s: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+function AuditCell({ notes }: { notes: string | null }) {
+  const audit = parseAuditNotes(notes);
+  const total = audit.entries.length + audit.legacy.length;
+  if (total === 0) return <span className="text-neutral-400">—</span>;
+
+  return (
+    <details className="min-w-[220px]">
+      <summary className="cursor-pointer text-xs font-medium text-blue-700">
+        Ver auditoría ({total})
+      </summary>
+      <div className="mt-2 space-y-2 rounded-lg border bg-white p-2 text-[11px] text-neutral-700 shadow-sm">
+        {audit.legacy.map((line, idx) => (
+          <p key={`legacy-${idx}`} className="text-neutral-500">{line}</p>
+        ))}
+        {audit.entries.map((entry, idx) => (
+          <div key={idx} className="rounded-md bg-neutral-50 p-2">
+            <div className="font-semibold">{auditActionLabel(entry.action)} · {formatAuditDate(entry.at)}</div>
+            <div>Empleado: {shortId(entry.by)} {entry.role ? `(${entry.role})` : ""}</div>
+            <div>Caja: {shortId(entry.register)} · Sucursal: {shortId(entry.store)}</div>
+            {entry.reason && <div>Motivo: {entry.reason}</div>}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
 }
 
 export default function CashClosuresHistoryPage() {
@@ -236,13 +264,19 @@ export default function CashClosuresHistoryPage() {
     return out;
   }, [rowsAll, fromDate, toDate]);
 
-  const summary = useMemo(() => {
-    const closures = rows.length;
-    const totalSales = rows.reduce((acc, r) => acc + r.total_sales, 0);
-    const totalCash = rows.reduce((acc, r) => acc + r.total_cash, 0);
-    const totalTickets = rows.reduce((acc, r) => acc + r.total_tickets, 0);
-    return { closures, totalSales, totalCash, totalTickets };
-  }, [rows]);
+	  const summary = useMemo(() => {
+	    const closures = rows.length;
+	    const totalSales = rows.reduce((acc, r) => acc + r.total_sales, 0);
+	    const totalCash = rows.reduce((acc, r) => acc + r.total_cash, 0);
+	    const totalTickets = rows.reduce((acc, r) => acc + r.total_tickets, 0);
+	    return { closures, totalSales, totalCash, totalTickets };
+	  }, [rows]);
+
+	  const scopeLabel = [
+	    filterStore ? storeName(filterStore) : "todas las sucursales",
+	    filterRegister ? registerMap[filterRegister] ?? "caja seleccionada" : "todas las cajas",
+	    fromDate || toDate ? `${fromDate || "inicio"} a ${toDate || "hoy"}` : "todas las fechas",
+	  ].join(" · ");
 
   return (
     <main className="p-4 space-y-6">
@@ -332,9 +366,16 @@ export default function CashClosuresHistoryPage() {
           <label className="text-neutral-500 mb-1">Hasta</label>
           <input type="date" className="rounded border px-2 py-2 text-sm" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
-      </section>
+	      </section>
 
-      {/* Resumen */}
+	      <section className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+	        Mostrando <span className="font-semibold">{scopeLabel}</span>.
+	        {!filterStore && !filterRegister && !fromDate && !toDate && (
+	          <span> Aplicá filtros para auditar una caja o una fecha puntual.</span>
+	        )}
+	      </section>
+
+	      {/* Resumen */}
       <section className="rounded-xl border p-4 bg-white grid gap-3 md:grid-cols-4">
         <div>
           <div className="text-xs text-neutral-500">Cierres</div>
@@ -407,7 +448,7 @@ export default function CashClosuresHistoryPage() {
                     <td className="py-1 px-2 text-right">{formatMoney(r.total_cash)}</td>
                     <td className="py-1 px-2 text-right">{r.total_tickets}</td>
                     <td className="py-1 px-2">{formatTime(r.closed_at)}</td>
-                    <td className="py-1 px-2 whitespace-pre-wrap text-[10px] text-neutral-500">{r.notes ?? "—"}</td>
+                    <td className="py-1 px-2"><AuditCell notes={r.notes} /></td>
                   </tr>
                 ))}
               </tbody>

@@ -67,6 +67,7 @@ type ExistingClosure = {
 
 import { STORES as ALL_STORES } from "@/lib/stores";
 import { getPosEmployee } from "@/lib/posSession";
+import { auditActionLabel, formatAuditDate, parseAuditNotes, shortId } from "@/lib/auditNotes";
 const STORES: Store[] = ALL_STORES.map(s => ({ id: s.id, name: s.short }));
 
 function todayStr() {
@@ -139,6 +140,30 @@ export default function CashClosurePage() {
 
   function formatMoney(n: number) {
     return `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  function renderAudit(notes?: string | null) {
+    const audit = parseAuditNotes(notes);
+    if (audit.entries.length === 0 && audit.legacy.length === 0) return null;
+
+    return (
+      <details className="mt-3 rounded-lg border bg-white p-3 text-xs text-neutral-700">
+        <summary className="cursor-pointer font-medium text-neutral-900">Ver auditoría del cierre</summary>
+        <div className="mt-3 space-y-2">
+          {audit.legacy.map((line, idx) => (
+            <p key={`legacy-${idx}`} className="text-neutral-500">{line}</p>
+          ))}
+          {audit.entries.map((entry, idx) => (
+            <div key={idx} className="rounded-md bg-neutral-50 p-2">
+              <div className="font-semibold">{auditActionLabel(entry.action)} · {formatAuditDate(entry.at)}</div>
+              <div>Empleado: {shortId(entry.by)} {entry.role ? `(${entry.role})` : ""}</div>
+              <div>Caja: {shortId(entry.register)} · Sucursal: {shortId(entry.store)}</div>
+              {entry.reason && <div>Motivo: {entry.reason}</div>}
+            </div>
+          ))}
+        </div>
+      </details>
+    );
   }
 
   // =========================
@@ -566,29 +591,32 @@ export default function CashClosurePage() {
             {saving ? "Guardando cierre..." : "Confirmar cierre"}
           </button>
 
-          {existingClosure && (
-            <div className="mt-2 text-xs text-emerald-700">
-              Ya existe un cierre para esta fecha. Total ventas{" "}
-              <span className="font-semibold">{formatMoney(existingClosure.total_sales)}</span>, tickets{" "}
-              <span className="font-semibold">{existingClosure.total_tickets}</span>, efectivo{" "}
-              <span className="font-semibold">{formatMoney(existingClosure.total_cash)}</span>
-              <button
-                type="button"
-                onClick={handleReplaceClosure}
-                className="ml-3 inline-flex items-center rounded-md bg-amber-500 px-3 py-1 text-[11px] font-medium text-white hover:bg-amber-600 disabled:opacity-50"
-                disabled={loading || saving || kpis.tickets === 0}
-              >
-                Reemplazar cierre con datos actuales
-              </button>
-              {existingClosure.notes && (
-                <pre className="mt-2 whitespace-pre-wrap rounded-md bg-neutral-50 p-2 text-[10px] text-neutral-600">
-                  {existingClosure.notes}
-                </pre>
-              )}
-            </div>
-          )}
         </div>
       </div>
+
+      {existingClosure && (
+        <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-emerald-900">
+              <div className="font-semibold">Ya existe un cierre para esta fecha y caja.</div>
+              <div className="mt-1">
+                Total ventas <span className="font-semibold">{formatMoney(existingClosure.total_sales)}</span>
+                {" "}· tickets <span className="font-semibold">{existingClosure.total_tickets}</span>
+                {" "}· efectivo <span className="font-semibold">{formatMoney(existingClosure.total_cash)}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleReplaceClosure}
+              className="inline-flex items-center justify-center rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+              disabled={loading || saving || kpis.tickets === 0}
+            >
+              Reemplazar cierre con datos actuales
+            </button>
+          </div>
+          {renderAudit(existingClosure.notes)}
+        </section>
+      )}
 
       <section className="grid gap-4 md:grid-cols-4">
         <div className="md:col-span-2 rounded-xl border p-4 bg-neutral-50">
