@@ -64,18 +64,18 @@ export default function EtiquetasPage() {
   }, []);
 
   async function loadStores(preferredStoreId: string | null) {
-    const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/stores?select=id,name&order=name.asc`;
-    const res = await fetch(url, {
-      headers: {
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
-      },
-    });
-    const data = await res.json();
-    if (Array.isArray(data)) {
-      setStores(data);
-      const match = preferredStoreId && data.find((s: Store) => s.id === preferredStoreId);
-      setStoreId(match ? preferredStoreId! : data[0]?.id ?? "");
+    try {
+      const res = await fetch("/api/stores", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Error cargando sucursales");
+      const list = Array.isArray(data?.stores) ? data.stores : [];
+      if (list.length) {
+        setStores(list);
+        const match = preferredStoreId && list.find((s: Store) => s.id === preferredStoreId);
+        setStoreId(match ? preferredStoreId! : list[0]?.id ?? "");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Error cargando sucursales");
     }
   }
 

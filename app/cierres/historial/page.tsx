@@ -136,15 +136,11 @@ export default function CashClosuresHistoryPage() {
 
   async function loadRegisters(storeId?: string) {
     try {
-      const { supabase } = await import("@/lib/supabase");
-
-      let q = supabase.from("registers").select("id,name,store_id").order("name", { ascending: true });
-      if (storeId) q = q.eq("store_id", storeId);
-
-      const { data, error } = await q;
-      if (error) throw error;
-
-      const list = (data ?? []) as Register[];
+      const url = storeId ? `/api/registers?store_id=${encodeURIComponent(storeId)}` : "/api/registers";
+      const res = await fetch(url, { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Error cargando cajas");
+      const list = (json.registers ?? []) as Register[];
       setRegisters(list);
 
       const map: Record<string, string> = {};

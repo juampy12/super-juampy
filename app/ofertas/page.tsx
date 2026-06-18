@@ -77,16 +77,12 @@ export default function OfertasPage() {
 
   async function loadStores() {
     try {
-      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/stores?select=id,name&order=name.asc`;
-      const res = await fetch(url, {
-        headers: {
-          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
-        },
-      });
+      const res = await fetch("/api/stores", { cache: "no-store" });
       const data = await res.json();
-      setStores(Array.isArray(data) ? data : []);
-      if (Array.isArray(data) && data.length && !storeId) setStoreId(data[0].id);
+      if (!res.ok) throw new Error(data?.error ?? "Error cargando sucursales");
+      const list = Array.isArray(data?.stores) ? data.stores : [];
+      setStores(list);
+      if (list.length && !storeId) setStoreId(list[0].id);
     } catch (e: any) {
       toast.error(e?.message || "Error cargando sucursales");
     }
@@ -96,23 +92,17 @@ export default function OfertasPage() {
     if (!effectiveStoreId) return;
     setLoading(true);
         try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/products_with_stock`,
-        {
-          method: "POST",
-          headers: {
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            p_store: effectiveStoreId,
-            p_query: query || null,
-            p_limit: 30,
-          }),
-        }
-      );
+      const res = await fetch("/api/products/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: effectiveStoreId,
+          query: query || null,
+          limit: 30,
+        }),
+      });
       const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Error buscando productos");
 
       // ✅ ocultar desactivados (active=false). Si no viene active => se muestra (modo seguro).
       const rowsAll = Array.isArray(data) ? (data as ProductRow[]) : [];

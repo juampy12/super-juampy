@@ -250,11 +250,11 @@ export default function SalesHistorialPage() {
 
   async function loadRegisters(storeId?: string) {
     try {
-      const { supabase } = await import("@/lib/supabase");
-      let q = supabase.from("registers").select("id,name").order("name");
-      if (storeId) q = q.eq("store_id", storeId);
-      const { data } = await q;
-      const list = (data ?? []) as Register[];
+      const url = storeId ? `/api/registers?store_id=${encodeURIComponent(storeId)}` : "/api/registers";
+      const res = await fetch(url, { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Error cargando cajas");
+      const list = (json.registers ?? []) as Register[];
       setRegisters(list);
       const map: Record<string, string> = {};
       for (const r of list) map[r.id] = r.name;

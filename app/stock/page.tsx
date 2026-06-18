@@ -21,9 +21,6 @@ type DbCheck = {
 };
 
 export default function StockPage() {
-  const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
   const [stores, setStores] = useState<Store[]>([]);
   const [storeId, setStoreId] = useState<string>("");
 
@@ -73,27 +70,12 @@ export default function StockPage() {
     );
   }
 
-  async function supaFetch(path: string, init?: RequestInit) {
-    const res = await fetch(`${SUPABASE_URL}${path}`, {
-      ...init,
-      headers: {
-        apikey: ANON_KEY,
-        Authorization: `Bearer ${ANON_KEY}`,
-        "Content-Type": "application/json",
-        ...(init?.headers || {}),
-      },
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`${res.status} ${res.statusText} - ${txt}`);
-    }
-    return res;
-  }
-
   async function loadStores() {
-    const res = await supaFetch(`/rest/v1/stores?select=id,name&order=name.asc`);
-    const data = (await res.json()) as Store[];
+    const res = await fetch("/api/stores", { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.error ?? `Error ${res.status}`);
+
+    const data = (json?.stores ?? []) as Store[];
     setStores(data);
     if (!storeId && data.length) setStoreId(data[0].id);
   }
@@ -108,13 +90,12 @@ export default function StockPage() {
     }));
 
     try {
-      const res = await supaFetch(
-        `/rest/v1/product_stocks?select=stock,updated_at&store_id=eq.${storeId}&product_id=eq.${productId}`
-      );
-      const data = (await res.json()) as Array<{ stock: any; updated_at: string }>;
+      const params = new URLSearchParams({ store_id: storeId, product_id: productId });
+      const res = await fetch(`/api/stock/check?${params.toString()}`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? `Error ${res.status}`);
 
-      // si no hay fila -> null
-      const row = data?.[0] ?? null;
+      const row = json?.data ?? null;
 
       setDbCheckById((prev) => ({
         ...prev,

@@ -1,21 +1,32 @@
-﻿"use client";
-import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+"use client";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { useEffect, useState } from "react";
 
 type Row = {
-  date: string;        // YYYY-MM-DD
-  sales_count: number;
-  units: number;
-  total: number;
+  day?: string;
+  date?: string;
+  tickets?: number;
+  sales_count?: number;
+  units?: number;
+  total?: number;
+  total_sales?: number;
+  revenue?: number;
 };
 
 const fmt = new Intl.NumberFormat("es-AR");
-const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
+const money = new Intl.NumberFormat("es-AR", {
+  style: "currency",
+  currency: "ARS",
+  maximumFractionDigits: 2,
+});
+
+function getDay(row: Row) {
+  return row.day ?? row.date ?? "";
+}
+
+function getTotal(row: Row) {
+  return Number(row.revenue ?? row.total_sales ?? row.total ?? 0);
+}
 
 export default function SalesDaily() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -23,18 +34,23 @@ export default function SalesDaily() {
   const [err, setErr] = useState<string | null>(null);
 
   const load = async () => {
-    setErr(null); setLoading(true);
-    const { data, error } = await supabase
-      .from("v_sales_daily")
-      .select("*")
-      .order("date", { ascending: false })
-      .limit(14);
-    if (error) setErr(error.message);
-    if (data) setRows(data as Row[]);
-    setLoading(false);
+    setErr(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/reports/summary", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? "Error cargando reporte");
+      setRows(((json.rows ?? []) as Row[]).slice(-14).reverse());
+    } catch (e: any) {
+      setErr(e?.message ?? String(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   return (
     <div className="border rounded p-3">
@@ -42,7 +58,7 @@ export default function SalesDaily() {
 
       {err && <div className="bg-red-100 text-red-700 px-2 py-1 rounded mb-2">{err}</div>}
       {loading ? (
-        <div>Cargando…</div>
+        <div>Cargando...</div>
       ) : rows.length === 0 ? (
         <div>Sin datos.</div>
       ) : (
@@ -56,19 +72,21 @@ export default function SalesDaily() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.date} className="border-b">
-                <td className="py-1">{r.date}</td>
-                <td className="py-1">{fmt.format(r.sales_count)}</td>
-                <td className="py-1">{fmt.format(r.units)}</td>
-                <td className="py-1">{money.format(r.total)}</td>
+            {rows.map((r, idx) => (
+              <tr key={`${getDay(r)}-${idx}`} className="border-b">
+                <td className="py-1">{getDay(r)}</td>
+                <td className="py-1">{fmt.format(Number(r.tickets ?? r.sales_count ?? 0))}</td>
+                <td className="py-1">{fmt.format(Number(r.units ?? 0))}</td>
+                <td className="py-1">{money.format(getTotal(r))}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
 
-      <button onClick={load} className="mt-3 px-3 py-1 rounded bg-black text-white">Refrescar</button>
+      <button onClick={load} className="mt-3 px-3 py-1 rounded bg-black text-white">
+        Refrescar
+      </button>
     </div>
   );
 }
