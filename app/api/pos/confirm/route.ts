@@ -24,6 +24,11 @@ type InItem = {
   price?: number | string;
   unitPrice?: number | string;
   importe?: number | string;
+
+  source?: string;
+  line_type?: string;
+  is_balanza?: boolean;
+  isScaleBarcode?: boolean;
 };
 
 type PaymentMethod =
@@ -63,6 +68,12 @@ const resolveProductId = (item: InItem): string | null =>
 
 const resolveQty = (item: InItem): number =>
   toNum(item.qty ?? item.quantity ?? item.cantidad ?? item.count ?? item.amount ?? item.q ?? 0);
+
+const resolveClientUnitPrice = (item: InItem): number =>
+  toNum(item.unit_price ?? item.unitPrice ?? item.price ?? item.importe ?? 0, 0);
+
+const isScaleBarcodeItem = (item: InItem): boolean =>
+  item.source === "scale_barcode" || item.line_type === "scale_barcode" || item.is_balanza === true || item.isScaleBarcode === true;
 
 const resolveStoreId = (body: any): string | null =>
   body.store_id ?? body.storeId ?? body.branch_id ?? body.sucursal_id ?? null;
@@ -172,11 +183,15 @@ export async function POST(req: Request) {
         quantity: resolveQty(it),
         // unit_price del cliente se ignora — se sobreescribe con el precio de la DB
         unit_price: 0,
+        client_unit_price: resolveClientUnitPrice(it),
+        source: isScaleBarcodeItem(it) ? "scale_barcode" : null,
       }))
       .filter((it) => it.product_id && it.quantity > 0) as Array<{
       product_id: string;
       quantity: number;
       unit_price: number;
+      client_unit_price: number;
+      source: "scale_barcode" | null;
     }>;
 
     if (!items.length) {
@@ -189,7 +204,7 @@ export async function POST(req: Request) {
     const [{ data: prods, error: prodErr }, { data: offerRows }] = await Promise.all([
       supabaseAdmin
         .from("products")
-        .select("id, price, active")
+        .select("id, price, active, is_weighted")
         .in("id", productIds),
       supabaseAdmin
         .from("product_offers")
@@ -223,7 +238,7 @@ export async function POST(req: Request) {
       return basePrice;
     };
 
-    const productMap = new Map<string, { price: number }>();
+    const productMap = new Map<string, { price: number; is_weighted: boolean }>();
     for (const p of prods ?? []) {
       if (!p.active) {
         return NextResponse.json(
@@ -231,7 +246,10 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      productMap.set(String(p.id), { price: effectivePrice(toNum(p.price, 0), String(p.id)) });
+      productMap.set(String(p.id), {
+        price: effectivePrice(toNum(p.price, 0), String(p.id)),
+        is_weighted: Boolean(p.is_weighted),
+      });
     }
 
     for (const item of items) {
@@ -243,14 +261,42 @@ export async function POST(req: Request) {
       }
     }
 
-    // Reemplazar precios con los valores reales de la DB
-    items = items.map((it) => ({
-      ...it,
-      unit_price: productMap.get(it.product_id)!.price,
-    }));
+    const finalItems: Array<{ product_id: string; quantity: number; unit_price: number }> = [];
+
+    for (const it of items) {
+      const product = productMap.get(it.product_id)!;
+
+      if (it.source === "scale_barcode") {
+        if (!product.is_weighted) {
+          return NextResponse.json(
+            { error: "El precio de balanza solo se acepta para productos pesables" },
+            { status: 400 }
+          );
+        }
+        if (it.client_unit_price <= 0 || it.client_unit_price > 10_000_000) {
+          return NextResponse.json(
+            { error: "Precio de balanza inválido" },
+            { status: 400 }
+          );
+        }
+
+        finalItems.push({
+          product_id: it.product_id,
+          quantity: 1,
+          unit_price: it.client_unit_price,
+        });
+        continue;
+      }
+
+      finalItems.push({
+        product_id: it.product_id,
+        quantity: it.quantity,
+        unit_price: product.price,
+      });
+    }
 
     // Total siempre calculado desde precios de DB (no se acepta del cliente)
-    const total = items.reduce((acc, it) => acc + it.quantity * it.unit_price, 0);
+    const total = finalItems.reduce((acc, it) => acc + it.quantity * it.unit_price, 0);
 
     const payment = normalizePayment(body.payment);
 
@@ -263,7 +309,7 @@ export async function POST(req: Request) {
     // RPC: confirm_sale_with_stock mete register_id dentro de payment para confirm_sale
     const { data, error } = await supabaseAdmin.rpc("confirm_sale_with_stock", {
       p_store_id: storeId,
-      p_items: items,
+      p_items: finalItems,
       p_total: total,
       p_payment: paymentWithKey,
       p_register_id: register_id,

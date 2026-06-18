@@ -45,6 +45,25 @@ type CartItem = {
   is_balanza?: boolean; // precio viene de la etiqueta de balanza, qty siempre 1
 };
 
+function cartItemForConfirm(it: CartItem): {
+  product_id: string;
+  name: string;
+  qty: number;
+  unit_price: number;
+  source?: "scale_barcode";
+} {
+  const isWeighted = Boolean(it.is_weighted);
+  const isScaleBarcode = Boolean(it.is_balanza);
+
+  return {
+    product_id: it.product_id,
+    name: it.name,
+    qty: isWeighted && !isScaleBarcode ? it.qty / 1000 : it.qty,
+    unit_price: it.unit_price,
+    source: isScaleBarcode ? "scale_barcode" : undefined,
+  };
+}
+
 type PaymentMethod =
   | "efectivo"
   | "debito"
@@ -2138,12 +2157,7 @@ onKeyDown={(e) => {
                 </div>
 
                 <ConfirmSaleButton
-                  items={items.map((it) => ({
-                    product_id: it.product_id,
-                    name: it.name,
-                    qty: it.qty,
-                    unit_price: it.unit_price,
-                  }))}
+                  items={items.map(cartItemForConfirm)}
                   total={total}
                   payment={{
                     method: paymentMethod,

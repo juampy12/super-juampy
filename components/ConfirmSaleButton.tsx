@@ -7,6 +7,7 @@ type ConfirmItem = {
   name: string;
   qty: number;
   unit_price: number;
+  source?: "scale_barcode";
 };
 
 type PaymentBreakdown = {

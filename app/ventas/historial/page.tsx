@@ -590,8 +590,8 @@ export default function SalesHistorialPage() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {items.map((item) => (
-                                    <tr key={item.product_id}>
+                                  {items.map((item, idx) => (
+                                    <tr key={`${item.product_id}-${idx}`}>
                                       <td className="py-0.5 pr-4">{item.name}</td>
                                       <td className="py-0.5 pr-4 text-right">{item.quantity}</td>
                                       <td className="py-0.5 pr-4 text-right">{formatMoney(item.unit_price)}</td>

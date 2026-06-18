@@ -811,8 +811,8 @@ export default function CashClosurePage() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {items.map((item) => (
-                                    <tr key={item.product_id}>
+                                  {items.map((item, idx) => (
+                                    <tr key={`${item.product_id}-${idx}`}>
                                       <td className="py-0.5 pr-6">{item.name}</td>
                                       <td className="py-0.5 pr-6 text-right">{item.quantity}</td>
                                       <td className="py-0.5 pr-6 text-right">{formatMoney(item.unit_price)}</td>
