@@ -69,6 +69,7 @@ import { STORES as ALL_STORES } from "@/lib/stores";
 import { getPosEmployee } from "@/lib/posSession";
 import { auditActionLabel, formatAuditDate, parseAuditNotes, shortId } from "@/lib/auditNotes";
 const STORES: Store[] = ALL_STORES.map(s => ({ id: s.id, name: s.short }));
+type PosEmployee = ReturnType<typeof getPosEmployee>;
 
 function todayStr() {
   const d = new Date();
@@ -81,20 +82,26 @@ function todayStr() {
 export default function CashClosurePage() {
   const [selectedDate, setSelectedDate] = useState<string>(todayStr());
   const [selectedStore, setSelectedStore] = useState<string>("");
+  const [employee, setEmployee] = useState<PosEmployee>(null);
 
   const [registers, setRegisters] = useState<Register[]>([]);
   const [selectedRegister, setSelectedRegister] = useState<string>("");
+  const isCashier = employee?.role === "cashier";
 
   useEffect(() => {
     const emp = getPosEmployee();
+    setEmployee(emp);
     const storeId = emp?.store_id;
+    const registerId = emp?.register_id;
     const match = storeId ? STORES.find(s => s.id === storeId) : null;
     setSelectedStore(match ? match.id : (STORES[0]?.id ?? ""));
+    if (registerId) setSelectedRegister(registerId);
   }, []);
 
   useEffect(() => {
+    if (isCashier) return;
     setSelectedRegister(""); // resetea la caja al cambiar sucursal
-  }, [selectedStore]);
+  }, [isCashier, selectedStore]);
 
   const [kpis, setKpis] = useState<Kpis>({
     totalAmount: 0,
@@ -190,20 +197,25 @@ export default function CashClosurePage() {
       }
 
       try {
-        const { supabase } = await import("@/lib/supabase");
-
-        const { data, error } = await supabase
-          .from("registers")
-          .select("id,name")
-          .eq("store_id", selectedStore)
-          .order("name", { ascending: true });
-
-        if (error) throw error;
+        const params = new URLSearchParams();
+        params.set("store_id", selectedStore);
+        const res = await fetch(`/api/registers?${params.toString()}`, { cache: "no-store" });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error ?? "Error cargando cajas");
         if (!alive) return;
 
-        const rows = (data ?? []) as Register[];
-        setRegisters(rows);
-        setSelectedRegister(rows[0]?.id || "");
+        let rows = (json.registers ?? []) as Register[];
+        if (isCashier && employee?.register_id) {
+          rows = rows.filter((r) => r.id === employee.register_id);
+          if (rows.length === 0) {
+            rows = [{ id: employee.register_id, name: "Caja asignada" }];
+          }
+          setRegisters(rows);
+          setSelectedRegister(employee.register_id);
+        } else {
+          setRegisters(rows);
+          setSelectedRegister(rows[0]?.id || "");
+        }
       } catch (e) {
         console.error("Error cargando cajas", e);
         if (!alive) return;
@@ -217,7 +229,7 @@ export default function CashClosurePage() {
     return () => {
       alive = false;
     };
-  }, [selectedStore]);
+  }, [employee?.register_id, isCashier, selectedStore]);
 
   // =========================
   // Cargar cierre existente
@@ -557,40 +569,60 @@ export default function CashClosurePage() {
             />
           </div>
 
-          <div className="flex flex-col text-sm">
-            <label className="text-neutral-500 mb-1">Sucursal</label>
-            <select
-              className="rounded border px-2 py-2.5 sm:py-1 text-sm"
-              value={selectedStore}
-              onChange={(e) => setSelectedStore(e.target.value)}
-            >
-              {STORES.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {isCashier ? (
+            <>
+              <div className="flex flex-col text-sm">
+                <label className="text-neutral-500 mb-1">Sucursal</label>
+                <div className="rounded border bg-neutral-50 px-3 py-2 text-sm font-medium">
+                  {storeName}
+                </div>
+              </div>
 
-          <div className="flex flex-col text-sm">
-            <label className="text-neutral-500 mb-1">Caja</label>
-            <select
-              className="rounded border px-2 py-2.5 sm:py-1 text-sm"
-              value={selectedRegister}
-              onChange={(e) => setSelectedRegister(e.target.value)}
-              disabled={registers.length === 0}
-            >
-              {registers.length === 0 ? (
-                <option value="">Sin cajas</option>
-              ) : (
-                registers.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
+              <div className="flex flex-col text-sm">
+                <label className="text-neutral-500 mb-1">Caja</label>
+                <div className="rounded border bg-neutral-50 px-3 py-2 text-sm font-medium">
+                  {registers.find((r) => r.id === selectedRegister)?.name ?? "Caja asignada"}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col text-sm">
+                <label className="text-neutral-500 mb-1">Sucursal</label>
+                <select
+                  className="rounded border px-2 py-2.5 sm:py-1 text-sm"
+                  value={selectedStore}
+                  onChange={(e) => setSelectedStore(e.target.value)}
+                >
+                  {STORES.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col text-sm">
+                <label className="text-neutral-500 mb-1">Caja</label>
+                <select
+                  className="rounded border px-2 py-2.5 sm:py-1 text-sm"
+                  value={selectedRegister}
+                  onChange={(e) => setSelectedRegister(e.target.value)}
+                  disabled={registers.length === 0}
+                >
+                  {registers.length === 0 ? (
+                    <option value="">Sin cajas</option>
+                  ) : (
+                    registers.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            </>
+          )}
 
           <button
             type="button"
@@ -603,6 +635,14 @@ export default function CashClosurePage() {
 
         </div>
       </div>
+
+      {isCashier && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          Estás cerrando la caja asignada a tu login: <span className="font-semibold">{storeName}</span>
+          {" "}· <span className="font-semibold">{registers.find((r) => r.id === selectedRegister)?.name ?? "Caja asignada"}</span>.
+          Si necesitás otra caja, salí e ingresá con el cajero correspondiente.
+        </div>
+      )}
 
       {existingClosure && (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
