@@ -49,9 +49,9 @@ type PaymentBreakdown = {
 
 type PaymentInfo = {
   method: PaymentMethod;
-  total_paid?: number;
-  change?: number;
-  breakdown?: PaymentBreakdown;
+  total_paid: number;
+  change: number;
+  breakdown: PaymentBreakdown;
   notes?: string;
   idempotency_key?: string;
 };
@@ -78,51 +78,127 @@ const isScaleBarcodeItem = (item: InItem): boolean =>
 const resolveStoreId = (body: any): string | null =>
   body.store_id ?? body.storeId ?? body.branch_id ?? body.sucursal_id ?? null;
 
-function normalizePayment(p: any): PaymentInfo | null {
-  if (!p) return null;
+const PAYMENT_METHODS = new Set<PaymentMethod>([
+  "efectivo",
+  "debito",
+  "credito",
+  "mp",
+  "cuenta_corriente",
+  "mixto",
+]);
+
+function roundMoney(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function paymentError(message: string) {
+  return { ok: false as const, message };
+}
+
+function paymentOk(payment: PaymentInfo) {
+  return { ok: true as const, payment };
+}
+
+function validateAndNormalizePayment(p: any, totalRaw: number) {
+  if (!p) return paymentError("Falta información de pago");
 
   const method: PaymentMethod = String(p.method ?? "") as PaymentMethod;
+  if (!PAYMENT_METHODS.has(method)) {
+    return paymentError("Método de pago inválido");
+  }
+
+  const total = roundMoney(totalRaw);
   const total_paid = toNum(p.total_paid ?? p.totalPaid ?? 0, 0);
-  const change = toNum(p.change ?? 0, 0);
 
   // Aceptamos breakdown viejo con "account" y lo pasamos a "cuenta_corriente"
   const raw = (p.breakdown ?? {}) as any;
 
-  const breakdown: PaymentBreakdown = {
-    cash: toNum(raw.cash ?? 0, 0),
-    debit: toNum(raw.debit ?? 0, 0),
-    credit: toNum(raw.credit ?? 0, 0),
-    mp: toNum(raw.mp ?? 0, 0),
-    cuenta_corriente: toNum(raw.cuenta_corriente ?? raw.account ?? 0, 0),
+  const rawBreakdown: Required<PaymentBreakdown> = {
+    cash: roundMoney(toNum(raw.cash ?? 0, 0)),
+    debit: roundMoney(toNum(raw.debit ?? 0, 0)),
+    credit: roundMoney(toNum(raw.credit ?? 0, 0)),
+    mp: roundMoney(toNum(raw.mp ?? 0, 0)),
+    cuenta_corriente: roundMoney(toNum(raw.cuenta_corriente ?? raw.account ?? 0, 0)),
   };
 
-  // 🔒 Sanitizar breakdown para que NO ensucie reportes:
-  // - Si NO es mixto, dejamos SOLO el método correspondiente.
-  if (method !== "mixto") {
-    const clean: PaymentBreakdown = {};
-    if (method === "efectivo") clean.cash = breakdown.cash || total_paid;
-    if (method === "debito") clean.debit = breakdown.debit || total_paid;
-    if (method === "credito") clean.credit = breakdown.credit || total_paid;
-    if (method === "mp") clean.mp = breakdown.mp || total_paid;
-    if (method === "cuenta_corriente") clean.cuenta_corriente = breakdown.cuenta_corriente || total_paid;
-
-    return {
-      method,
-      total_paid,
-      change,
-      breakdown: clean,
-      notes: p.notes ? String(p.notes) : undefined,
-    };
+  if (Object.values(rawBreakdown).some((v) => v < 0) || total_paid < 0) {
+    return paymentError("Los montos de pago no pueden ser negativos");
   }
 
-  // Mixto: dejamos todo lo que venga, pero numérico y normalizado
-  return {
+  const notes = p.notes ? String(p.notes) : undefined;
+
+  if (method !== "mixto") {
+    const clean: PaymentBreakdown = {};
+
+    if (method === "efectivo") {
+      const cash = roundMoney(rawBreakdown.cash || total_paid);
+      if (cash + 0.009 < total) return paymentError("El pago no cubre el total de la venta");
+      const change = roundMoney(cash - total);
+      clean.cash = cash;
+      return paymentOk({ method, total_paid: cash, change, breakdown: clean, notes });
+    }
+
+    const amount =
+      method === "debito"
+        ? rawBreakdown.debit || total_paid
+        : method === "credito"
+        ? rawBreakdown.credit || total_paid
+        : method === "mp"
+        ? rawBreakdown.mp || total_paid
+        : rawBreakdown.cuenta_corriente || total_paid;
+
+    const normalizedAmount = roundMoney(amount);
+    if (Math.abs(normalizedAmount - total) > 0.01) {
+      return paymentError("El monto del pago debe coincidir con el total de la venta");
+    }
+
+    if (method === "debito") clean.debit = total;
+    if (method === "credito") clean.credit = total;
+    if (method === "mp") clean.mp = total;
+    if (method === "cuenta_corriente") clean.cuenta_corriente = total;
+
+    return paymentOk({
+      method,
+      total_paid: total,
+      change: 0,
+      breakdown: clean,
+      notes,
+    });
+  }
+
+  const breakdownTotal = roundMoney(
+    rawBreakdown.cash +
+      rawBreakdown.debit +
+      rawBreakdown.credit +
+      rawBreakdown.mp +
+      rawBreakdown.cuenta_corriente
+  );
+  if (breakdownTotal + 0.009 < total) {
+    return paymentError("El pago mixto no cubre el total de la venta");
+  }
+
+  const overpay = roundMoney(breakdownTotal - total);
+  if (overpay > 0.01 && rawBreakdown.cash <= 0) {
+    return paymentError("Solo puede haber vuelto cuando una parte del pago es efectivo");
+  }
+  if (overpay - rawBreakdown.cash > 0.01) {
+    return paymentError("El vuelto no puede superar el efectivo recibido");
+  }
+
+  const clean: PaymentBreakdown = {};
+  if (rawBreakdown.cash > 0) clean.cash = rawBreakdown.cash;
+  if (rawBreakdown.debit > 0) clean.debit = rawBreakdown.debit;
+  if (rawBreakdown.credit > 0) clean.credit = rawBreakdown.credit;
+  if (rawBreakdown.mp > 0) clean.mp = rawBreakdown.mp;
+  if (rawBreakdown.cuenta_corriente > 0) clean.cuenta_corriente = rawBreakdown.cuenta_corriente;
+
+  return paymentOk({
     method,
-    total_paid,
-    change,
-    breakdown,
-    notes: p.notes ? String(p.notes) : undefined,
-  };
+    total_paid: breakdownTotal,
+    change: overpay,
+    breakdown: clean,
+    notes,
+  });
 }
 
 /** Devuelve null si idempotencyKey no existe en sales; el sale_id si ya fue procesada. */
@@ -298,7 +374,11 @@ export async function POST(req: Request) {
     // Total siempre calculado desde precios de DB (no se acepta del cliente)
     const total = finalItems.reduce((acc, it) => acc + it.quantity * it.unit_price, 0);
 
-    const payment = normalizePayment(body.payment);
+    const paymentResult = validateAndNormalizePayment(body.payment, total);
+    if (!paymentResult.ok) {
+      return NextResponse.json({ error: paymentResult.message }, { status: 400 });
+    }
+    const payment = paymentResult.payment;
 
     // Embeber idempotency_key en el JSONB de payment para que quede persistido en sales.
     // La próxima llamada con el mismo key encontrará la venta ya creada sin crear duplicado.
