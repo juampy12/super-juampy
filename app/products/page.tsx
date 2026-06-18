@@ -308,7 +308,7 @@ export default function ProductsPage() {
   const pageRows = filteredRows.slice(safePage * pageSize, (safePage + 1) * pageSize);
 
   return (
-    <div className="mx-auto max-w-6xl p-4">
+    <div className="mx-auto max-w-6xl p-3 sm:p-4">
       <h1 className="text-2xl font-semibold mb-4">Precios</h1>
 
       <p className="mb-4 max-w-3xl text-sm text-neutral-600">
@@ -316,9 +316,9 @@ export default function ProductsPage() {
         el POS sigue cobrando el precio final.
       </p>
 
-      <div className="flex gap-3 mb-4 items-end flex-wrap">
+      <div className="grid gap-3 mb-4 sm:grid-cols-2 lg:flex lg:items-end lg:flex-wrap">
         <select
-          className="border rounded px-3 py-2"
+          className="w-full border rounded px-3 py-3 sm:py-2 lg:w-auto"
           value={storeId}
           onChange={(e) => {
             setDirtyById({});
@@ -333,21 +333,21 @@ export default function ProductsPage() {
         </select>
 
         <input
-          className="border rounded px-3 py-2 w-72"
+          className="w-full border rounded px-3 py-3 sm:py-2 lg:w-72"
           placeholder="Buscar nombre o SKU"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
 
         <button
-          className="bg-black text-white rounded px-4 py-2 disabled:opacity-50"
+          className="bg-black text-white rounded px-4 py-3 disabled:opacity-50 sm:py-2"
           onClick={runNormalSearch}
           disabled={loading || !storeId}
         >
           {loading ? "Cargando..." : "Buscar"}
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 rounded-xl border bg-white p-1 lg:border-0 lg:bg-transparent lg:p-0">
           <button
             className="bg-gray-200 rounded px-3 py-2 disabled:opacity-50"
             onClick={goPrevPage}
@@ -372,14 +372,14 @@ export default function ProductsPage() {
         </div>
 
         <button
-          className="bg-emerald-700 text-white rounded px-4 py-2 disabled:opacity-50"
+          className="bg-emerald-700 text-white rounded px-4 py-3 disabled:opacity-50 sm:py-2"
           onClick={saveAll}
           disabled={dirtyCount === 0 || loading}
         >
           {dirtyCount === 0 ? "Guardar cambios" : `Guardar ${dirtyCount} cambio${dirtyCount === 1 ? "" : "s"}`}
         </button>
 
-        <span className="text-sm text-gray-700">
+        <span className="text-sm text-gray-700 sm:self-center">
           {dirtyCount === 0 ? "0 cambios pendientes" : <><b>{dirtyCount}</b> cambios pendientes</>}{" "}
           {dirtyCount > 0 && (
             <>
@@ -389,13 +389,13 @@ export default function ProductsPage() {
           )}
         </span>
 
-        <span className="text-sm text-gray-600">
+        <span className="text-sm text-gray-600 sm:self-center">
           Mostrando {filteredRows.length === 0 ? 0 : safePage * pageSize + 1}–
           {Math.min((safePage + 1) * pageSize, filteredRows.length)} de {filteredRows.length} visibles
         </span>
       </div>
 
-      <div className="mb-4 grid gap-3 md:grid-cols-5">
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
         <div className="rounded-2xl border bg-white p-3">
           <div className="text-xs uppercase tracking-wide text-neutral-500">Productos</div>
           <div className="text-2xl font-semibold">{stats.total}</div>
@@ -418,7 +418,7 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
         {[
           ["all", "Todos"],
           ["changed", "Con cambios"],
@@ -432,7 +432,7 @@ export default function ProductsPage() {
             key={value}
             type="button"
             onClick={() => setViewFilter(value)}
-            className={`rounded-xl border px-3 py-2 text-sm font-medium ${
+            className={`shrink-0 rounded-xl border px-3 py-2 text-sm font-medium ${
               viewFilter === value ? "bg-black text-white" : "bg-white hover:bg-neutral-50"
             }`}
           >
@@ -442,7 +442,7 @@ export default function ProductsPage() {
       </div>
 
       <div className="border rounded bg-white overflow-auto">
-        <table className="w-full text-sm">
+        <table className="min-w-[980px] w-full text-sm">
           <thead className="bg-gray-50 sticky top-0">
             <tr>
               <th className="p-2 text-left">Nombre</th>

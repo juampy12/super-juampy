@@ -1257,7 +1257,7 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
   // UI
   // =========================
   return (
-    <div className="mx-auto max-w-6xl p-4">
+    <div className="mx-auto max-w-6xl p-3 sm:p-4">
       {saleFeedback && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl border">
@@ -1323,7 +1323,7 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
 
       {showCancelConfirm && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
-          <div className="w-[340px] rounded-2xl bg-white p-6 shadow-2xl border">
+          <div className="w-full max-w-[340px] rounded-2xl bg-white p-6 shadow-2xl border">
             <h2 className="text-lg font-semibold mb-2">¿Cancelar venta?</h2>
             <p className="text-sm text-gray-500 mb-6">Se va a limpiar el carrito y todos los datos del pago.</p>
             <div className="flex gap-3">
@@ -1346,7 +1346,7 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
 
       {showPin && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
-          <div className="w-[360px] rounded-xl bg-white p-4 shadow-2xl border">
+          <div className="w-full max-w-[360px] rounded-xl bg-white p-4 shadow-2xl border">
             <div className="text-lg font-semibold mb-2">PIN supervisor</div>
             <input
               autoFocus
@@ -1378,14 +1378,14 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-4 gap-3">
+      <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">POS — Nueva venta</h1>
           <div className="text-xs text-gray-500 hidden md:block">
             Atajos: <b>/</b> buscar · <b>F2</b> efectivo · <b>Escape</b> cancelar · <b>Ctrl+Enter</b> confirmar
           </div>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           {!isOnline && (
             <div className="rounded-lg bg-red-100 border border-red-300 px-3 py-2 text-sm font-medium text-red-800 flex items-center gap-1">
               📵 Sin conexión{cacheSyncedAt && selectedStoreId
@@ -1437,7 +1437,7 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
 
       {showHolds && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
-          <div className="w-[420px] rounded-2xl bg-white p-5 shadow-2xl border max-h-[80vh] overflow-y-auto">
+          <div className="w-full max-w-[420px] rounded-2xl bg-white p-5 shadow-2xl border max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Ventas en espera</h2>
               <button onClick={() => setShowHolds(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
@@ -1624,12 +1624,12 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
               <div className="text-xs text-gray-500">Escáner: automático</div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <input
                 ref={searchInputRef}
                 type="text"
                 placeholder={quickMode ? "Escaneá o escribí (Enter agrega primero)" : "Nombre o SKU"}
-                className="border rounded px-3 py-2 flex-1"
+                className="border rounded px-3 py-3 flex-1 sm:py-2"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); hasNavigatedRef.current = false; }}
 onKeyDown={(e) => {
@@ -1679,7 +1679,7 @@ onKeyDown={(e) => {
                   })
                 }
                 disabled={searching}
-                className="rounded px-3 py-2 text-sm font-medium text-white disabled:opacity-60 flex items-center gap-1.5" style={{background:"#CC2020"}}
+                className="rounded px-3 py-3 text-sm font-medium text-white disabled:opacity-60 flex items-center justify-center gap-1.5 sm:py-2" style={{background:"#CC2020"}}
               >
                 {searching ? (
                   <>
@@ -1705,7 +1705,7 @@ onKeyDown={(e) => {
                   <div
                     key={p.id}
                     ref={(el) => { resultItemRefs.current[idx] = el; }}
-                    className="flex items-start justify-between gap-3 border-b px-3 py-2 last:border-b-0 cursor-default"
+                    className="flex items-start justify-between gap-3 border-b px-3 py-3 last:border-b-0 cursor-default sm:py-2"
                     style={isSelected ? { background: "#1A5FA8", color: "#fff" } : undefined}
                     onMouseEnter={() => { hasNavigatedRef.current = true; setSelectedResultIdx(idx); }}
                   >
@@ -1770,7 +1770,7 @@ onKeyDown={(e) => {
         <div className="lg:col-span-2 space-y-4">
           {/* Carrito */}
           <div className="rounded-xl border bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="font-medium">
                 Carrito{" "}
                 {totalItems > 0 && (
@@ -1778,19 +1778,19 @@ onKeyDown={(e) => {
                 )}
               </h2>
 
-              <div className="inline-flex items-baseline gap-2 rounded-lg text-white px-3 py-2" style={{background:"#1A5FA8"}}>
+              <div className="inline-flex items-baseline justify-between gap-2 rounded-lg text-white px-3 py-2 sm:justify-start" style={{background:"#1A5FA8"}}>
                 <span className="text-xs font-medium">TOTAL</span>
                 <span className="text-xl font-bold">${formattedTotal}</span>
               </div>
             </div>
 
-            <div className="border rounded-md overflow-hidden">
+            <div className="border rounded-md overflow-x-auto">
               {items.length === 0 ? (
                 <p className="px-3 py-2 text-sm text-neutral-500">
                   Todavía no agregaste productos.
                 </p>
               ) : (
-                <table className="min-w-full text-sm">
+                <table className="min-w-[720px] text-sm">
                   <thead>
                     <tr className="border-b text-left bg-gray-50">
                       <th className="py-2 px-2">Producto</th>
@@ -1923,15 +1923,15 @@ onKeyDown={(e) => {
 
           {/* Pago */}
           <div className="rounded-xl border bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center gap-3 mb-3">
+            <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:flex-wrap sm:items-center">
               <h2 className="font-medium">Pago</h2>
 
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex flex-col gap-1 sm:ml-auto sm:flex-row sm:items-center sm:gap-2">
                 <span className="text-sm font-medium">Método:</span>
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-                  className="rounded border px-2 py-1 text-sm"
+                  className="w-full rounded border px-2 py-2 text-sm sm:w-auto sm:py-1"
                 >
                   <option value="efectivo">Efectivo</option>
                   <option value="debito">Débito</option>
@@ -2132,7 +2132,7 @@ onKeyDown={(e) => {
             )}
 
             {items.length > 0 && (
-              <div className="mt-4 flex items-center justify-between gap-3">
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-xs text-gray-500">
                   Enter confirma (si no estás escribiendo) · Ctrl+Enter confirma siempre
                 </div>

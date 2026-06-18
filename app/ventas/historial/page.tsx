@@ -369,7 +369,7 @@ export default function SalesHistorialPage() {
   }
 
   return (
-    <main className="p-4 space-y-6">
+    <main className="p-3 space-y-6 sm:p-4">
       {voidTarget && (
         <VoidModal
           sale={voidTarget}
@@ -378,7 +378,7 @@ export default function SalesHistorialPage() {
         />
       )}
 
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Historial de ventas</h1>
           <p className="text-sm text-neutral-500">Todas las ventas confirmadas y anuladas, ticket a ticket.</p>
@@ -387,19 +387,19 @@ export default function SalesHistorialPage() {
           <button
             onClick={loadSales}
             disabled={loading}
-            className="rounded-lg border px-4 py-2 text-sm font-medium bg-neutral-900 text-white disabled:opacity-50"
+            className="w-full rounded-lg border px-4 py-3 text-sm font-medium bg-neutral-900 text-white disabled:opacity-50 sm:w-auto sm:py-2"
           >
             {loading ? "Cargando..." : "Buscar"}
           </button>
         </div>
       </div>
 
-	      {/* Filtros */}
-	      <section className="rounded-xl border p-4 bg-white grid gap-3 md:grid-cols-4">
+      {/* Filtros */}
+      <section className="rounded-xl border p-4 bg-white grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="flex flex-col text-sm">
           <label className="text-neutral-500 mb-1">Sucursal</label>
           <select
-            className="rounded border px-2 py-2 text-sm"
+            className="w-full rounded border px-3 py-3 text-sm sm:py-2"
             value={filterStore}
             onChange={(e) => setFilterStore(e.target.value)}
           >
@@ -412,7 +412,7 @@ export default function SalesHistorialPage() {
         <div className="flex flex-col text-sm">
           <label className="text-neutral-500 mb-1">Caja</label>
           <select
-            className="rounded border px-2 py-2 text-sm"
+            className="w-full rounded border px-3 py-3 text-sm sm:py-2"
             value={filterRegister}
             onChange={(e) => setFilterRegister(e.target.value)}
             disabled={registers.length === 0}
@@ -427,7 +427,7 @@ export default function SalesHistorialPage() {
           <label className="text-neutral-500 mb-1">Desde</label>
           <input
             type="date"
-            className="rounded border px-2 py-2 text-sm"
+            className="w-full rounded border px-3 py-3 text-sm sm:py-2"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
           />
@@ -436,7 +436,7 @@ export default function SalesHistorialPage() {
           <label className="text-neutral-500 mb-1">Hasta</label>
           <input
             type="date"
-            className="rounded border px-2 py-2 text-sm"
+            className="w-full rounded border px-3 py-3 text-sm sm:py-2"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
           />
@@ -492,7 +492,7 @@ export default function SalesHistorialPage() {
         ) : sales.length === 0 ? (
           <p className="text-sm text-neutral-500">No hay ventas con esos filtros.</p>
 	        ) : (
-	          <div className="overflow-x-auto">
+	          <div className="overflow-x-auto pb-2">
 	            <table className="w-full min-w-[980px] text-xs">
               <thead>
                 <tr className="border-b bg-neutral-50">

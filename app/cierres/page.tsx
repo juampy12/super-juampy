@@ -549,7 +549,7 @@ export default function CashClosurePage() {
   const storeName = STORES.find((s) => s.id === selectedStore)?.name ?? "Sucursal";
 
   return (
-    <main className="p-4 space-y-6">
+    <main className="p-3 space-y-6 sm:p-4">
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Cierre de caja</h1>
@@ -558,12 +558,12 @@ export default function CashClosurePage() {
           </p>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-4 md:items-end">
+        <div className="grid w-full gap-3 sm:grid-cols-2 lg:flex lg:w-auto lg:items-end">
           <div className="flex flex-col text-sm">
             <label className="text-neutral-500 mb-1">Fecha</label>
             <input
               type="date"
-              className="rounded border px-2 py-2.5 sm:py-1 text-sm"
+              className="w-full rounded border px-3 py-3 text-sm sm:py-2 lg:w-auto"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
             />
@@ -573,14 +573,14 @@ export default function CashClosurePage() {
             <>
               <div className="flex flex-col text-sm">
                 <label className="text-neutral-500 mb-1">Sucursal</label>
-                <div className="rounded border bg-neutral-50 px-3 py-2 text-sm font-medium">
+                <div className="rounded border bg-neutral-50 px-3 py-3 text-sm font-medium sm:py-2">
                   {storeName}
                 </div>
               </div>
 
               <div className="flex flex-col text-sm">
                 <label className="text-neutral-500 mb-1">Caja</label>
-                <div className="rounded border bg-neutral-50 px-3 py-2 text-sm font-medium">
+                <div className="rounded border bg-neutral-50 px-3 py-3 text-sm font-medium sm:py-2">
                   {registers.find((r) => r.id === selectedRegister)?.name ?? "Caja asignada"}
                 </div>
               </div>
@@ -590,7 +590,7 @@ export default function CashClosurePage() {
               <div className="flex flex-col text-sm">
                 <label className="text-neutral-500 mb-1">Sucursal</label>
                 <select
-                  className="rounded border px-2 py-2.5 sm:py-1 text-sm"
+                  className="w-full rounded border px-3 py-3 text-sm sm:py-2 lg:w-auto"
                   value={selectedStore}
                   onChange={(e) => setSelectedStore(e.target.value)}
                 >
@@ -605,7 +605,7 @@ export default function CashClosurePage() {
               <div className="flex flex-col text-sm">
                 <label className="text-neutral-500 mb-1">Caja</label>
                 <select
-                  className="rounded border px-2 py-2.5 sm:py-1 text-sm"
+                  className="w-full rounded border px-3 py-3 text-sm sm:py-2 lg:w-auto"
                   value={selectedRegister}
                   onChange={(e) => setSelectedRegister(e.target.value)}
                   disabled={registers.length === 0}
@@ -628,7 +628,7 @@ export default function CashClosurePage() {
             type="button"
             onClick={handleConfirmClosure}
             disabled={loading || saving || kpis.tickets === 0 || !!existingClosure}
-            className="mt-2 md:mt-0 inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium bg-emerald-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-2 inline-flex w-full items-center justify-center rounded-lg border px-4 py-3 text-sm font-medium bg-emerald-600 text-white disabled:opacity-50 disabled:cursor-not-allowed sm:col-span-2 lg:mt-0 lg:w-auto lg:py-2"
           >
             {saving ? "Guardando cierre..." : "Confirmar cierre"}
           </button>
@@ -668,7 +668,7 @@ export default function CashClosurePage() {
         </section>
       )}
 
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
         <div className="md:col-span-2 rounded-xl border p-4 bg-neutral-50">
           <div className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Total del día</div>
           <div className="text-4xl font-bold mb-2">{loading ? "Cargando..." : formatMoney(kpis.totalAmount)}</div>
