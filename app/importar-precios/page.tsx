@@ -94,6 +94,7 @@ export default function ImportarPreciosPage() {
 
   const [priceCol, setPriceCol] = useState("");
   const [margin, setMargin] = useState(0);
+  const [saveCost, setSaveCost] = useState(false);
 
   const [matched, setMatched] = useState<ProductMatch[]>([]);
   const [notFound, setNotFound] = useState<NotFoundItem[]>([]);
@@ -294,7 +295,11 @@ export default function ImportarPreciosPage() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), APPLY_CHUNK_TIMEOUT_MS);
       try {
-        const updates = chunk.map((m) => ({ productId: m.dbId, price: m.finalPrice }));
+        const updates = chunk.map((m) => ({
+          productId: m.dbId,
+          price: m.finalPrice,
+          ...(saveCost ? { cost_net: m.importedPrice } : {}),
+        }));
         const res = await fetch("/api/products/bulk-price-import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -375,6 +380,7 @@ export default function ImportarPreciosPage() {
     setDetected({ skuCol: null, priceCols: [] });
     setPriceCol("");
     setMargin(0);
+    setSaveCost(false);
     setMatched([]);
     setNotFound([]);
     setSelectedNew(new Set());
@@ -512,6 +518,22 @@ export default function ImportarPreciosPage() {
                 </div>
               </div>
 
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={saveCost}
+                  onChange={(e) => setSaveCost(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                Guardar también como precio de costo (cost_net)
+              </label>
+              {saveCost && (
+                <p className="text-xs text-gray-500">
+                  El precio importado del proveedor se guarda como costo; el precio de venta
+                  queda en costo + margen.
+                </p>
+              )}
+
               <button
                 onClick={buildPreview}
                 disabled={loading || !detected.skuCol || !priceCol}
@@ -614,6 +636,16 @@ export default function ImportarPreciosPage() {
                 onChange={(e) => handleMarginChange(Number(e.target.value))}
               />
             </div>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none pb-2">
+              <input
+                type="checkbox"
+                checked={saveCost}
+                onChange={(e) => setSaveCost(e.target.checked)}
+                className="w-4 h-4"
+              />
+              Guardar también como costo
+            </label>
 
             <button
               onClick={applyPrices}
