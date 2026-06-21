@@ -51,6 +51,15 @@ function formatMoney(value: number) {
   })}`;
 }
 
+// Solo informativo: cuánto del precio final corresponde a IVA, asumiendo
+// la alícuota general (21%) — independiente del campo vat_rate editable,
+// que puede estar en 0 cuando el costo del proveedor ya viene con IVA
+// incluido (importación de precios).
+function calcIvaIncluido(finalPrice: number) {
+  if (!Number.isFinite(finalPrice) || finalPrice <= 0) return 0;
+  return Math.round((finalPrice - finalPrice / 1.21) * 100) / 100;
+}
+
 function priceFlags(row: Row) {
   const cost = n(row.cost_net, 0);
   const margin = n(row.markup_rate, 0);
@@ -442,7 +451,7 @@ export default function ProductsPage() {
       </div>
 
       <div className="border rounded bg-white overflow-auto">
-        <table className="min-w-[980px] w-full text-sm">
+        <table className="min-w-[1120px] w-full text-sm">
           <thead className="bg-gray-50 sticky top-0">
             <tr>
               <th className="p-2 text-left">Nombre</th>
@@ -457,6 +466,10 @@ export default function ProductsPage() {
               <th className="p-2 text-right">
                 Precio final
                 <div className="text-xs text-gray-500">(editable)</div>
+              </th>
+              <th className="p-2 text-right">
+                IVA incluido
+                <div className="text-xs text-gray-500">(21%, ya incluido en el precio)</div>
               </th>
             </tr>
           </thead>
@@ -485,7 +498,7 @@ export default function ProductsPage() {
 
             {pageRows.length === 0 && (
               <tr>
-                <td className="p-4 text-gray-600" colSpan={7}>
+                <td className="p-4 text-gray-600" colSpan={8}>
                   No hay resultados para esta búsqueda.
                 </td>
               </tr>
@@ -691,6 +704,11 @@ function RowLine({
         <div className={`text-[11px] mt-1 ${belowCost ? "text-red-600 font-medium" : "text-neutral-500"}`}>
           {belowCost ? "Revisar" : useFinalPrice ? "Manual" : "Auto"}
         </div>
+      </td>
+
+      <td className="p-2 text-right text-neutral-700">
+        {formatMoney(calcIvaIncluido(shownPrice))}
+        <div className="text-[11px] text-neutral-500">Informativo</div>
       </td>
     </tr>
   );
