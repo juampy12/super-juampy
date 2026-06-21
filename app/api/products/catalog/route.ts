@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, unauthorized } from "@/lib/session";
+import { normalizeSku } from "@/lib/sku";
+import { fetchAllRows } from "@/lib/fetchAllRows";
+
+type CatalogProduct = { id: string; sku: string | null; name: string; price: number; active: boolean };
 
 // POST /api/products/catalog
 // Body:
@@ -27,17 +31,37 @@ export async function POST(req: Request) {
 
   // Batch mode: lookup by explicit list of SKUs
   if (skus !== null) {
-    const { data, error } = await supabaseAdmin
-      .from("products")
-      .select("id, sku, name, price, active")
-      .in("sku", skus)
-      .eq("active", activeParam === "false" ? false : true);
+    const isActive = activeParam === "false" ? false : true;
 
-    if (error) {
+    let allProducts: CatalogProduct[];
+    try {
+      allProducts = await fetchAllRows<CatalogProduct>(
+        "products",
+        "id, sku, name, price, active"
+      );
+    } catch (error) {
       console.error("products/catalog batch error:", error);
       return NextResponse.json({ error: "Error al buscar productos" }, { status: 500 });
     }
-    return NextResponse.json({ data: data ?? [], count: null });
+
+    // Match por SKU normalizado (sin ceros a la izquierda) para que
+    // "4166" matchee con "000000004166" — mismo EAN, distinto padding.
+    const byNormSku = new Map<string, CatalogProduct>();
+    for (const p of allProducts) {
+      if (p.sku && p.active === isActive) byNormSku.set(normalizeSku(p.sku), p);
+    }
+
+    const seen = new Set<string>();
+    const matched: CatalogProduct[] = [];
+    for (const s of skus) {
+      const found = byNormSku.get(normalizeSku(s));
+      if (found && !seen.has(found.id)) {
+        seen.add(found.id);
+        matched.push(found);
+      }
+    }
+
+    return NextResponse.json({ data: matched, count: null });
   }
 
   // Search/list mode
@@ -54,12 +78,14 @@ export async function POST(req: Request) {
   if (q) {
     const isNumeric = /^\d+$/.test(q);
     if (isNumeric) {
+      const isActiveFlag = activeParam === "false" ? false : true;
+
       // Exact SKU first — return a prioritized set
       const { data: bySku, error: e1 } = await supabaseAdmin
         .from("products")
         .select("id, sku, plu, name, price, active")
         .eq("sku", q)
-        .eq("active", activeParam === "false" ? false : true)
+        .eq("active", isActiveFlag)
         .limit(20);
 
       if (e1) {
@@ -69,6 +95,27 @@ export async function POST(req: Request) {
 
       if (bySku && bySku.length > 0) {
         return NextResponse.json({ data: bySku, count: null });
+      }
+
+      // Sin match exacto — probar por SKU normalizado (sin ceros a la
+      // izquierda). El padding solo agrega ceros al principio, así que
+      // el normalizado siempre queda como sufijo del SKU real.
+      const normQ = normalizeSku(q);
+      const { data: candidates, error: e2 } = await supabaseAdmin
+        .from("products")
+        .select("id, sku, plu, name, price, active")
+        .ilike("sku", `%${normQ}`)
+        .eq("active", isActiveFlag)
+        .limit(50);
+
+      if (e2) {
+        console.error("products/catalog sku normalized error:", e2);
+        return NextResponse.json({ error: "Error al buscar productos" }, { status: 500 });
+      }
+
+      const normMatches = (candidates ?? []).filter((p) => normalizeSku(p.sku) === normQ);
+      if (normMatches.length > 0) {
+        return NextResponse.json({ data: normMatches, count: null });
       }
       // fall through to name search
     }

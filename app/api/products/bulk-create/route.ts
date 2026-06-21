@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
+import { normalizeSku } from "@/lib/sku";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +24,7 @@ export async function POST(req: Request) {
 
     const skus = products.map((p) => p.sku);
 
-    // Buscar cuáles SKUs ya existen (activos o no)
+    // Buscar cuáles SKUs ya existen (activos o no) — primero exacto.
     const { data: existing, error: lookupErr } = await supabaseAdmin
       .from("products")
       .select("id, sku")
@@ -32,8 +34,35 @@ export async function POST(req: Request) {
 
     const existingBySku = new Map((existing ?? []).map((p) => [p.sku, p.id]));
 
-    const toCreate = products.filter((p) => !existingBySku.has(p.sku));
-    const toUpdate = products.filter((p) => existingBySku.has(p.sku));
+    // Para los que no matchearon exacto, buscar por SKU normalizado
+    // (sin ceros a la izquierda) contra todo el catálogo — evita crear
+    // un duplicado tipo "4166" cuando ya existe "000000004166".
+    const unmatchedSkus = skus.filter((s) => !existingBySku.has(s));
+    const existingByNormSkuActive = new Map<string, string>();
+    const existingByNormSkuAny = new Map<string, string>();
+    if (unmatchedSkus.length > 0) {
+      const allProducts = await fetchAllRows<{ id: string; sku: string | null; active: boolean }>(
+        "products",
+        "id, sku, active"
+      );
+      for (const p of allProducts) {
+        if (!p.sku) continue;
+        const norm = normalizeSku(p.sku);
+        existingByNormSkuAny.set(norm, p.id);
+        // Si hay un duplicado activo + inactivo con el mismo SKU
+        // normalizado (caso típico tras un merge), preferir siempre
+        // el activo para no reactivar por error un producto viejo.
+        if (p.active) existingByNormSkuActive.set(norm, p.id);
+      }
+    }
+
+    const resolveExistingId = (sku: string): string | undefined =>
+      existingBySku.get(sku) ??
+      existingByNormSkuActive.get(normalizeSku(sku)) ??
+      existingByNormSkuAny.get(normalizeSku(sku));
+
+    const toCreate = products.filter((p) => !resolveExistingId(p.sku));
+    const toUpdate = products.filter((p) => resolveExistingId(p.sku));
 
     const errors: string[] = [];
     let created = 0;
@@ -64,7 +93,7 @@ export async function POST(req: Request) {
 
     // Actualizar precio de los que ya existen (y reactivar si estaban inactivos)
     for (const p of toUpdate) {
-      const id = existingBySku.get(p.sku)!;
+      const id = resolveExistingId(p.sku)!;
       const { error } = await supabaseAdmin
         .from("products")
         .update({ price: Math.round(p.price * 100) / 100, active: true })
