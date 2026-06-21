@@ -5,7 +5,7 @@ import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type PriceUpdate = { productId: string; price: number; cost_net?: number };
+type PriceUpdate = { productId: string; price: number; cost_net?: number; markup_rate?: number };
 
 // Tope por request: el cliente ya divide en lotes (ver importar-precios/page.tsx),
 // esto es una segunda barrera por si alguien llama el endpoint directo con un
@@ -35,6 +35,8 @@ export async function POST(req: Request) {
     const ids: string[] = [];
     const prices: number[] = [];
     const costNets: (number | null)[] = [];
+    const markupRates: (number | null)[] = [];
+    const vatRates: (number | null)[] = [];
     const errors: string[] = [];
 
     for (const item of updates) {
@@ -46,11 +48,20 @@ export async function POST(req: Request) {
 
       // cost_net es opcional por item — si no viene o es inválido, se manda null
       // y la función SQL conserva el costo actual del producto sin pisarlo.
+      // markup_rate y vat_rate van siempre atados a cost_net: el precio del
+      // importador es costo × (1 + margen%) sin IVA aplicado por separado,
+      // así que vat_rate=0 mantiene el "precio sugerido" de /products
+      // consistente con el price real guardado.
       let costNet: number | null = null;
+      let markupRate: number | null = null;
+      let vatRate: number | null = null;
       if (item.cost_net !== undefined) {
-        const parsed = Math.round(Number(item.cost_net) * 100) / 100;
-        if (Number.isFinite(parsed) && parsed >= 0) {
-          costNet = parsed;
+        const parsedCost = Math.round(Number(item.cost_net) * 100) / 100;
+        if (Number.isFinite(parsedCost) && parsedCost >= 0) {
+          costNet = parsedCost;
+          vatRate = 0;
+          const parsedMarkup = Number(item.markup_rate ?? 0);
+          markupRate = Number.isFinite(parsedMarkup) && parsedMarkup >= 0 ? parsedMarkup : 0;
         } else {
           errors.push(`cost_net inválido para ${item.productId}: ${JSON.stringify(item.cost_net)}`);
         }
@@ -59,20 +70,24 @@ export async function POST(req: Request) {
       ids.push(item.productId);
       prices.push(price);
       costNets.push(costNet);
+      markupRates.push(markupRate);
+      vatRates.push(vatRate);
     }
 
     // Un solo UPDATE ... FROM unnest() para todo el lote en vez de N updates
     // secuenciales — evita el timeout de la función serverless con imports grandes.
     let updated = 0;
     if (ids.length > 0) {
-      const { data, error } = await supabaseAdmin.rpc("bulk_update_product_prices_v2", {
+      const { data, error } = await supabaseAdmin.rpc("bulk_update_product_prices_v3", {
         p_ids: ids,
         p_prices: prices,
         p_cost_nets: costNets,
+        p_markup_rates: markupRates,
+        p_vat_rates: vatRates,
       });
 
       if (error) {
-        console.error("Error en bulk_update_product_prices_v2:", error);
+        console.error("Error en bulk_update_product_prices_v3:", error);
         return NextResponse.json({ ok: false, error: "Error actualizando precios" }, { status: 500 });
       }
       updated = data ?? 0;

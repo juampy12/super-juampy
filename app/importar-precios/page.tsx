@@ -298,7 +298,7 @@ export default function ImportarPreciosPage() {
         const updates = chunk.map((m) => ({
           productId: m.dbId,
           price: m.finalPrice,
-          ...(saveCost ? { cost_net: m.importedPrice } : {}),
+          ...(saveCost ? { cost_net: m.importedPrice, markup_rate: margin } : {}),
         }));
         const res = await fetch("/api/products/bulk-price-import", {
           method: "POST",
