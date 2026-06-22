@@ -96,106 +96,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Solo se pueden anular ventas confirmadas" }, { status: 409 });
     }
 
-    // ── 5. Cargar items de la venta ──────────────────────────────
-    const { data: items, error: itemsErr } = await supabaseAdmin
-      .from("sale_items")
-      .select("product_id, quantity")
-      .eq("sale_id", saleId);
+    // ── 5. Anular de forma atómica (stock + movimiento + status) ──
+    const { data: voidedAt, error: voidErr } = await supabaseAdmin.rpc("void_sale_atomic", {
+      p_sale_id: saleId,
+      p_reason: reason,
+      p_void_authorized_by: supervisor.employee_id,
+      p_void_authorized_code: supervisorCode,
+      p_void_authorized_name: supervisor.name ?? null,
+      p_voided_by: session.employee_id,
+      p_voided_by_role: session.role,
+      p_voided_from_store_id: session.store_id ?? null,
+      p_voided_from_register_id: session.register_id ?? null,
+    });
 
-    if (itemsErr) {
-      console.error("Error leyendo items de venta:", itemsErr);
-      return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
-    }
-
-    // ── 6. Devolver stock a la sucursal ──────────────────────────
-    const storeId = sale.store_id as string | null;
-    const validItems = (items ?? []).filter((i: any) => i.product_id && Number(i.quantity) > 0);
-
-    if (storeId && validItems.length > 0) {
-      const productIds = validItems.map((i: any) => i.product_id as string);
-
-      // Leer stocks actuales en batch
-      const { data: currentStocks, error: stockErr } = await supabaseAdmin
-        .from("product_stocks")
-        .select("product_id, stock")
-        .eq("store_id", storeId)
-        .in("product_id", productIds);
-
-      if (stockErr) {
-        console.error("Error leyendo stocks:", stockErr);
-        return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
+    if (voidErr) {
+      console.error("Error en void_sale_atomic:", voidErr);
+      if (voidErr.message?.includes("sale_already_voided")) {
+        return NextResponse.json({ ok: false, error: "La venta ya está anulada" }, { status: 409 });
       }
-
-      const stockMap: Record<string, number> = {};
-      for (const row of currentStocks ?? []) {
-        stockMap[row.product_id] = Number(row.stock ?? 0);
+      if (voidErr.message?.includes("sale_not_confirmed")) {
+        return NextResponse.json({ ok: false, error: "Solo se pueden anular ventas confirmadas" }, { status: 409 });
       }
-
-      const now = new Date().toISOString();
-
-      // Upsert de stocks devueltos
-      const { error: upsertErr } = await supabaseAdmin
-        .from("product_stocks")
-        .upsert(
-          validItems.map((item: any) => ({
-            store_id: storeId,
-            product_id: item.product_id,
-            stock: (stockMap[item.product_id] ?? 0) + Number(item.quantity),
-          })),
-          { onConflict: "store_id,product_id" }
-        );
-
-      if (upsertErr) {
-        console.error("Error devolviendo stock:", upsertErr);
-        return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
+      if (voidErr.message?.includes("sale_not_found")) {
+        return NextResponse.json({ ok: false, error: "Venta no encontrada" }, { status: 404 });
       }
-
-      // Movimientos de stock: reason = "void_sale"
-      const { error: movErr } = await supabaseAdmin
-        .from("stock_movements")
-        .insert(
-          validItems.map((item: any) => ({
-            store_id: storeId,
-            product_id: item.product_id,
-            qty: Number(item.quantity),
-            qty_delta: Number(item.quantity),
-            delta: Number(item.quantity),
-            reason: "void_sale",
-            note: `Anulación de venta ${saleId}. Autorizó ${supervisorCode}. Motivo: ${reason}`,
-            created_at: now,
-          }))
-        );
-
-      if (movErr) {
-        console.error("Error registrando movimientos:", movErr);
-        return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
-      }
-    }
-
-    // ── 7. Marcar la venta como anulada ──────────────────────────
-    const voidedAt = new Date().toISOString();
-    const updatedPayment = {
-      ...(typeof sale.payment === "object" && sale.payment !== null ? sale.payment : {}),
-      voided_at: voidedAt,
-      voided_by: session.employee_id,
-      voided_by_role: session.role,
-      voided_from_store_id: session.store_id,
-      voided_from_register_id: session.register_id,
-      void_authorized_by: supervisor.employee_id,
-      void_authorized_code: supervisorCode,
-      void_authorized_name: supervisor.name ?? null,
-      void_reason: reason,
-      void_sale_store_id: sale.store_id,
-      void_sale_register_id: sale.register_id,
-    };
-
-    const { error: updateErr } = await supabaseAdmin
-      .from("sales")
-      .update({ status: "anulada", payment: updatedPayment })
-      .eq("id", saleId);
-
-    if (updateErr) {
-      console.error("Error marcando venta como anulada:", updateErr);
       return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
     }
 
