@@ -3,7 +3,7 @@
 
 const STATIC_CACHE = 'pos-static-v1';
 const PAGES_CACHE  = 'pos-pages-v3';
-const MEDIA_CACHE  = 'pos-media-v1';
+const MEDIA_CACHE  = 'pos-media-v2';
 
 const ALL_CACHES = [STATIC_CACHE, PAGES_CACHE, MEDIA_CACHE];
 

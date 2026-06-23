@@ -178,7 +178,7 @@ export default function HeaderNav() {
 
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', marginRight: '12px' }}>
-          <img src='/logo-super-juampy.png' alt='Super Juampy' style={{ height: '38px', width: 'auto' }} />
+          <img src='/logo-super-juampy-header.png' alt='Super Juampy' style={{ height: '38px', width: 'auto' }} />
         </div>
 
         {/* Nav items — solo desktop */}
