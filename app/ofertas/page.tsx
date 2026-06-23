@@ -251,11 +251,11 @@ export default function OfertasPage() {
   }, [offers, productMap]);
 
   return (
-    <div className="max-w-7xl mx-auto px-3 py-4">
+    <div className="mx-auto max-w-7xl overflow-x-hidden px-3 py-4">
       <h1 className="text-2xl font-semibold mb-4">Ofertas</h1>
 
-      <div className="flex flex-wrap gap-3 items-center mb-4">
-        <div className="flex items-center gap-2">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center">
+        <div className="grid grid-cols-1 gap-1 sm:flex sm:items-center sm:gap-2">
           <span className="text-sm opacity-80">Sucursal:</span>
           <select
             className="border rounded-lg px-3 py-2 w-full sm:w-auto sm:min-w-[200px]"
@@ -286,7 +286,7 @@ export default function OfertasPage() {
         {/* Buscar y elegir producto */}
         <div className="border rounded-xl p-4 bg-white/5">
           <div className="font-semibold mb-3">Buscar producto</div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input
               className="border rounded-lg px-3 py-2 w-full"
               value={query}
@@ -297,7 +297,7 @@ export default function OfertasPage() {
               }}
             />
             <button
-              className="px-4 py-2 rounded-lg bg-black text-white hover:bg-black/80 disabled:opacity-60"
+              className="rounded-lg bg-black px-4 py-2 text-white hover:bg-black/80 disabled:opacity-60 sm:w-auto"
               onClick={searchProducts}
               disabled={loading || !storeId}
             >
@@ -387,20 +387,20 @@ export default function OfertasPage() {
               )}
             </label>
 
-            <label className="text-sm">
+            <label className="min-w-0 text-sm">
               Desde
               <input
-                className="mt-1 w-full border rounded-lg px-3 py-2"
+                className="mt-1 w-full max-w-full min-w-0 rounded-lg border px-3 py-2 text-sm"
                 type="datetime-local"
                 value={startsAt}
                 onChange={(e) => setStartsAt(e.target.value)}
               />
             </label>
 
-            <label className="text-sm">
+            <label className="min-w-0 text-sm">
               Hasta
               <input
-                className="mt-1 w-full border rounded-lg px-3 py-2"
+                className="mt-1 w-full max-w-full min-w-0 rounded-lg border px-3 py-2 text-sm"
                 type="datetime-local"
                 value={endsAt}
                 onChange={(e) => setEndsAt(e.target.value)}
@@ -433,7 +433,7 @@ export default function OfertasPage() {
 
                   return (
                     <div key={o.id} className="px-3 py-3 border-t">
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                           <div className="font-medium">{label}</div>
                           <div className="text-xs opacity-80 mt-1">
@@ -451,7 +451,7 @@ export default function OfertasPage() {
                         </div>
 
                         <button
-                          className="px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                          className="rounded-lg bg-red-600 px-3 py-2 text-white hover:bg-red-700 disabled:opacity-60 sm:py-1.5"
                           onClick={() => deactivateOffer(o.id)}
                           disabled={loading}
                         >

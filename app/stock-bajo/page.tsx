@@ -179,7 +179,7 @@ export default function StockBajoPage() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4 overflow-x-hidden p-4 sm:p-6">
       <div className="flex flex-col gap-4 rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-3">
           <h1 className="text-2xl font-semibold">Stock bajo</h1>

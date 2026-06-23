@@ -450,7 +450,36 @@ export default function ProductsPage() {
         ))}
       </div>
 
-      <div className="border rounded bg-white overflow-auto">
+      <div className="space-y-3 md:hidden">
+        {pageRows.length === 0 ? (
+          <div className="rounded-2xl border bg-white p-4 text-sm text-gray-600">
+            No hay resultados para esta búsqueda.
+          </div>
+        ) : (
+          pageRows.map((r, idx) => (
+            <PriceMobileCard
+              key={r.id}
+              row={r}
+              isDirty={!!dirtyById[r.id]}
+              firstRow={idx === 0}
+              firstInputRef={firstInputRef}
+              onDirtyChange={(payload) => {
+                if (payloadEqualsRow(payload, r)) {
+                  setDirtyById((prev) => {
+                    const next = { ...prev };
+                    delete next[r.id];
+                    return next;
+                  });
+                } else {
+                  setDirtyById((prev) => ({ ...prev, [r.id]: payload }));
+                }
+              }}
+            />
+          ))
+        )}
+      </div>
+
+      <div className="hidden border rounded bg-white overflow-auto md:block">
         <table className="min-w-[1120px] w-full text-sm">
           <thead className="bg-gray-50 sticky top-0">
             <tr>
@@ -517,6 +546,126 @@ function focusNextInput(from: HTMLInputElement) {
   const inputs = Array.from(table.querySelectorAll<HTMLInputElement>('input[data-price-input="1"]'));
   const idx = inputs.indexOf(from);
   if (idx >= 0 && inputs[idx + 1]) inputs[idx + 1].focus();
+}
+
+
+function PriceMobileCard({
+  row,
+  isDirty,
+  onDirtyChange,
+  firstRow,
+  firstInputRef,
+}: {
+  row: Row;
+  isDirty: boolean;
+  onDirtyChange: (payload: DirtyPayload) => void;
+  firstRow: boolean;
+  firstInputRef: React.MutableRefObject<HTMLInputElement | null>;
+}) {
+  const [cost, setCost] = useState(n(row.cost_net, 0));
+  const [vat, setVat] = useState(n(row.vat_rate, 21));
+  const [margin, setMargin] = useState(n(row.markup_rate, 0));
+  const unitsCaseFixed = Math.max(1, n(row.units_per_case, 1));
+  const [useFinalPrice, setUseFinalPrice] = useState(false);
+  const [finalManual, setFinalManual] = useState(n(row.price, 0));
+
+  useEffect(() => {
+    const nextCost = n(row.cost_net, 0);
+    const nextVat = n(row.vat_rate, 21);
+    const nextMargin = n(row.markup_rate, 0);
+    const nextPrice = n(row.price, 0);
+    setCost(nextCost);
+    setVat(nextVat);
+    setMargin(nextMargin);
+    setFinalManual(nextPrice);
+    const calc = calcFinalPrice(nextCost, nextVat, nextMargin);
+    setUseFinalPrice(Math.abs(nextPrice - calc) > 0.009);
+  }, [row.id, row.cost_net, row.vat_rate, row.markup_rate, row.price]);
+
+  const calcPrice = calcFinalPrice(cost, vat, margin);
+  const shownPrice = useFinalPrice ? finalManual : calcPrice;
+  const belowCost = cost > 0 && shownPrice > 0 && shownPrice < cost;
+  const noCost = cost <= 0;
+  const noMargin = margin <= 0;
+
+  useEffect(() => {
+    onDirtyChange({
+      cost_net: cost,
+      vat_rate: vat,
+      markup_rate: margin,
+      units_per_case: unitsCaseFixed,
+      use_final_price: useFinalPrice,
+      final_price: useFinalPrice ? finalManual : null,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cost, vat, margin, useFinalPrice, finalManual, unitsCaseFixed]);
+
+  return (
+    <article className={`rounded-2xl border bg-white p-3 shadow-sm ${isDirty ? "border-amber-300 bg-amber-50" : ""} ${belowCost ? "border-red-300 bg-red-50" : ""}`}>
+      <div className="space-y-1">
+        <div className="font-semibold leading-snug">{row.name}</div>
+        <div className="text-xs text-neutral-500">SKU: {row.sku ?? "-"}</div>
+        <div className="flex flex-wrap gap-1 pt-1">
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${useFinalPrice ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"}`}>
+            {useFinalPrice ? "Manual" : "Calculado"}
+          </span>
+          {noCost && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">Sin costo</span>}
+          {noMargin && <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600">Sin margen</span>}
+          {belowCost && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">Bajo costo</span>}
+          {isDirty && <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-medium text-orange-700">Sin guardar</span>}
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <label className="text-xs text-neutral-600">
+          Costo
+          <input
+            ref={firstRow ? firstInputRef : undefined}
+            className="mt-1 w-full rounded-lg border px-2 py-2 text-right text-sm"
+            inputMode="decimal"
+            value={cost}
+            onChange={(e) => { setCost(n(e.target.value, 0)); setUseFinalPrice(false); }}
+          />
+        </label>
+        <label className="text-xs text-neutral-600">
+          IVA %
+          <input
+            className="mt-1 w-full rounded-lg border px-2 py-2 text-right text-sm"
+            inputMode="decimal"
+            value={vat}
+            onChange={(e) => { setVat(n(e.target.value, 21)); setUseFinalPrice(false); }}
+          />
+        </label>
+        <label className="text-xs text-neutral-600">
+          Margen %
+          <input
+            className="mt-1 w-full rounded-lg border px-2 py-2 text-right text-sm"
+            inputMode="decimal"
+            value={margin}
+            onChange={(e) => { setMargin(n(e.target.value, 0)); setUseFinalPrice(false); }}
+          />
+        </label>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-xl bg-neutral-50 p-2">
+          <div className="text-[11px] uppercase tracking-wide text-neutral-500">Sugerido</div>
+          <div className="font-semibold">{formatMoney(calcPrice)}</div>
+        </div>
+        <label className="rounded-xl bg-neutral-50 p-2 text-[11px] uppercase tracking-wide text-neutral-500">
+          Precio final
+          <input
+            className={`mt-1 w-full rounded-lg border px-2 py-2 text-right text-base font-semibold ${belowCost ? "border-red-400 bg-red-50 text-red-700" : ""}`}
+            inputMode="decimal"
+            value={shownPrice}
+            onChange={(e) => { setFinalManual(n(e.target.value, 0)); setUseFinalPrice(true); }}
+          />
+        </label>
+      </div>
+
+      <div className="mt-2 text-xs text-neutral-500">IVA incluido: {formatMoney(calcIvaIncluido(shownPrice))}</div>
+    </article>
+  );
 }
 
 function RowLine({

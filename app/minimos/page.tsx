@@ -186,7 +186,7 @@ useEffect(() => {
   // si querés, podés tocar Buscar sin escribir nada y trae página 1.
   // (No auto-cargamos para que no sea pesado)
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4 overflow-x-hidden p-4 sm:p-6">
       <div>
         <h1 className="text-2xl font-semibold">Stock mínimo</h1>
         <p className="text-sm text-neutral-600">
@@ -194,11 +194,11 @@ useEffect(() => {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2 items-end">
-        <div className="space-y-1">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
+        <div className="min-w-0 space-y-1">
           <label className="text-sm font-medium">Sucursal</label>
           <select
-            className="border rounded px-3 py-2"
+            className="w-full rounded border px-3 py-2 lg:w-auto"
             value={storeId}
             onChange={(e) => setStoreId(e.target.value)}
           >
@@ -210,10 +210,10 @@ useEffect(() => {
           </select>
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1 sm:col-span-2 lg:col-span-1">
           <label className="text-sm font-medium">Buscar producto</label>
           <input
-            className="border rounded px-3 py-2 w-80"
+            className="w-full rounded border px-3 py-2 lg:w-80"
             placeholder="Nombre o SKU (vacío = catálogo)"
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -231,7 +231,7 @@ useEffect(() => {
           {loading ? "Buscando..." : "Buscar"}
         </button>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:ml-auto lg:w-auto">
           <button
             className="px-3 py-2 rounded border disabled:opacity-60"
             onClick={() => void searchPage(Math.max(0, page - 1))}

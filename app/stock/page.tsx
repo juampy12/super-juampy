@@ -399,7 +399,7 @@ export default function StockPage() {
   }, [loading, saving, hasMore, page, rows.length]);
 
   return (
-    <div className="p-4 max-w-6xl mx-auto space-y-4">
+    <div className="mx-auto max-w-6xl space-y-4 overflow-x-hidden p-3 sm:p-4">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold">Inventario</h1>
@@ -416,7 +416,7 @@ export default function StockPage() {
           ) : null}
         </div>
 
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center">
           <button
             className="px-3 py-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50"
             onClick={() => search({ useLimit: dataLimit })}
@@ -464,7 +464,7 @@ export default function StockPage() {
 
         <div className="p-3 rounded-xl border bg-white space-y-2">
           <div className="text-sm font-medium">Buscar (nombre / SKU)</div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input
               className="w-full border rounded-lg px-3 py-2"
               placeholder="Ej: coca / 779..."
@@ -476,7 +476,7 @@ export default function StockPage() {
               disabled={!storeId || saving}
             />
             <button
-              className="px-3 py-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg border px-3 py-2 hover:bg-gray-50 disabled:opacity-50 sm:w-auto"
               onClick={runSearchSmart}
               disabled={loading || saving || !storeId}
             >
@@ -517,7 +517,61 @@ export default function StockPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border overflow-hidden bg-white">
+      <div className="space-y-3 md:hidden">
+        {pageRows.length === 0 ? (
+          <div className="rounded-2xl border bg-white p-4 text-center text-sm text-gray-500">
+            {loading ? "Cargando..." : "Sin resultados."}
+          </div>
+        ) : (
+          pageRows.map((r, idx) => {
+            const current = Number(r.stock ?? 0);
+            const typed = newStockById[r.id];
+            const parsed = typed === undefined || typed === "" ? null : Number(typed);
+            const delta = parsed === null || !Number.isFinite(parsed) ? null : parsed - current;
+            const db = dbCheckById[r.id];
+            const dbMismatch = db && !db.loading && db.error == null && db.stock != null && Number.isFinite(db.stock) && db.stock !== current;
+            return (
+              <article key={r.id} className="rounded-2xl border bg-white p-3 shadow-sm">
+                <div className="font-semibold leading-snug">{r.name}</div>
+                <div className="mt-1 text-xs text-gray-500">SKU: {r.sku ?? "-"}{r.is_weighted ? " · Pesable" : ""}</div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div className="rounded-xl bg-neutral-50 p-2">
+                    <div className="text-[11px] uppercase tracking-wide text-neutral-500">Stock actual</div>
+                    <div className={`text-xl font-semibold ${current < 0 ? "text-red-700" : ""}`}>{current}</div>
+                    {dbMismatch ? <div className="mt-1 text-xs text-amber-700">No coincide con DB</div> : null}
+                    {db && !db.loading && db.error == null ? <div className="text-xs text-gray-500">DB: {db.stock === null ? "sin fila" : db.stock}</div> : null}
+                  </div>
+                  <label className="rounded-xl bg-neutral-50 p-2 text-[11px] uppercase tracking-wide text-neutral-500">
+                    Stock nuevo
+                    <input
+                      ref={idx === 0 ? firstInputRef : undefined}
+                      className="mt-1 w-full rounded-lg border px-2 py-2 text-right text-base normal-case tabular-nums"
+                      inputMode="numeric"
+                      placeholder="(vacío)"
+                      value={typed ?? ""}
+                      onChange={(e) => setRowNewStock(r.id, e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Escape") clearRowNewStock(r.id); }}
+                    />
+                  </label>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <div className="text-sm">
+                    Δ {delta === null || !Number.isFinite(delta) ? <span className="text-gray-400">—</span> : delta === 0 ? <span className="text-gray-600">0</span> : delta > 0 ? <span className="text-green-700">+{delta}</span> : <span className="text-red-700">{delta}</span>}
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => checkDbStock(r.id)} disabled={loading || saving || !storeId || (db?.loading ?? false)}>{db?.loading ? "..." : "Ver DB"}</button>
+                    <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => copyRowCurrentToNew(r)}>=</button>
+                    <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => clearRowNewStock(r.id)}>×</button>
+                  </div>
+                </div>
+                {db?.error ? <div className="mt-2 text-xs text-red-600">{db.error}</div> : null}
+              </article>
+            );
+          })
+        )}
+      </div>
+
+      <div className="hidden rounded-xl border overflow-hidden bg-white md:block">
         <div className="overflow-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
