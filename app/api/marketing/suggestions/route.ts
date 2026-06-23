@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 export const dynamic = "force-dynamic";
 
@@ -13,16 +14,17 @@ export async function GET(req: Request) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const nowIso = new Date().toISOString();
 
-    const [productsRes, stocksRes, offersRes, salesRes] = await Promise.all([
+    const [productsRes, stocks, offersRes, saleItems] = await Promise.all([
       supabaseAdmin
         .from("products")
         .select("id, name, price, active")
         .eq("active", true)
         .gt("price", 0)
         .limit(300),
-      supabaseAdmin
-        .from("product_stocks")
-        .select("product_id, stock"),
+      fetchAllRows<{ product_id: string; stock: number }>(
+        "product_stocks",
+        "product_id, stock"
+      ),
       supabaseAdmin
         .from("product_offers")
         .select("product_id, type, value")
@@ -30,10 +32,11 @@ export async function GET(req: Request) {
         .lte("starts_at", nowIso)
         .gte("ends_at", nowIso)
         .limit(50),
-      supabaseAdmin
-        .from("sale_items")
-        .select("product_id, quantity")
-        .gte("created_at", weekAgo),
+      fetchAllRows<{ product_id: string; quantity: number }>(
+        "sale_items",
+        "product_id, quantity",
+        (qb) => qb.gte("created_at", weekAgo)
+      ),
     ]);
 
     if (productsRes.error) {
@@ -49,13 +52,13 @@ export async function GET(req: Request) {
 
     // Aggregate stock across stores per product
     const stockByProduct: Record<string, number> = {};
-    for (const s of stocksRes.data ?? []) {
+    for (const s of stocks) {
       stockByProduct[s.product_id] = (stockByProduct[s.product_id] ?? 0) + Number(s.stock);
     }
 
     // Units sold last 7 days per product
     const soldByProduct: Record<string, number> = {};
-    for (const s of salesRes.data ?? []) {
+    for (const s of saleItems) {
       soldByProduct[s.product_id] = (soldByProduct[s.product_id] ?? 0) + Number(s.quantity);
     }
 

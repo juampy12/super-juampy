@@ -91,18 +91,34 @@ export async function POST(req: Request) {
       }
     }
 
-    // Actualizar precio de los que ya existen (y reactivar si estaban inactivos)
-    for (const p of toUpdate) {
-      const id = resolveExistingId(p.sku)!;
-      const { error } = await supabaseAdmin
-        .from("products")
-        .update({ price: Math.round(p.price * 100) / 100, active: true })
-        .eq("id", id);
+    // Actualizar precio de los que ya existen (y reactivar si estaban inactivos),
+    // en batch en vez de un UPDATE por producto — reusa bulk_update_product_prices_v3
+    // (ya existe, usado por bulk-price-import) para el precio, y un solo
+    // UPDATE...IN para reactivar (active=true es igual para todos, no necesita unnest).
+    if (toUpdate.length > 0) {
+      const ids = toUpdate.map((p) => resolveExistingId(p.sku)!);
+      const prices = toUpdate.map((p) => Math.round(p.price * 100) / 100);
+      const nulls = ids.map(() => null);
+
+      const { data, error } = await supabaseAdmin.rpc("bulk_update_product_prices_v3", {
+        p_ids: ids,
+        p_prices: prices,
+        p_cost_nets: nulls,
+        p_markup_rates: nulls,
+        p_vat_rates: nulls,
+      });
 
       if (error) {
-        errors.push(`Error actualizando ${p.sku}: ${error.message}`);
+        errors.push(`Error actualizando precios: ${error.message}`);
       } else {
-        updated++;
+        updated = data ?? 0;
+        const { error: reactivateErr } = await supabaseAdmin
+          .from("products")
+          .update({ active: true })
+          .in("id", ids);
+        if (reactivateErr) {
+          errors.push(`Error reactivando productos: ${reactivateErr.message}`);
+        }
       }
     }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, unauthorized, isSupervisor, forbidden } from "@/lib/session";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export async function GET(req: Request) {
     const todayDayName = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: tz }).format(now);
 
     // ── Round 1: todas las queries en paralelo ────────────────────────────
-    const [lowStockRes, recentSoldRes, todaySalesRes, pastSalesRes, closuresRes, stockDeficitRes] = await Promise.all([
+    const [lowStockRes, recentSoldRes, todaySalesRes, pastSales, closuresRes, stockDeficitRes] = await Promise.all([
       supabaseAdmin
         .from("product_stocks")
         .select("product_id, store_id, stock")
@@ -47,12 +48,14 @@ export async function GET(req: Request) {
         .gte("created_at", `${todayAR}T00:00:00-03:00`)
         .lte("created_at", `${todayAR}T23:59:59-03:00`),
 
-      supabaseAdmin
-        .from("sales")
-        .select("total, created_at")
-        .eq("status", "confirmed")
-        .gte("created_at", eightWeeksAgo.toISOString())
-        .lt("created_at", `${todayAR}T00:00:00-03:00`),
+      fetchAllRows<{ total: number; created_at: string }>(
+        "sales",
+        "total, created_at",
+        (qb) => qb
+          .eq("status", "confirmed")
+          .gte("created_at", eightWeeksAgo.toISOString())
+          .lt("created_at", `${todayAR}T00:00:00-03:00`)
+      ),
 
       // 2A: últimos cierres para detectar discrepancias
       supabaseAdmin
@@ -121,7 +124,7 @@ export async function GET(req: Request) {
       .reduce((acc: number, s: any) => acc + Number(s.total), 0);
 
     const sameDayTotals: Record<string, number> = {};
-    for (const sale of (pastSalesRes.data ?? [])) {
+    for (const sale of pastSales) {
       const dayName = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: tz })
         .format(new Date(sale.created_at));
       if (dayName !== todayDayName) continue;
