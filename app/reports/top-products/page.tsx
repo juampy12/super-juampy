@@ -63,7 +63,7 @@ export default async function TopProductsPage({ searchParams }: PageProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 overflow-x-hidden p-3 sm:p-0">
       <div className="flex flex-col gap-3">
         <div>
           <h1 className="text-xl font-semibold">Top de productos</h1>
@@ -72,9 +72,9 @@ export default async function TopProductsPage({ searchParams }: PageProps) {
           </p>
         </div>
 
-        <form className="flex flex-col sm:flex-row flex-wrap gap-2" method="get">
+        <form className="grid grid-cols-1 gap-2 sm:flex sm:flex-row sm:flex-wrap" method="get">
           {/* Sucursal */}
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="grid grid-cols-1 gap-1 sm:flex sm:items-center sm:gap-2 min-w-0">
             <label className="text-sm font-medium shrink-0" htmlFor="storeId">
               Sucursal
             </label>
@@ -93,7 +93,7 @@ export default async function TopProductsPage({ searchParams }: PageProps) {
           </div>
 
           {/* Rango de fechas */}
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-1 gap-1 sm:flex sm:items-center sm:gap-2">
             <label className="text-sm font-medium shrink-0" htmlFor="from">
               Desde
             </label>
@@ -106,7 +106,7 @@ export default async function TopProductsPage({ searchParams }: PageProps) {
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-1 gap-1 sm:flex sm:items-center sm:gap-2">
             <label className="text-sm font-medium shrink-0" htmlFor="to">
               Hasta
             </label>
@@ -119,7 +119,7 @@ export default async function TopProductsPage({ searchParams }: PageProps) {
             />
           </div>
 
-          <button type="submit" className="rounded-md border border-neutral-300 px-3 py-2 text-sm self-start sm:self-auto">
+          <button type="submit" className="rounded-md border border-neutral-300 px-3 py-2 text-sm sm:self-auto">
             Aplicar
           </button>
         </form>

@@ -369,7 +369,7 @@ export default function SalesHistorialPage() {
   }
 
   return (
-    <main className="p-3 space-y-6 sm:p-4">
+    <main className="space-y-4 overflow-x-hidden p-3 sm:space-y-6 sm:p-4">
       {voidTarget && (
         <VoidModal
           sale={voidTarget}
@@ -491,9 +491,75 @@ export default function SalesHistorialPage() {
           </div>
         ) : sales.length === 0 ? (
           <p className="text-sm text-neutral-500">No hay ventas con esos filtros.</p>
-	        ) : (
-	          <div className="overflow-x-auto pb-2">
-	            <table className="w-full min-w-[980px] text-xs">
+        ) : (
+          <>
+            <div className="space-y-3 md:hidden">
+              {sales.map((s) => {
+                const isVoided = s.status === "anulada";
+                const isExpanded = expandedId === s.id;
+                const items = itemsCache[s.id];
+                return (
+                  <article key={s.id} className={`rounded-2xl border bg-white p-3 shadow-sm ${isVoided ? "bg-red-50/40 text-neutral-500" : ""}`}>
+                    <button type="button" className="w-full text-left" onClick={() => toggleExpand(s.id)}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-xs text-neutral-500">{formatDateTime(s.created_at)}</div>
+                          <div className="mt-1 font-semibold">{storeName(s.store_id)} · {registerName(s.register_id)}</div>
+                          <div className="mt-1 text-xs text-neutral-500">{METHOD_LABELS[s.method] ?? s.method}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`font-semibold ${isVoided ? "line-through text-neutral-400" : ""}`}>{formatMoney(s.total)}</div>
+                          <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${isVoided ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>
+                            {isVoided ? "ANULADA" : "OK"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs text-neutral-500">{isExpanded ? "▼ Ocultar detalle" : "▶ Ver detalle"}</div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className={`mt-3 rounded-xl p-3 text-xs ${isVoided ? "bg-red-50" : "bg-blue-50"}`}>
+                        {isVoided && s.voided_at && (
+                          <div className="mb-3 space-y-1 text-red-700">
+                            <p className="font-medium">Anulada el {formatDateTime(s.voided_at)}</p>
+                            <p>Ejecutó: {s.voided_by ? s.voided_by.slice(0, 8) : "—"}{s.voided_from_register_id ? ` desde ${registerMap[s.voided_from_register_id] ?? "otra caja"}` : ""}</p>
+                            <p>Autorizó supervisor: {s.void_authorized_name ?? s.void_authorized_code ?? s.void_authorized_by?.slice(0, 8) ?? "—"}</p>
+                            {s.void_reason && <p>Motivo: {s.void_reason}</p>}
+                          </div>
+                        )}
+                        {itemsLoading === s.id ? (
+                          <span className="text-neutral-400">Cargando productos…</span>
+                        ) : !items || items.length === 0 ? (
+                          <span className="text-neutral-400">Sin detalle de productos.</span>
+                        ) : (
+                          <div className="space-y-2">
+                            {items.map((item, idx) => (
+                              <div key={`${item.product_id}-${idx}`} className="rounded-lg bg-white/80 p-2">
+                                <div className="font-medium">{item.name}</div>
+                                <div className="mt-1 flex justify-between gap-2 text-neutral-600">
+                                  <span>Cant. {item.quantity}</span>
+                                  <span>{formatMoney(item.unit_price)} c/u</span>
+                                  <span className="font-semibold text-neutral-900">{formatMoney(item.quantity * item.unit_price)}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {!isVoided && (
+                      <button type="button" onClick={() => setVoidTarget(s)} className="mt-3 w-full rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                        Anular
+                      </button>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto pb-2 md:block">
+              <table className="w-full min-w-[980px] text-xs">
               <thead>
                 <tr className="border-b bg-neutral-50">
                   <th className="text-left py-2 px-2 w-4"></th>
@@ -610,6 +676,7 @@ export default function SalesHistorialPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
     </main>

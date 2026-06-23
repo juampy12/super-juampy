@@ -79,7 +79,7 @@ function AuditCell({ notes, open, onToggle }: { notes: string | null; open: bool
         {total > 0 ? `Ver auditoría (${total})` : "Ver notas"}
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-2 max-h-80 w-[360px] overflow-auto rounded-lg border bg-white p-3 text-[11px] text-neutral-700 shadow-xl">
+        <div className="absolute right-0 z-30 mt-2 max-h-80 w-[min(360px,calc(100vw-2rem))] overflow-auto rounded-lg border bg-white p-3 text-[11px] text-neutral-700 shadow-xl">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="font-semibold text-neutral-900">Detalle de auditoría</div>
             <button
@@ -304,18 +304,18 @@ export default function CashClosuresHistoryPage() {
 	  ].join(" · ");
 
   return (
-    <main className="p-4 space-y-6">
+    <main className="space-y-4 overflow-x-hidden p-3 sm:space-y-6 sm:p-4">
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Historial de cierres</h1>
           <p className="text-sm text-neutral-500">Listado de cierres de caja por fecha, sucursal y caja.</p>
         </div>
 
-        <div className="flex gap-2 flex-wrap">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           <button
             onClick={applyFilters}
             disabled={loading}
-            className="rounded-lg border px-4 py-2 text-sm font-medium bg-neutral-900 text-white disabled:opacity-50"
+            className="rounded-lg border px-4 py-3 text-sm font-medium bg-neutral-900 text-white disabled:opacity-50 sm:py-2"
           >
             Aplicar
           </button>
@@ -449,8 +449,40 @@ export default function CashClosuresHistoryPage() {
         ) : rows.length === 0 ? (
           <p className="text-sm text-neutral-500">No hay cierres con esos filtros.</p>
         ) : (
-          <div className="overflow-x-auto overflow-y-visible pb-36">
-            <table className="min-w-full text-xs">
+          <>
+            <div className="space-y-3 md:hidden">
+              {rows.map((r) => (
+                <article key={r.id} className="rounded-2xl border bg-white p-3 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs text-neutral-500">{formatDate(r.date)} · {formatTime(r.closed_at)}</div>
+                      <div className="mt-1 font-semibold">{storeName(r.store_id)} · {r.register_id ? registerMap[r.register_id] ?? "Caja" : "—"}</div>
+                    </div>
+                    <div className="text-right font-semibold">{formatMoney(r.total_sales)}</div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded-xl bg-neutral-50 p-2">
+                      <div className="text-[11px] uppercase tracking-wide text-neutral-500">Efectivo</div>
+                      <div className="font-semibold">{formatMoney(r.total_cash)}</div>
+                    </div>
+                    <div className="rounded-xl bg-neutral-50 p-2">
+                      <div className="text-[11px] uppercase tracking-wide text-neutral-500">Tickets</div>
+                      <div className="font-semibold">{r.total_tickets}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <AuditCell
+                      notes={r.notes}
+                      open={openAuditId === r.id}
+                      onToggle={() => setOpenAuditId((current) => (current === r.id ? null : r.id))}
+                    />
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto overflow-y-visible pb-36 md:block">
+              <table className="min-w-full text-xs">
               <thead>
                 <tr className="border-b bg-neutral-50">
                   <th className="text-left py-2 px-2">Fecha</th>
@@ -485,6 +517,7 @@ export default function CashClosuresHistoryPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
     </main>

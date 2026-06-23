@@ -156,9 +156,9 @@ export default function ReportsPage() {
   const hasBarData = barChartData.some((b) => b.total > 0);
 
   return (
-    <main className="p-4 space-y-6">
+    <main className="space-y-4 overflow-x-hidden p-3 sm:space-y-6 sm:p-4">
       <div className="space-y-3">
-        <h1 className="text-3xl font-semibold">Reportes</h1>
+        <h1 className="text-2xl font-semibold sm:text-3xl">Reportes</h1>
         <p className="max-w-2xl text-sm text-neutral-600">
           Consulta ingresos por sucursal y rango de fechas. Los KPIs y los gráficos se actualizan automáticamente según tu selección.
         </p>
@@ -168,7 +168,7 @@ export default function ReportsPage() {
       <section className="grid gap-4 lg:grid-cols-[minmax(380px,1fr)_minmax(480px,1fr)]">
         <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
           <h2 className="font-medium mb-2">Rango</h2>
-          <div className="overflow-x-auto">
+          <div className="max-w-full overflow-x-auto">
             <DayPicker
               mode="range"
               selected={range?.from ? range : undefined}
@@ -244,9 +244,9 @@ export default function ReportsPage() {
       />
 
       {/* ─── Tabla por día y sucursal ────────────────────────────────────────── */}
-      <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm overflow-x-auto">
+      <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
         <h2 className="font-medium mb-3">Ingresos por día y sucursal</h2>
-        <table className="min-w-[600px] w-full text-sm divide-y divide-neutral-200">
+        <table className="hidden min-w-[600px] w-full text-sm divide-y divide-neutral-200 md:table">
           <thead>
             <tr className="bg-gray-50 text-left text-xs uppercase tracking-[0.12em] text-neutral-600">
               <th className="py-3 pr-4">Día</th>
@@ -284,6 +284,33 @@ export default function ReportsPage() {
             )}
           </tbody>
         </table>
+        <div className="space-y-2 md:hidden">
+          {days.length ? (
+            days.map((d) =>
+              Object.keys(byDay[d]).sort().map((sn) => (
+                <div key={`${d}-${sn}`} className="rounded-2xl border bg-neutral-50 p-3 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">{sn}</div>
+                      <div className="text-xs text-neutral-500">{d}</div>
+                    </div>
+                    <div className="font-semibold">
+                      ${Number(byDay[d][sn] ?? 0).toLocaleString("es-AR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )
+          ) : (
+            <div className="rounded-3xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-600">
+              <div className="mb-2 text-base font-semibold text-black">Sin datos en el rango seleccionado</div>
+              <div className="text-xs text-neutral-500">Cambiá el rango de fechas o la sucursal para ver resultados.</div>
+            </div>
+          )}
+        </div>
       </section>
     </main>
   );
