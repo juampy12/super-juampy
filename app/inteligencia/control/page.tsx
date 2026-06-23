@@ -121,20 +121,20 @@ export default function IntelligenceControlPage() {
   const alerts = useMemo(() => rows.filter((r) => (r?.risk_score ?? 0) >= 60), [rows]);
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="space-y-4 overflow-x-hidden p-3 sm:p-4">
       <div>
-        <h1 className="text-2xl font-bold">Inteligencia · Control</h1>
+        <h1 className="text-xl font-bold sm:text-2xl">Inteligencia · Control</h1>
         <p className="text-sm opacity-70">
           Este panel marca <b>cajas fuera de patrón</b> (no acusa robo). Usalo para decidir qué día/caja revisar.
         </p>
       </div>
 
-      <div className="flex gap-3 flex-wrap items-end">
+      <div className="grid grid-cols-1 gap-3 rounded-2xl border bg-white p-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
         <div>
           <label className="text-xs opacity-70">Desde</label>
           <input
             type="date"
-            className="border rounded px-2 py-1"
+            className="w-full rounded border px-3 py-2"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
           />
@@ -144,16 +144,16 @@ export default function IntelligenceControlPage() {
           <label className="text-xs opacity-70">Hasta</label>
           <input
             type="date"
-            className="border rounded px-2 py-1"
+            className="w-full rounded border px-3 py-2"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
           />
         </div>
 
-        <div className="min-w-[260px]">
+        <div className="min-w-0 lg:min-w-[260px]">
           <label className="text-xs opacity-70">Sucursal</label>
           <select
-            className="border rounded px-2 py-1 w-full"
+            className="w-full rounded border px-3 py-2"
             value={storeId}
             onChange={(e) => setStoreId(e.target.value)}
           >
@@ -168,7 +168,7 @@ export default function IntelligenceControlPage() {
 
         <button
           onClick={load}
-          className="bg-black text-white rounded px-4 py-2"
+          className="rounded bg-black px-4 py-3 text-white sm:py-2"
           disabled={loading}
         >
           {loading ? "Cargando..." : "Actualizar"}
@@ -217,7 +217,53 @@ export default function IntelligenceControlPage() {
       )}
 
       {/* Tabla simple + motivos */}
-      <div className="border rounded overflow-auto">
+      <div className="space-y-3 md:hidden">
+        {rows.length === 0 && !loading ? (
+          <div className="rounded-2xl border bg-white p-4 text-sm opacity-70">Sin datos para el rango seleccionado.</div>
+        ) : (
+          rows.map((r) => {
+            const key = `${r.day}:${r.store_id}:${r.register_id}`;
+            const isOpen = openKey === key;
+            const b = levelMeta(r.risk_level, r.risk_score);
+            return (
+              <article key={key} className="rounded-2xl border bg-white p-3 shadow-sm">
+                <button type="button" className="w-full text-left" onClick={() => setOpenKey(isOpen ? "" : key)}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs opacity-60">{r.day}</div>
+                      <div className="mt-1 font-semibold">{r.store_name ?? r.store_id}</div>
+                      <div className="text-sm opacity-70">{r.register_name ?? r.register_id}</div>
+                    </div>
+                    <div className="text-right">
+                      <span className={`inline-flex items-center rounded border px-2 py-1 text-xs ${b.cls}`}>{b.text}</span>
+                      <div className="mt-1 text-lg font-bold">{r.risk_score}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded-xl bg-neutral-50 p-2"><div className="text-[11px] uppercase opacity-60">Tickets</div><div className="font-semibold">{r.tickets}</div></div>
+                    <div className="rounded-xl bg-neutral-50 p-2"><div className="text-[11px] uppercase opacity-60">Ventas</div><div className="font-semibold">${Number(r.total_sales).toFixed(2)}</div></div>
+                  </div>
+                  <div className="mt-2 text-xs text-neutral-600">{r.reasons?.[0] ?? "Sin motivo fuerte"}</div>
+                  <div className="mt-2 text-xs text-neutral-500">{isOpen ? "▼ Ocultar detalle" : "▶ Ver detalle"}</div>
+                </button>
+                {isOpen && (
+                  <div className="mt-3 rounded-xl bg-neutral-50 p-3 text-sm">
+                    <div className="grid grid-cols-1 gap-2">
+                      <div className="rounded-xl border bg-white p-2"><div className="text-xs opacity-70">% Efectivo</div><div className="font-semibold">{(Number(r.cash_ratio) * 100).toFixed(1)}%</div><div className="text-xs opacity-70">Δ vs promedio: {r.cash_ratio_delta == null ? "—" : `${(Number(r.cash_ratio_delta) * 100).toFixed(1)} pts`}</div></div>
+                      <div className="rounded-xl border bg-white p-2"><div className="text-xs opacity-70">% Vuelto</div><div className="font-semibold">{(Number(r.change_ratio) * 100).toFixed(2)}%</div><div className="text-xs opacity-70">Δ vs promedio: {r.change_ratio_delta == null ? "—" : `${(Number(r.change_ratio_delta) * 100).toFixed(2)} pts`}</div></div>
+                      <div className="rounded-xl border bg-white p-2"><div className="text-xs opacity-70">Vueltos altos</div><div className="font-semibold">{r.high_change_tickets}</div><div className="text-xs opacity-70">Ventas con vuelto ≥ 25% del total</div></div>
+                    </div>
+                    <div className="mt-3 font-semibold">Motivos</div>
+                    {r.reasons?.length ? <ul className="ml-5 list-disc space-y-1">{r.reasons.map((x, idx) => <li key={`${key}:reason:${idx}`}>{x}</li>)}</ul> : <div className="opacity-70">Sin motivos fuertes.</div>}
+                  </div>
+                )}
+              </article>
+            );
+          })
+        )}
+      </div>
+
+      <div className="hidden border rounded overflow-auto md:block">
         <table className="min-w-[1100px] w-full text-sm">
           <thead className="bg-gray-50">
             <tr>

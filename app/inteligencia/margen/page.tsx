@@ -148,10 +148,10 @@ export default function Page() {
   if (!isSupervisor) return null;
 
   return (
-    <main className="max-w-7xl mx-auto p-4">
+    <main className="mx-auto max-w-7xl overflow-x-hidden p-3 sm:p-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold">IA — Sugerencias de margen</h1>
+          <h1 className="text-xl font-semibold sm:text-2xl">IA — Sugerencias de margen</h1>
           <p className="text-sm text-black/60 mt-1">
             Esto te marca productos donde conviene <b>subir</b> o <b>bajar</b> margen según ventas recientes.
             No aplica cambios: solo recomienda.
@@ -160,7 +160,7 @@ export default function Page() {
 
         <button
           onClick={load}
-          className="px-3 py-2 rounded-lg bg-black text-white hover:bg-black/90"
+          className="w-full rounded-lg bg-black px-3 py-3 text-white hover:bg-black/90 sm:w-auto sm:py-2"
           disabled={loading || !dateFrom || !dateTo}
         >
           {loading ? "Cargando..." : "Actualizar"}
@@ -222,7 +222,38 @@ export default function Page() {
           <div className="text-xs text-black/50">Acción = recomendación (no cambia nada)</div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="space-y-3 p-3 md:hidden">
+          {rows.length === 0 && !loading ? (
+            <div className="rounded-2xl border bg-white p-4 text-sm text-black/60">No hay sugerencias en este rango. Probá ampliar fechas o sacar el filtro de sucursal.</div>
+          ) : (
+            rows.map((r, idx) => {
+              const lvl = levelFromSuggestedPct(r.suggested_pct ?? null);
+              const act = actionFromSuggestedPct(r.suggested_pct ?? null);
+              const title = `${r.name ?? "—"}${r.sku ? ` (${r.sku})` : ""}`;
+              return (
+                <article key={`${r.product_id ?? "x"}-${idx}`} className="rounded-2xl border bg-white p-3 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold leading-snug">{title}</div>
+                      <div className="mt-1 text-xs text-black/50">{r.supplier_name ?? "Proveedor —"}</div>
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${lvl.cls}`}>{lvl.label}</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded-xl bg-neutral-50 p-2"><div className="text-[11px] uppercase text-black/50">Costo</div><div className="font-semibold">{money(r.cost_net)}</div></div>
+                    <div className="rounded-xl bg-neutral-50 p-2"><div className="text-[11px] uppercase text-black/50">Precio actual</div><div className="font-semibold">{money(r.current_price)}</div></div>
+                    <div className="rounded-xl bg-neutral-50 p-2"><div className="text-[11px] uppercase text-black/50">Margen actual</div><div className="font-semibold">{pct(r.current_markup_pct)}</div></div>
+                    <div className="rounded-xl bg-neutral-50 p-2"><div className="text-[11px] uppercase text-black/50">Sugerencia</div><div className="font-semibold">{act} <span className="text-black/60">({pct(r.suggested_pct)})</span></div></div>
+                  </div>
+                  <div className="mt-3 rounded-xl bg-blue-50 p-2 text-sm"><div className="text-[11px] uppercase text-blue-700">Precio sugerido</div><div className="font-semibold">{money(r.suggested_price)}</div></div>
+                  <div className="mt-2 text-sm text-black/70">{r.reason ?? "—"}</div>
+                </article>
+              );
+            })
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-[980px] w-full text-sm">
             <thead className="bg-black/5">
               <tr>

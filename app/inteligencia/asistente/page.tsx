@@ -144,7 +144,7 @@ export default function AsistentePage() {
   const sugerencias = getSugerencias(hourAR, alertWasShown);
 
   return (
-    <div className="max-w-3xl mx-auto p-4 flex flex-col h-[calc(100dvh-120px)]">
+    <div className="mx-auto flex h-[calc(100dvh-92px)] max-w-3xl flex-col overflow-x-hidden p-3 sm:h-[calc(100dvh-120px)] sm:p-4">
       <div className="mb-4">
         <h1 className="text-xl font-semibold">🤖 Asistente IA</h1>
         <p className="text-sm text-gray-500">
@@ -160,7 +160,7 @@ export default function AsistentePage() {
             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${
+              className={`max-w-[92%] rounded-2xl px-3 py-3 text-sm whitespace-pre-wrap sm:max-w-[85%] sm:px-4 ${
                 msg.role === "user"
                   ? "bg-gray-900 text-white rounded-br-sm"
                   : "bg-white border rounded-bl-sm shadow-sm"
@@ -242,7 +242,7 @@ export default function AsistentePage() {
         <button
           onClick={() => sendMessage(input)}
           disabled={loading || !input.trim()}
-          className="bg-gray-900 text-white px-5 py-3 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-gray-700"
+          className="rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-40 sm:px-5"
         >
           Enviar
         </button>

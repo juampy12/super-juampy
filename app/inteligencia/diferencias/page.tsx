@@ -143,10 +143,10 @@ export default function InteligenciaDiferenciasPage() {
   }, [rows]);
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="space-y-4 overflow-x-hidden p-3 sm:p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-3">
-          <h1 className="text-2xl font-bold">Inteligencia · Diferencias de caja</h1>
+          <h1 className="text-xl font-bold sm:text-2xl">Inteligencia · Diferencias de caja</h1>
           <p className="max-w-2xl text-sm text-neutral-600">
             Compara <b>ventas (esperado)</b> vs <b>cierre (declarado)</b> por día y caja.
             <br />
@@ -205,7 +205,7 @@ export default function InteligenciaDiferenciasPage() {
 
       {err && <div className="border border-red-300 bg-red-50 text-red-700 rounded p-3">{err}</div>}
 
-      <div className="grid gap-3 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <div className="rounded-3xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
           <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Total</div>
           <div className="mt-2 text-3xl font-semibold text-black">{stats.total}</div>
@@ -228,7 +228,68 @@ export default function InteligenciaDiferenciasPage() {
         </div>
       </div>
 
-      <div className="rounded-3xl border border-neutral-200 bg-white shadow-sm overflow-x-auto overflow-y-hidden">
+      <div className="space-y-3 md:hidden">
+        {sorted.length === 0 && !loading ? (
+          <div className="rounded-2xl border bg-white p-4 text-sm opacity-70">Sin datos para el rango seleccionado.</div>
+        ) : (
+          sorted.map((r) => {
+            const key = `${r.day}:${r.store_id}:${r.register_id}`;
+            const isOpen = openKey === key;
+            const b = badge(r.risk_level);
+            const dt = r.diff_total;
+            const dtText = dt == null ? "—" : dt < 0 ? `FALTA ${money(Math.abs(dt))}` : dt > 0 ? `SOBRA ${money(dt)}` : "CUADRA";
+            return (
+              <article key={key} className="rounded-2xl border bg-white p-3 shadow-sm">
+                <button type="button" className="w-full text-left" onClick={() => setOpenKey(isOpen ? "" : key)}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs text-neutral-500">{r.day}</div>
+                      <div className="mt-1 font-semibold">{r.store_name ?? r.store_id}</div>
+                      <div className="text-sm text-neutral-600">{r.register_name ?? r.register_id}</div>
+                    </div>
+                    <div className="text-right">
+                      <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${b.cls}`}>{b.text}</span>
+                      <div className="mt-2 text-sm font-semibold">{dtText}</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-neutral-600">{r.reasons?.[0] ?? "—"}</div>
+                  <div className="mt-2 text-xs text-neutral-500">{isOpen ? "▼ Ocultar detalle" : "▶ Ver detalle"}</div>
+                </button>
+                {isOpen && (
+                  <div className="mt-3 rounded-xl bg-neutral-50 p-3 text-sm">
+                    {r.risk_level === "pendiente" ? (
+                      <div><b>PENDIENTE:</b> cargá el cierre de caja de ese día para comparar.</div>
+                    ) : (
+                      <div className="grid gap-2">
+                        {[
+                          ["Efectivo", r.diff_cash, r.expected_cash, r.declared_cash],
+                          ["Débito", r.diff_debit, r.expected_debit, r.declared_debit],
+                          ["MP", r.diff_mp, r.expected_mp, r.declared_mp],
+                          ["Crédito", r.diff_credit, r.expected_credit, r.declared_credit],
+                          ["Cuenta corriente", r.diff_cuenta_corriente, r.expected_cuenta_corriente, r.declared_cuenta_corriente],
+                          ["Mixto", r.diff_mixto, r.expected_mixto, r.declared_mixto],
+                        ].map(([label, diff, expected, declared]) => (
+                          <div key={String(label)} className="rounded-xl border bg-white p-2">
+                            <div className="text-xs uppercase text-neutral-500">{label} (decl − esp)</div>
+                            <div className="font-semibold">{money(diff as number | null)}</div>
+                            <div className="text-xs opacity-70">Esperado: {money(expected as number | null)} · Declarado: {money(declared as number | null)}</div>
+                          </div>
+                        ))}
+                        <div>
+                          <div className="font-semibold">Motivos</div>
+                          {r.reasons?.length ? <ul className="ml-5 list-disc space-y-1">{r.reasons.map((x, idx) => <li key={`${key}:reason:${idx}`}>{x}</li>)}</ul> : <div className="opacity-70">—</div>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })
+        )}
+      </div>
+
+      <div className="hidden rounded-3xl border border-neutral-200 bg-white shadow-sm overflow-x-auto overflow-y-hidden md:block">
         <table className="min-w-[1200px] w-max text-sm divide-y divide-neutral-200">
           <thead className="sticky top-0 z-10 bg-gray-50 text-xs uppercase tracking-[0.12em] text-neutral-600">
             <tr>
