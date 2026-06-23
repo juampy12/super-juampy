@@ -10,6 +10,8 @@ const PUBLIC_PATHS = [
   "/sw.js",
   "/workbox-",
   "/manifest.json",
+  "/icon-maskable-512.png",
+  "/apple-touch-icon.png",
   "/robots.txt",
   "/sitemap.xml",
   "/.well-known/",
