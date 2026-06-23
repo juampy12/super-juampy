@@ -225,9 +225,9 @@ export default function AuditOperationsPage() {
   }
 
   return (
-    <main className="p-4 space-y-6">
+    <main className="space-y-4 p-3 sm:space-y-6 sm:p-4">
       <section className="space-y-2">
-        <h1 className="text-3xl font-semibold">Auditoría de operaciones</h1>
+        <h1 className="text-2xl font-semibold sm:text-3xl">Auditoría de operaciones</h1>
         <p className="max-w-3xl text-sm text-neutral-600">
           Control de anulaciones, cierres y reemplazos de cierre. Sirve para detectar movimientos repetidos,
           operaciones desde otra caja y acciones que conviene revisar.
@@ -327,18 +327,18 @@ export default function AuditOperationsPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-5">
         <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
           <div className="text-xs uppercase tracking-[0.14em] text-neutral-500">Anulaciones</div>
-          <div className="mt-2 text-3xl font-semibold">{data.kpis.voids}</div>
+          <div className="mt-2 text-2xl font-semibold sm:text-3xl">{data.kpis.voids}</div>
         </div>
-        <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm md:col-span-2">
+        <div className="col-span-2 rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm md:col-span-2">
           <div className="text-xs uppercase tracking-[0.14em] text-neutral-500">Monto anulado</div>
-          <div className="mt-2 text-3xl font-semibold">{formatMoney(data.kpis.void_total)}</div>
+          <div className="mt-2 text-2xl font-semibold sm:text-3xl">{formatMoney(data.kpis.void_total)}</div>
         </div>
         <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
           <div className="text-xs uppercase tracking-[0.14em] text-neutral-500">Reemplazos</div>
-          <div className="mt-2 text-3xl font-semibold">{data.kpis.closure_replacements}</div>
+          <div className="mt-2 text-2xl font-semibold sm:text-3xl">{data.kpis.closure_replacements}</div>
         </div>
         <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
           <div className="text-xs uppercase tracking-[0.14em] text-neutral-500">Alertas</div>
@@ -380,7 +380,82 @@ export default function AuditOperationsPage() {
             Mostrando {data.operations.length} movimientos para el filtro actual.
           </p>
         </div>
-        <div className="overflow-x-auto">
+        <div className="space-y-3 md:hidden">
+          {data.operations.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-neutral-300 p-4 text-center text-sm text-neutral-500">
+              No hay operaciones de auditoría en este rango.
+            </div>
+          ) : (
+            data.operations.map((op) => {
+              const fromDifferentRegister = op.from_register_id && op.register_id && op.from_register_id !== op.register_id;
+              const executorId = op.type === "void" ? op.cashier_id : op.actor_id;
+              const executorRole = op.type === "void" ? op.cashier_role : op.actor_role;
+              return (
+                <article key={op.id} className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs text-neutral-500">{formatDateTime(op.at)}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${operationBadgeClass(op.type)}`}>
+                          {operationLabel(op.type)}
+                        </span>
+                        {op.sale_id && <span className="text-xs text-neutral-500">Venta {shortId(op.sale_id)}</span>}
+                        {op.closure_id && <span className="text-xs text-neutral-500">Cierre {shortId(op.closure_id)}</span>}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right text-base font-semibold">{formatMoney(op.total)}</div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded-xl bg-neutral-50 p-2">
+                      <div className="text-[11px] uppercase tracking-wide text-neutral-500">Sucursal</div>
+                      <div className="font-medium">{storeName(op.store_id)}</div>
+                    </div>
+                    <div className="rounded-xl bg-neutral-50 p-2">
+                      <div className="text-[11px] uppercase tracking-wide text-neutral-500">Caja</div>
+                      <div className="font-medium">{registerName(op.register_id)}</div>
+                      {fromDifferentRegister && (
+                        <div className="mt-1 rounded-lg bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                          Desde {registerName(op.from_register_id)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="rounded-xl bg-neutral-50 p-2">
+                      <div className="text-[11px] uppercase tracking-wide text-neutral-500">Ejecutó</div>
+                      <div className="font-medium">{shortId(executorId)}</div>
+                      <div className="text-xs text-neutral-500">{executorRole ?? "-"}</div>
+                    </div>
+                    <div className="rounded-xl bg-neutral-50 p-2">
+                      <div className="text-[11px] uppercase tracking-wide text-neutral-500">Autorizó</div>
+                      {op.type === "void" ? (
+                        <>
+                          <div className="font-medium">{op.supervisor_name ?? shortId(op.supervisor_id)}</div>
+                          <div className="text-xs text-neutral-500">Código {op.supervisor_code ?? "-"}</div>
+                        </>
+                      ) : (
+                        <div className="text-neutral-400">-</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {(op.reason || (op.legacy_notes && op.legacy_notes.length > 0)) && (
+                    <div className="mt-3 rounded-xl bg-neutral-50 p-2 text-sm">
+                      <div className="text-[11px] uppercase tracking-wide text-neutral-500">Motivo</div>
+                      <div className="whitespace-pre-wrap">{op.reason || "-"}</div>
+                      {op.legacy_notes && op.legacy_notes.length > 0 && (
+                        <div className="mt-2 rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                          Nota: {op.legacy_notes.join(" · ")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-[1120px] w-full text-sm">
             <thead>
               <tr className="border-b bg-neutral-50 text-left text-xs uppercase tracking-[0.12em] text-neutral-500">

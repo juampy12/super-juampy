@@ -173,11 +173,19 @@ export default function HeaderNav() {
 
   return (
     <nav ref={navRef} style={{ background: '#CC2020', borderBottom: '3px solid #1A5FA8', position: 'sticky', top: 0, zIndex: 1000 }}>
+      <style jsx global>{`
+        @media (max-width: 767px) {
+          .sj-mobile-nav-bar { height: 48px !important; padding: 0 10px !important; }
+          .sj-mobile-logo { margin-right: 6px !important; }
+          .sj-mobile-logo img { height: 34px !important; }
+          .sj-mobile-hide { display: none !important; }
+        }
+      `}</style>
       {/* Barra principal */}
-      <div style={{ display: 'flex', alignItems: 'stretch', height: '52px', padding: '0 16px', gap: '2px' }}>
+      <div className="sj-mobile-nav-bar" style={{ display: 'flex', alignItems: 'stretch', height: '52px', padding: '0 16px', gap: '2px' }}>
 
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', marginRight: '12px' }}>
+        <div className="sj-mobile-logo" style={{ display: 'flex', alignItems: 'center', marginRight: '12px' }}>
           <img src='/logo-super-juampy-header.png' alt='Super Juampy' style={{ height: '38px', width: 'auto' }} />
         </div>
 
@@ -282,7 +290,7 @@ export default function HeaderNav() {
         {/* Lado derecho: sucursal + nombre + Salir + hamburguesa */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
           {storeName && (
-            <div style={{
+            <div className="sj-mobile-hide" style={{
               background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)',
               color: 'white', fontSize: '12px', padding: '4px 8px', borderRadius: '6px',
               display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap',
@@ -292,7 +300,7 @@ export default function HeaderNav() {
             </div>
           )}
           {empName && (
-            <div style={{
+            <div className="sj-mobile-hide" style={{
               background: '#1A5FA8', color: 'white', fontSize: '12px',
               padding: '4px 8px', borderRadius: '6px',
               display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap',
@@ -303,7 +311,7 @@ export default function HeaderNav() {
             </div>
           )}
           {emp && (
-            <button onClick={logoutPos} style={{
+            <button className="sj-mobile-hide" onClick={logoutPos} style={{
               background: '#A8C62A', color: '#1a1a1a', fontSize: '12px',
               padding: '5px 12px', borderRadius: '6px', fontWeight: '500',
               border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
@@ -451,6 +459,31 @@ export default function HeaderNav() {
               );
             })
           )}
+        {emp && (
+          <div className="md:hidden" style={{ padding: '12px 16px 16px', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+              {storeName && (
+                <span style={{ flex: 1, borderRadius: '10px', background: 'rgba(255,255,255,0.12)', color: 'white', padding: '8px 10px', fontSize: '13px' }}>
+                  {storeName}
+                </span>
+              )}
+              {empName && (
+                <span style={{ flex: 1, borderRadius: '10px', background: '#1A5FA8', color: 'white', padding: '8px 10px', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {empName}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={logoutPos}
+              style={{
+                width: '100%', minHeight: '44px', border: 'none', borderRadius: '12px',
+                background: '#A8C62A', color: '#1a1a1a', fontSize: '14px', fontWeight: 700,
+              }}
+            >
+              Salir
+            </button>
+          </div>
+        )}
         </div>
       )}
 
