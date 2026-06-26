@@ -137,6 +137,13 @@ function parseBalanzaBarcode(code: string): { plu: string; price: number } | nul
 
 // ── Tipos y utilidades para ventas recientes / anulación desde POS ──────────
 
+type SaleItem = {
+  product_id: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+};
+
 type RecentSale = {
   id: string;
   created_at: string;
@@ -144,6 +151,8 @@ type RecentSale = {
   method: string;
   status: string;
   voided_at: string | null;
+  total_paid: number | null;
+  cash_change: number | null;
 };
 
 function formatSaleTime(iso: string) {
@@ -422,6 +431,8 @@ export default function VentasPage() {
       );
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Error");
+      setExpandedSaleId(null);
+      setSaleItemsCache({});
       setRecentSales(
         (json.data ?? []).map((r: any) => ({
           id: r.id,
@@ -430,12 +441,30 @@ export default function VentasPage() {
           method: r.payment?.method ?? "desconocido",
           status: r.status ?? "confirmed",
           voided_at: r.payment?.voided_at ?? null,
+          total_paid: r.payment?.total_paid != null ? Number(r.payment.total_paid) : null,
+          cash_change: r.payment?.change != null ? Number(r.payment.change) : null,
         }))
       );
     } catch {
       toast.error("No se pudieron cargar las ventas recientes");
     } finally {
       setRecentSalesLoading(false);
+    }
+  }
+
+  async function toggleSaleExpand(id: string) {
+    if (expandedSaleId === id) { setExpandedSaleId(null); return; }
+    setExpandedSaleId(id);
+    if (saleItemsCache[id]) return;
+    try {
+      setSaleItemsLoading(id);
+      const res = await fetch(`/api/sales/items?sale_id=${id}`, { cache: "no-store" });
+      const json = await res.json();
+      setSaleItemsCache((prev) => ({ ...prev, [id]: json.data ?? [] }));
+    } catch {
+      setSaleItemsCache((prev) => ({ ...prev, [id]: [] }));
+    } finally {
+      setSaleItemsLoading(null);
     }
   }
 
@@ -623,6 +652,9 @@ export default function VentasPage() {
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
   const [recentSalesLoading, setRecentSalesLoading] = useState(false);
   const [voidTarget, setVoidTarget] = useState<RecentSale | null>(null);
+  const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
+  const [saleItemsCache, setSaleItemsCache] = useState<Record<string, SaleItem[]>>({});
+  const [saleItemsLoading, setSaleItemsLoading] = useState<string | null>(null);
 
   useEffect(() => {
     setHolds(getHolds());
@@ -1536,33 +1568,79 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                 <div className="space-y-1.5">
                   {recentSales.map((sale) => {
                     const isVoided = sale.status === "anulada";
+                    const isExpanded = expandedSaleId === sale.id;
+                    const items = saleItemsCache[sale.id];
+                    const showPayment = sale.method === "efectivo" && sale.total_paid !== null;
                     return (
-                      <div
-                        key={sale.id}
-                        className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm ${isVoided ? "opacity-50 bg-neutral-50" : "bg-white"}`}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className={`flex flex-wrap items-center gap-2 ${isVoided ? "line-through text-neutral-400" : ""}`}>
-                            <span className="font-semibold tabular-nums">{formatSaleTime(sale.created_at)}</span>
-                            <span className="text-neutral-400">·</span>
-                            <span className="font-bold">${sale.total.toFixed(2)}</span>
-                            <span className="text-neutral-400">·</span>
-                            <span className="text-neutral-500 text-xs">{paymentLabel(sale.method as any)}</span>
+                      <div key={sale.id} className="rounded-xl border overflow-hidden text-sm">
+                        {/* Fila principal — clickeable para expandir */}
+                        <div
+                          className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none ${isVoided ? "opacity-50 bg-neutral-50" : isExpanded ? "bg-neutral-50" : "bg-white hover:bg-neutral-50"}`}
+                          onClick={() => toggleSaleExpand(sale.id)}
+                        >
+                          <span className="text-neutral-300 text-[10px] shrink-0 w-3">{isExpanded ? "▼" : "▶"}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className={`flex flex-wrap items-center gap-2 ${isVoided ? "line-through text-neutral-400" : ""}`}>
+                              <span className="font-semibold tabular-nums">{formatSaleTime(sale.created_at)}</span>
+                              <span className="text-neutral-400">·</span>
+                              <span className="font-bold">${sale.total.toFixed(2)}</span>
+                              <span className="text-neutral-400">·</span>
+                              <span className="text-neutral-500 text-xs">{paymentLabel(sale.method as any)}</span>
+                            </div>
+                            {isVoided && (
+                              <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 mt-1">
+                                ANULADA
+                              </span>
+                            )}
                           </div>
-                          {isVoided && (
-                            <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 mt-1">
-                              ANULADA
-                            </span>
+                          {!isVoided && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setVoidTarget(sale); }}
+                              className="ml-1 shrink-0 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100"
+                            >
+                              Anular
+                            </button>
                           )}
                         </div>
-                        {!isVoided && (
-                          <button
-                            type="button"
-                            onClick={() => setVoidTarget(sale)}
-                            className="ml-3 shrink-0 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100"
-                          >
-                            Anular
-                          </button>
+
+                        {/* Detalle expandido */}
+                        {isExpanded && (
+                          <div className="border-t bg-neutral-50 px-3 py-3 space-y-2.5">
+                            {saleItemsLoading === sale.id ? (
+                              <p className="text-xs text-neutral-400">Cargando productos…</p>
+                            ) : !items || items.length === 0 ? (
+                              <p className="text-xs text-neutral-400">Sin detalle de productos.</p>
+                            ) : (
+                              <div>
+                                <div className="text-[10px] uppercase tracking-wide text-neutral-400 font-semibold mb-1.5">Productos</div>
+                                <div className="space-y-1">
+                                  {items.map((item, idx) => (
+                                    <div key={`${item.product_id}-${idx}`} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 text-xs">
+                                      <span className="text-neutral-700 truncate">{item.name}</span>
+                                      <span className="tabular-nums text-neutral-400 text-right">{item.quantity} u.</span>
+                                      <span className="tabular-nums text-neutral-400 text-right">${item.unit_price.toFixed(2)}</span>
+                                      <span className="tabular-nums font-medium text-right">${(item.quantity * item.unit_price).toFixed(2)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {showPayment && (
+                              <div className="border-t border-neutral-200 pt-2 space-y-0.5 text-xs text-neutral-600">
+                                <div className="flex justify-between">
+                                  <span>Pagó</span>
+                                  <span className="tabular-nums font-medium">${sale.total_paid!.toFixed(2)}</span>
+                                </div>
+                                {sale.cash_change !== null && sale.cash_change > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>Vuelto</span>
+                                    <span className="tabular-nums font-medium text-green-700">${sale.cash_change.toFixed(2)}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                     );
