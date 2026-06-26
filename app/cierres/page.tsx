@@ -31,6 +31,7 @@ type TicketRow = {
   id: string;
   time: string;
   total: number;
+  status: string;
   method: string;
   method_label: string;
   cash?: number;
@@ -361,6 +362,7 @@ export default function CashClosurePage() {
               id: String(t.id ?? ""),
               time: String(t.time ?? t.hour ?? ""),
               total: Number(t.total ?? 0),
+              status: String(t.status ?? "confirmed"),
               method: String(t.method ?? ""),
               method_label: String(t.method_label ?? t.method ?? "Sin método"),
               cash: t.cash !== null && t.cash !== undefined ? Number(t.cash) : undefined,
@@ -753,7 +755,7 @@ export default function CashClosurePage() {
         <h2 className="font-medium text-sm">Detalle de tickets</h2>
 
         {tickets.length === 0 ? (
-          <p className="text-sm text-neutral-500">No hay tickets confirmados para esta fecha y sucursal.</p>
+          <p className="text-sm text-neutral-500">No hay tickets para esta fecha y sucursal.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-[800px] text-xs">
@@ -775,16 +777,24 @@ export default function CashClosurePage() {
                 {tickets.map((t) => {
                   const isExpanded = expandedTicketId === t.id;
                   const items = ticketItemsCache[t.id];
+                  const isVoided = t.status === "anulada";
                   return (
                     <React.Fragment key={t.id}>
                       <tr
-                        className="border-b last:border-0 cursor-pointer hover:bg-neutral-50"
+                        className={`border-b last:border-0 cursor-pointer ${isVoided ? "bg-red-50 opacity-70 hover:opacity-90" : "hover:bg-neutral-50"}`}
                         onClick={() => toggleTicketExpand(t.id)}
                       >
                         <td className="py-1 px-2 text-neutral-400">{isExpanded ? "▼" : "▶"}</td>
                         <td className="py-1 px-2">{t.time}</td>
-                        <td className="py-1 px-2 text-right">{formatMoney(t.total)}</td>
-                        <td className="py-1 px-2">{t.method_label}</td>
+                        <td className={`py-1 px-2 text-right ${isVoided ? "line-through text-red-500" : ""}`}>{formatMoney(t.total)}</td>
+                        <td className="py-1 px-2">
+                          <span className={isVoided ? "text-neutral-400" : ""}>{t.method_label}</span>
+                          {isVoided && (
+                            <span className="ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-red-100 text-red-700">
+                              Anulada
+                            </span>
+                          )}
+                        </td>
                         <td className="py-1 px-2 text-right">{t.cash ? formatMoney(t.cash) : "—"}</td>
                         <td className="py-1 px-2 text-right">{t.debit ? formatMoney(t.debit) : "—"}</td>
                         <td className="py-1 px-2 text-right">{t.credit ? formatMoney(t.credit) : "—"}</td>

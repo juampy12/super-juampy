@@ -112,11 +112,13 @@ export async function GET(req: NextRequest) {
 
     const { startUtcIso, endUtcIso } = argentinaDayToUtcRange(dateParam);
 
-    // 1) Ventas confirmadas por sucursal + rango del día Argentina (filtrado en DB)
+    // 1) Ventas confirmadas + anuladas por sucursal + rango del día Argentina
+    //    Las anuladas se incluyen solo para el detalle de tickets; los acumuladores
+    //    (totales, métodos, hourly) siguen sumando exclusivamente las confirmadas.
     let q = supabaseAdmin
       .from("sales")
       .select("id, created_at, total, store_id, status, payment, register_id")
-      .eq("status", "confirmed")
+      .in("status", ["confirmed", "anulada"])
       .eq("store_id", storeId)
       .gte("created_at", startUtcIso)
       .lt("created_at", endUtcIso)
@@ -172,13 +174,7 @@ export async function GET(req: NextRequest) {
 
     for (const row of rows) {
       const saleTotal = safeNumber(row.total);
-      totalAmount += saleTotal;
-      tickets += 1;
-
-      const hourKey = formatHourKeyAR(row.created_at);
-      if (!hourlyMap[hourKey]) hourlyMap[hourKey] = { tickets: 0, total: 0 };
-      hourlyMap[hourKey].tickets += 1;
-      hourlyMap[hourKey].total += saleTotal;
+      const isConfirmed = row.status === "confirmed";
 
       const p: Payment | null = row.payment ?? null;
       const method = (p?.method ?? "desconocido") as string;
@@ -191,58 +187,71 @@ export async function GET(req: NextRequest) {
       let ticketMp = 0;
       let ticketAccount = 0;
 
-      if (method === "efectivo") {
-        const cash = safeNumber(breakdown?.cash ?? p?.total_paid ?? saleTotal);
-        methodTotals.efectivo += cash;
-        cashIn += cash;
-        totalChange += change;
-        ticketCash = cash;
-      } else if (method === "debito") {
-        const paid = safeNumber(breakdown?.debit ?? p?.total_paid ?? saleTotal);
-        methodTotals.debito += paid;
-        ticketDebit = paid;
-      } else if (method === "credito") {
-        const paid = safeNumber(breakdown?.credit ?? p?.total_paid ?? saleTotal);
-        methodTotals.credito += paid;
-        ticketCredit = paid;
-      } else if (method === "mp") {
-        const paid = safeNumber(breakdown?.mp ?? p?.total_paid ?? saleTotal);
-        methodTotals.mp += paid;
-        ticketMp = paid;
-      } else if (method === "cuenta_corriente") {
-        const paid = safeNumber(breakdown?.account ?? p?.total_paid ?? saleTotal);
-        methodTotals.account += paid;
-        ticketAccount = paid;
-      } else if (method === "mixto") {
-        const cash = safeNumber(breakdown.cash ?? 0);
-        const debit = safeNumber(breakdown.debit ?? 0);
-        const credit = safeNumber(breakdown.credit ?? 0);
-        const mp = safeNumber(breakdown.mp ?? 0);
-        const account = safeNumber(breakdown.account ?? 0);
+      // Acumuladores de totales, métodos y hourly: solo ventas confirmadas
+      if (isConfirmed) {
+        totalAmount += saleTotal;
+        tickets += 1;
 
-        methodTotals.efectivo += cash;
-        methodTotals.debito += debit;
-        methodTotals.credito += credit;
-        methodTotals.mp += mp;
-        methodTotals.account += account;
+        const hourKey = formatHourKeyAR(row.created_at);
+        if (!hourlyMap[hourKey]) hourlyMap[hourKey] = { tickets: 0, total: 0 };
+        hourlyMap[hourKey].tickets += 1;
+        hourlyMap[hourKey].total += saleTotal;
 
-        cashIn += cash;
-        totalChange += change;
+        if (method === "efectivo") {
+          const cash = safeNumber(breakdown?.cash ?? p?.total_paid ?? saleTotal);
+          methodTotals.efectivo += cash;
+          cashIn += cash;
+          totalChange += change;
+          ticketCash = cash;
+        } else if (method === "debito") {
+          const paid = safeNumber(breakdown?.debit ?? p?.total_paid ?? saleTotal);
+          methodTotals.debito += paid;
+          ticketDebit = paid;
+        } else if (method === "credito") {
+          const paid = safeNumber(breakdown?.credit ?? p?.total_paid ?? saleTotal);
+          methodTotals.credito += paid;
+          ticketCredit = paid;
+        } else if (method === "mp") {
+          const paid = safeNumber(breakdown?.mp ?? p?.total_paid ?? saleTotal);
+          methodTotals.mp += paid;
+          ticketMp = paid;
+        } else if (method === "cuenta_corriente") {
+          const paid = safeNumber(breakdown?.account ?? p?.total_paid ?? saleTotal);
+          methodTotals.account += paid;
+          ticketAccount = paid;
+        } else if (method === "mixto") {
+          const cash = safeNumber(breakdown.cash ?? 0);
+          const debit = safeNumber(breakdown.debit ?? 0);
+          const credit = safeNumber(breakdown.credit ?? 0);
+          const mp = safeNumber(breakdown.mp ?? 0);
+          const account = safeNumber(breakdown.account ?? 0);
 
-        ticketCash = cash;
-        ticketDebit = debit;
-        ticketCredit = credit;
-        ticketMp = mp;
-        ticketAccount = account;
+          methodTotals.efectivo += cash;
+          methodTotals.debito += debit;
+          methodTotals.credito += credit;
+          methodTotals.mp += mp;
+          methodTotals.account += account;
 
-        mixtoTickets += 1;
-        mixtoTotal += saleTotal;
+          cashIn += cash;
+          totalChange += change;
+
+          ticketCash = cash;
+          ticketDebit = debit;
+          ticketCredit = credit;
+          ticketMp = mp;
+          ticketAccount = account;
+
+          mixtoTickets += 1;
+          mixtoTotal += saleTotal;
+        }
       }
 
+      // Todas las ventas (confirmadas + anuladas) van al detalle de tickets
       ticketsOut.push({
         id: row.id,
         time: formatTimeAR(row.created_at),
         total: saleTotal,
+        status: row.status ?? "confirmed",
         method,
         method_label:
           method === "efectivo"
@@ -263,7 +272,7 @@ export async function GET(req: NextRequest) {
         credit: ticketCredit || undefined,
         mp: ticketMp || undefined,
         account: ticketAccount || undefined,
-        change: change || undefined,
+        change: isConfirmed && change ? change : undefined,
       });
     }
 
