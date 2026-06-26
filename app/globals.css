@@ -64,6 +64,7 @@ body {
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
 }
 
 /* Tap targets */
@@ -289,4 +290,22 @@ html[data-theme="dark"]{
   .text-5xl{ font-size: 2rem !important; line-height: 1.2 !important; }
   .text-4xl{ font-size: 1.75rem !important; line-height: 1.22 !important; }
   .text-3xl{ font-size: 1.5rem !important; line-height: 1.24 !important; }
+}
+
+/* ===== DayPicker: celdas más compactas en mobile (< md) ===== */
+@media (max-width: 767px) {
+  .rdp-root {
+    --rdp-day-width: 36px;
+    --rdp-day-height: 36px;
+    --rdp-day_button-width: 34px;
+    --rdp-day_button-height: 34px;
+  }
+}
+
+/* ===== Inputs de fecha: forzar box-border y sin overflow ===== */
+input[type="date"],
+input[type="datetime-local"] {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
 }

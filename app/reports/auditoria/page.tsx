@@ -225,7 +225,7 @@ export default function AuditOperationsPage() {
   }
 
   return (
-    <main className="space-y-4 p-3 sm:space-y-6 sm:p-4">
+    <main className="space-y-4 overflow-x-hidden p-3 sm:space-y-6 sm:p-4">
       <section className="space-y-2">
         <h1 className="text-2xl font-semibold sm:text-3xl">Auditoría de operaciones</h1>
         <p className="max-w-3xl text-sm text-neutral-600">
@@ -235,8 +235,8 @@ export default function AuditOperationsPage() {
       </section>
 
       <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-5">
-          <label className="space-y-1 text-sm">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-5">
+          <label className="min-w-0 space-y-1 text-sm">
             <span className="text-neutral-600">Desde</span>
             <input
               type="date"
@@ -245,7 +245,7 @@ export default function AuditOperationsPage() {
               className="w-full rounded-xl border border-neutral-300 px-3 py-2"
             />
           </label>
-          <label className="space-y-1 text-sm">
+          <label className="min-w-0 space-y-1 text-sm">
             <span className="text-neutral-600">Hasta</span>
             <input
               type="date"
@@ -254,7 +254,7 @@ export default function AuditOperationsPage() {
               className="w-full rounded-xl border border-neutral-300 px-3 py-2"
             />
           </label>
-          <label className="space-y-1 text-sm">
+          <label className="min-w-0 space-y-1 text-sm">
             <span className="text-neutral-600">Sucursal</span>
             <select
               value={filterStore}
@@ -267,7 +267,7 @@ export default function AuditOperationsPage() {
               ))}
             </select>
           </label>
-          <label className="space-y-1 text-sm">
+          <label className="min-w-0 space-y-1 text-sm">
             <span className="text-neutral-600">Caja</span>
             <select
               value={filterRegister}
@@ -280,7 +280,7 @@ export default function AuditOperationsPage() {
               ))}
             </select>
           </label>
-          <label className="space-y-1 text-sm">
+          <label className="min-w-0 space-y-1 text-sm">
             <span className="text-neutral-600">Tipo</span>
             <select
               value={filterType}

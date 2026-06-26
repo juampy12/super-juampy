@@ -130,7 +130,7 @@ export default function IntelligenceControlPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 rounded-2xl border bg-white p-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
-        <div>
+        <div className="min-w-0">
           <label className="text-xs opacity-70">Desde</label>
           <input
             type="date"
@@ -140,7 +140,7 @@ export default function IntelligenceControlPage() {
           />
         </div>
 
-        <div>
+        <div className="min-w-0">
           <label className="text-xs opacity-70">Hasta</label>
           <input
             type="date"

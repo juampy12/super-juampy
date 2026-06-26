@@ -395,8 +395,8 @@ export default function SalesHistorialPage() {
       </div>
 
       {/* Filtros */}
-      <section className="rounded-xl border p-4 bg-white grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="flex flex-col text-sm">
+      <section className="rounded-xl border p-4 bg-white grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="flex min-w-0 flex-col text-sm">
           <label className="text-neutral-500 mb-1">Sucursal</label>
           <select
             className="w-full rounded border px-3 py-3 text-sm sm:py-2"
@@ -409,7 +409,7 @@ export default function SalesHistorialPage() {
             ))}
           </select>
         </div>
-        <div className="flex flex-col text-sm">
+        <div className="flex min-w-0 flex-col text-sm">
           <label className="text-neutral-500 mb-1">Caja</label>
           <select
             className="w-full rounded border px-3 py-3 text-sm sm:py-2"
@@ -423,7 +423,7 @@ export default function SalesHistorialPage() {
             ))}
           </select>
         </div>
-        <div className="flex flex-col text-sm">
+        <div className="flex min-w-0 flex-col text-sm">
           <label className="text-neutral-500 mb-1">Desde</label>
           <input
             type="date"
@@ -432,7 +432,7 @@ export default function SalesHistorialPage() {
             onChange={(e) => setFromDate(e.target.value)}
           />
         </div>
-        <div className="flex flex-col text-sm">
+        <div className="flex min-w-0 flex-col text-sm">
           <label className="text-neutral-500 mb-1">Hasta</label>
           <input
             type="date"
@@ -441,7 +441,7 @@ export default function SalesHistorialPage() {
             onChange={(e) => setToDate(e.target.value)}
           />
         </div>
-	      </section>
+      </section>
 
 	      <section className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
 	        Mostrando <span className="font-semibold">{scopeLabel}</span>.

@@ -165,10 +165,10 @@ export default function ReportsPage() {
       </div>
 
       {/* ─── Calendario + KPIs ──────────────────────────────────────────────── */}
-      <section className="grid gap-4 lg:grid-cols-[minmax(380px,1fr)_minmax(480px,1fr)]">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(380px,1fr)_minmax(480px,1fr)]">
         <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
           <h2 className="font-medium mb-2">Rango</h2>
-          <div className="max-w-full overflow-x-auto">
+          <div className="overflow-x-auto">
             <DayPicker
               mode="range"
               selected={range?.from ? range : undefined}
@@ -203,7 +203,7 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="rounded-3xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Ingresos</div>
               <div className="mt-2 text-2xl font-semibold text-black">
