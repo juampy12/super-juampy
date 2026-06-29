@@ -236,22 +236,22 @@ export default function AuditOperationsPage() {
 
       <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-5">
-          <label className="min-w-0 space-y-1 text-sm">
+          <label className="flex min-w-0 flex-col gap-1 text-sm">
             <span className="text-neutral-600">Desde</span>
             <input
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              className="w-full rounded-xl border border-neutral-300 px-3 py-2"
+              className="min-w-0 w-full rounded-xl border border-neutral-300 px-3 py-2"
             />
           </label>
-          <label className="min-w-0 space-y-1 text-sm">
+          <label className="flex min-w-0 flex-col gap-1 text-sm">
             <span className="text-neutral-600">Hasta</span>
             <input
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              className="w-full rounded-xl border border-neutral-300 px-3 py-2"
+              className="min-w-0 w-full rounded-xl border border-neutral-300 px-3 py-2"
             />
           </label>
           <label className="min-w-0 space-y-1 text-sm">
