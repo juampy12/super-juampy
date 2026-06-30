@@ -15,6 +15,7 @@ type PaymentBreakdown = {
   debit?: number;
   credit?: number;
   mp?: number;
+  cuenta_corriente?: number;
   account?: number;
 };
 
@@ -216,7 +217,7 @@ export async function GET(req: NextRequest) {
           methodTotals.mp += paid;
           ticketMp = paid;
         } else if (method === "cuenta_corriente") {
-          const paid = safeNumber(breakdown?.account ?? p?.total_paid ?? saleTotal);
+          const paid = safeNumber(breakdown?.cuenta_corriente ?? breakdown?.account ?? p?.total_paid ?? saleTotal);
           methodTotals.account += paid;
           ticketAccount = paid;
         } else if (method === "mixto") {
@@ -224,7 +225,7 @@ export async function GET(req: NextRequest) {
           const debit = safeNumber(breakdown.debit ?? 0);
           const credit = safeNumber(breakdown.credit ?? 0);
           const mp = safeNumber(breakdown.mp ?? 0);
-          const account = safeNumber(breakdown.account ?? 0);
+          const account = safeNumber(breakdown.cuenta_corriente ?? breakdown.account ?? 0);
 
           methodTotals.efectivo += cash;
           methodTotals.debito += debit;

@@ -172,7 +172,7 @@ type PosVoidModalProps = {
 };
 
 function PosVoidModal({ sale, storeName, onClose, onVoided }: PosVoidModalProps) {
-  const [supervisorCode, setSupervisorCode] = useState("900");
+  const [supervisorCode, setSupervisorCode] = useState("");
   const [pin, setPin] = useState("");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
@@ -727,7 +727,13 @@ export default function VentasPage() {
         const defaultStore = posEmployeeRef.current?.store_id ?? list[0]?.id ?? null;
         if (!selectedStoreId) setSelectedStoreId(defaultStore);
       })
-      .catch((e) => toast.error("Error cargando sucursales: " + e.message));
+      .catch(() => {
+        // Sin conexión al arrancar: usar la sucursal guardada en localStorage
+        // para que el cajero pueda vender con el cache de IndexedDB.
+        const fallbackStoreId = posEmployeeRef.current?.store_id ?? null;
+        if (fallbackStoreId) setSelectedStoreId((prev) => prev ?? fallbackStoreId);
+        toast.error("Sin conexión. Operando con los datos guardados.", { duration: 5000 });
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -760,7 +766,12 @@ export default function VentasPage() {
           : null;
         setSelectedRegisterId(matchedRegister?.id ?? (list.length ? list[0].id : null));
       })
-      .catch((e) => { console.error(e); toast.error("Error cargando cajas"); });
+      .catch((e) => {
+        console.error(e);
+        // Sin conexión: usar la caja guardada en localStorage
+        const fallbackRegisterId = posEmployeeRef.current?.register_id ?? null;
+        if (fallbackRegisterId) setSelectedRegisterId((prev) => prev ?? fallbackRegisterId);
+      });
   }, [selectedStoreId]);
 
   function getUnitPrice(p: ProductRow) {
@@ -1915,6 +1926,11 @@ onKeyDown={(e) => {
                           {(it as any).is_balanza && (
                             <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-purple-100 text-purple-800">
                               BALANZA
+                            </span>
+                          )}
+                          {it.unit_price === 0 && !(it as any).is_balanza && (
+                            <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-red-100 text-red-700 font-semibold">
+                              ⚠ SIN PRECIO
                             </span>
                           )}
                         </td>

@@ -374,6 +374,13 @@ export async function POST(req: Request) {
     // Total siempre calculado desde precios de DB (no se acepta del cliente)
     const total = finalItems.reduce((acc, it) => acc + it.quantity * it.unit_price, 0);
 
+    if (total <= 0) {
+      return NextResponse.json(
+        { error: "No se puede confirmar una venta sin importe. Revisá que todos los productos tengan precio." },
+        { status: 400 }
+      );
+    }
+
     const paymentResult = validateAndNormalizePayment(body.payment, total);
     if (!paymentResult.ok) {
       return NextResponse.json({ error: paymentResult.message }, { status: 400 });

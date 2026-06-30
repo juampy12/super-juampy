@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { exportReceiptPDF } from "@/app/_utils/receipt";
 
 type ConfirmItem = {
@@ -168,6 +169,21 @@ export default function ConfirmSaleButton({
           onConfirmed?.(null);
           onQueued?.();
           setShowTicket(true);
+        } else if (res.status === 401) {
+          // Sesión expirada: encolar la venta para no perderla y avisar al cajero.
+          const { addToQueue } = await import("@/lib/offlineQueue");
+          addToQueue(
+            { items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null },
+            currentKey,
+          );
+          idempotencyKeyRef.current = crypto.randomUUID();
+          onConfirmed?.(null);
+          onQueued?.();
+          setShowTicket(true);
+          toast.error(
+            "Tu sesión expiró. Recargá la página e iniciá sesión de nuevo. La venta quedó guardada.",
+            { duration: 10000 },
+          );
         } else {
           // 4xx: error permanente (producto inactivo, datos inválidos) → no encolar.
           // No se resetea el key: misma venta, el usuario puede corregir y reintentar.
