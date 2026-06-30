@@ -301,6 +301,95 @@ function PosVoidModal({ sale, storeName, onClose, onVoided }: PosVoidModalProps)
   );
 }
 
+// ── Modal peso pesables ────────────────────────────────────────────────────────
+
+function WeightModal({
+  productName,
+  pricePerKg,
+  defaultGrams,
+  label,
+  onConfirm,
+  onCancel,
+}: {
+  productName: string;
+  pricePerKg: number;
+  defaultGrams: number;
+  label: string;
+  onConfirm: (grams: number) => void;
+  onCancel: () => void;
+}) {
+  const [gramsStr, setGramsStr] = useState(String(defaultGrams));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const grams = Number(gramsStr.replace(",", "."));
+  const valid = Number.isFinite(grams) && grams > 0;
+  const price = valid ? (grams / 1000) * pricePerKg : null;
+
+  function handleConfirm() {
+    if (!valid) { toast.error("Ingresá una cantidad mayor a 0"); return; }
+    onConfirm(grams);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div className="w-full max-w-xs rounded-2xl bg-white p-6 shadow-2xl">
+        <h2 className="mb-1 text-lg font-semibold">{label}</h2>
+        <p className="mb-4 truncate text-sm text-neutral-500">{productName}</p>
+        <input
+          ref={inputRef}
+          type="number"
+          inputMode="decimal"
+          min="1"
+          step="1"
+          value={gramsStr}
+          onChange={(e) => setGramsStr(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); handleConfirm(); }
+            if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+          }}
+          className="mb-2 w-full rounded-xl border border-neutral-300 px-4 py-3 text-center text-2xl font-bold"
+          placeholder="Gramos"
+        />
+        <p className="mb-4 min-h-[1.5rem] text-center text-sm text-neutral-500">
+          {price !== null ? (
+            <>
+              <span className="font-semibold text-neutral-800">${price.toFixed(2)}</span>
+              {" · "}{grams}g @ ${pricePerKg.toFixed(2)}/kg
+            </>
+          ) : (
+            <span className="text-red-500">Ingresá una cantidad mayor a 0</span>
+          )}
+        </p>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="min-h-[44px] flex-1 rounded-xl border border-neutral-300 py-3 text-sm font-medium"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={!valid}
+            className="min-h-[44px] flex-[2] rounded-xl bg-green-600 py-3 text-sm font-semibold text-white disabled:bg-neutral-300"
+          >
+            {label}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── POS Principal ─────────────────────────────────────────────────────────────
 
 export default function VentasPage() {
@@ -391,8 +480,8 @@ export default function VentasPage() {
       qty: it.qty,
       unit_price: it.unit_price,
       is_weighted: it.is_weighted,
-    })), total);
-    setHolds(getHolds());
+    })), total, selectedRegisterId);
+    setHolds(getHolds(selectedRegisterId));
     setItems([]);
     setSearch("");
     setResults([]);
@@ -412,13 +501,13 @@ export default function VentasPage() {
       is_weighted: it.is_weighted ?? false,
     })));
     removeHold(hold.id);
-    setHolds(getHolds());
+    setHolds(getHolds(selectedRegisterId));
     setShowHolds(false);
   }
 
   function deleteHold(id: string) {
     removeHold(id);
-    setHolds(getHolds());
+    setHolds(getHolds(selectedRegisterId));
   }
 
   async function loadRecentSales() {
@@ -655,10 +744,17 @@ export default function VentasPage() {
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
   const [saleItemsCache, setSaleItemsCache] = useState<Record<string, SaleItem[]>>({});
   const [saleItemsLoading, setSaleItemsLoading] = useState<string | null>(null);
+  const [weightModal, setWeightModal] = useState<{
+    productName: string;
+    pricePerKg: number;
+    defaultGrams: number;
+    label: string;
+    onConfirm: (grams: number) => void;
+  } | null>(null);
 
   useEffect(() => {
-    setHolds(getHolds());
-  }, []);
+    setHolds(getHolds(selectedRegisterId));
+  }, [selectedRegisterId]);
 
   // Selecciona el primer resultado automáticamente cuando cambia la lista
   useEffect(() => {
@@ -993,38 +1089,36 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
     const isWeighted = Boolean((p as any).is_weighted);
 
     if (isWeighted) {
-      const gramsStr = window.prompt(`Ingresar gramos para: ${p.name}`, "100");
-      if (!gramsStr) return;
-
-      const grams = Number(String(gramsStr).replace(",", "."));
-      if (!Number.isFinite(grams) || grams <= 0) {
-        toast.error("Gramos inválidos");
-        return;
-      }
-
-      setItems((prev) => {
-        const existing = prev.find((it) => it.product_id === p.id);
-        if (existing) {
-          return prev.map((it) =>
-            it.product_id === p.id ? { ...it, qty: it.qty + grams } : it
-          );
-        }
-
-        return [
-          ...prev,
-          {
-            product_id: p.id,
-            name: p.name,
-            sku: p.sku,
-            qty: grams,
-            unit_price: getUnitPrice(p),
-            is_weighted: true,
-            base_unit_price: Number(p.price ?? 0),
-            has_offer: Boolean(p.has_offer),
-          } as any,
-        ];
+      setWeightModal({
+        productName: p.name,
+        pricePerKg: getUnitPrice(p),
+        defaultGrams: 100,
+        label: "Agregar al carrito",
+        onConfirm: (grams) => {
+          setWeightModal(null);
+          setItems((prev) => {
+            const existing = prev.find((it) => it.product_id === p.id);
+            if (existing) {
+              return prev.map((it) =>
+                it.product_id === p.id ? { ...it, qty: it.qty + grams } : it
+              );
+            }
+            return [
+              ...prev,
+              {
+                product_id: p.id,
+                name: p.name,
+                sku: p.sku,
+                qty: grams,
+                unit_price: getUnitPrice(p),
+                is_weighted: true,
+                base_unit_price: Number(p.price ?? 0),
+                has_offer: Boolean(p.has_offer),
+              } as any,
+            ];
+          });
+        },
       });
-
       return;
     }
 
@@ -1032,53 +1126,13 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
   }
 
   function addToCart(p: ProductRow) {
-    const isWeighted = Boolean((p as any).is_weighted);
-
     setItems((prev) => {
       const existing = prev.find((it) => it.product_id === p.id);
-
       if (existing) {
-        if ((existing as any).is_weighted) {
-          const gramsStr = window.prompt(`Sumar gramos a: ${existing.name}`, "50");
-          if (!gramsStr) return prev;
-          const grams = Number(String(gramsStr).replace(",", "."));
-          if (!Number.isFinite(grams) || grams <= 0) return prev;
-
-          return prev.map((it) =>
-            it.product_id === p.id ? { ...it, qty: it.qty + grams } : it
-          );
-        }
-
         return prev.map((it) =>
           it.product_id === p.id ? { ...it, qty: it.qty + 1 } : it
         );
       }
-
-      if (isWeighted) {
-        const gramsStr = window.prompt(`Ingresar gramos para: ${p.name}`, "100");
-        if (!gramsStr) return prev;
-
-        const grams = Number(String(gramsStr).replace(",", "."));
-        if (!Number.isFinite(grams) || grams <= 0) {
-          toast.error("Gramos inválidos");
-          return prev;
-        }
-
-        return [
-          ...prev,
-          {
-            product_id: p.id,
-            name: p.name,
-            sku: p.sku,
-            qty: grams,
-            unit_price: getUnitPrice(p),
-            is_weighted: true,
-            base_unit_price: Number(p.price ?? 0),
-            has_offer: Boolean(p.has_offer),
-          } as any,
-        ];
-      }
-
       return [
         ...prev,
         {
@@ -1381,6 +1435,17 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
             </div>
           </div>
         </div>
+      )}
+
+      {weightModal && (
+        <WeightModal
+          productName={weightModal.productName}
+          pricePerKg={weightModal.pricePerKg}
+          defaultGrams={weightModal.defaultGrams}
+          label={weightModal.label}
+          onConfirm={weightModal.onConfirm}
+          onCancel={() => setWeightModal(null)}
+        />
       )}
 
       {showCancelConfirm && (
@@ -1941,16 +2006,19 @@ onKeyDown={(e) => {
                               type="button"
                               className="px-4 py-2 min-w-[44px] min-h-[44px] rounded border text-sm"
                               onClick={() => {
-                                if ((it as any).is_balanza) return; // precio fijo de etiqueta
+                                if ((it as any).is_balanza) return;
                                 if ((it as any).is_weighted) {
-                                  const gramsStr = window.prompt(
-                                    `Restar gramos a: ${it.name}`,
-                                    "50"
-                                  );
-                                  if (!gramsStr) return;
-                                  const grams = Number(String(gramsStr).replace(",", "."));
-                                  if (!Number.isFinite(grams) || grams <= 0) return;
-                                  updateQty(lineKey(it), it.qty - grams);
+                                  const snap = it;
+                                  setWeightModal({
+                                    productName: snap.name,
+                                    pricePerKg: snap.unit_price,
+                                    defaultGrams: 50,
+                                    label: "Restar gramos",
+                                    onConfirm: (grams) => {
+                                      setWeightModal(null);
+                                      updateQty(lineKey(snap), snap.qty - grams);
+                                    },
+                                  });
                                   return;
                                 }
                                 updateQty(lineKey(it), it.qty - 1);
@@ -1972,16 +2040,19 @@ onKeyDown={(e) => {
                               type="button"
                               className="px-4 py-2 min-w-[44px] min-h-[44px] rounded border text-sm"
                               onClick={() => {
-                                if ((it as any).is_balanza) return; // precio fijo de etiqueta
+                                if ((it as any).is_balanza) return;
                                 if ((it as any).is_weighted) {
-                                  const gramsStr = window.prompt(
-                                    `Sumar gramos a: ${it.name}`,
-                                    "50"
-                                  );
-                                  if (!gramsStr) return;
-                                  const grams = Number(String(gramsStr).replace(",", "."));
-                                  if (!Number.isFinite(grams) || grams <= 0) return;
-                                  updateQty(lineKey(it), it.qty + grams);
+                                  const snap = it;
+                                  setWeightModal({
+                                    productName: snap.name,
+                                    pricePerKg: snap.unit_price,
+                                    defaultGrams: 50,
+                                    label: "Sumar gramos",
+                                    onConfirm: (grams) => {
+                                      setWeightModal(null);
+                                      updateQty(lineKey(snap), snap.qty + grams);
+                                    },
+                                  });
                                   return;
                                 }
                                 updateQty(lineKey(it), it.qty + 1);

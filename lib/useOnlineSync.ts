@@ -19,6 +19,8 @@ export function useOnlineSync(onReconnect?: () => void) {
 
   // Lee isOnlineRef (no el estado) para evitar race condition en reconexión:
   // setIsOnline(true) es asíncrono; isOnlineRef.current se actualiza antes de llamar sync().
+  const initialSyncDone = useRef(false);
+
   const sync = useCallback(async () => {
     if (syncing || !isOnlineRef.current) return;
     const count = getQueue().length;
@@ -46,6 +48,11 @@ export function useOnlineSync(onReconnect?: () => void) {
     isOnlineRef.current = online;
     setIsOnline(online);
     updatePending();
+
+    if (!initialSyncDone.current) {
+      initialSyncDone.current = true;
+      if (online && getQueue().length > 0) sync();
+    }
 
     const handleOnline = () => {
       isOnlineRef.current = true;  // actualizar ref síncronamente ANTES de llamar sync()

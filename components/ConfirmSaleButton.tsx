@@ -238,9 +238,10 @@ export default function ConfirmSaleButton({
               <button onClick={() => setShowTicket(false)} style={{ flex:1, padding:"11px 0", borderRadius:8, border:"1px solid #ddd", background:"#fff", cursor:"pointer", fontSize:14, color:"#333" }}>
                 Cerrar
               </button>
+              {/* Imprimir ticket: re-habilitar cuando llegue la impresora térmica
               <button onClick={imprimirTicket} style={{ flex:2, padding:"11px 0", borderRadius:8, border:"none", background:"#1d4ed8", color:"#fff", cursor:"pointer", fontSize:14, fontWeight:600 }}>
                 🖨️ Imprimir ticket
-              </button>
+              </button> */}
             </div>
           </div>
         </div>
