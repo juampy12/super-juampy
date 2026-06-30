@@ -423,20 +423,20 @@ export default function SalesHistorialPage() {
             ))}
           </select>
         </div>
-        <div className="flex min-w-0 w-full flex-col text-sm">
-          <label className="text-neutral-500 mb-1">Desde</label>
+        <div className="min-w-0 text-sm">
+          <label className="block text-neutral-500 mb-1">Desde</label>
           <input
             type="date"
-            className="min-w-0 w-full rounded border px-3 py-3 text-sm sm:py-2"
+            className="block w-full min-w-0 rounded border px-3 py-3 text-sm sm:py-2"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
           />
         </div>
-        <div className="flex min-w-0 w-full flex-col text-sm">
-          <label className="text-neutral-500 mb-1">Hasta</label>
+        <div className="min-w-0 text-sm">
+          <label className="block text-neutral-500 mb-1">Hasta</label>
           <input
             type="date"
-            className="min-w-0 w-full rounded border px-3 py-3 text-sm sm:py-2"
+            className="block w-full min-w-0 rounded border px-3 py-3 text-sm sm:py-2"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
           />
