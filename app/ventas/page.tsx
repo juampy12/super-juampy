@@ -1403,11 +1403,12 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
               </div>
               <div className="mt-4 flex gap-2">
                 <button
-                  className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
                   onClick={closeSaleFeedback}
                 >
                   Cerrar
                 </button>
+                {/* Imprimir ticket: re-habilitar cuando llegue la impresora térmica
                 <button
                   className="flex-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white"
                   onClick={async () => {
@@ -1430,7 +1431,7 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                   }}
                 >
                   🖨️ Imprimir ticket
-                </button>
+                </button> */}
               </div>
             </div>
           </div>
