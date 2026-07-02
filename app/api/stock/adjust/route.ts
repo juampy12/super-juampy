@@ -106,7 +106,7 @@ export async function POST(req: Request) {
         changedItems.map((item) => ({
           store_id: storeId,
           product_id: item.product_id,
-          qty: Math.max(1, Math.round(Math.abs(item.delta))),
+          qty: Math.abs(item.delta),
           qty_delta: item.delta,
           delta: item.delta,
           reason,
