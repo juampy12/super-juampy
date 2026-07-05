@@ -15,9 +15,33 @@ type Suggestion = Product & {
 type GeneratedTexts = { instagram: string; facebook: string };
 type Offer = { type: string; value: number };
 
-// ─── Canvas helpers ───────────────────────────────────────────────────────────
+// ─── Marca / constantes ─────────────────────────────────────────────────────
 
 const CANVAS_SIZE = 1080;
+const LOGO_SRC = "/logo-super-juampy-header.png";
+
+const BRAND = {
+  red: "#CC2020",
+  blue: "#1A5FA8",
+  lime: "#A8C62A",
+  gold: "#FFD700",
+} as const;
+
+type TemplateId = "oferta" | "clean" | "imperdible";
+
+const TEMPLATE_OPTIONS: { id: TemplateId; label: string }[] = [
+  { id: "oferta", label: "Oferta destacada" },
+  { id: "clean", label: "Producto con foto" },
+  { id: "imperdible", label: "¡Imperdible!" },
+];
+
+function pickDefaultTemplate(hasOffer: boolean, hasPhoto: boolean): TemplateId {
+  if (hasOffer) return "oferta";
+  if (hasPhoto) return "clean";
+  return "imperdible";
+}
+
+// ─── Canvas helpers genéricos ────────────────────────────────────────────────
 
 function wrapText(
   ctx: CanvasRenderingContext2D,
@@ -40,6 +64,35 @@ function wrapText(
   return lines;
 }
 
+// Prueba tamaños de fuente decrecientes hasta que el texto entre en maxLines;
+// si ni el más chico entra, corta la última línea con "…" (nunca desborda).
+function fitText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+  sizes: number[]
+): { lines: string[]; fontSize: number; lineHeight: number } {
+  for (const size of sizes) {
+    ctx.font = `bold ${size}px 'Arial', sans-serif`;
+    const lines = wrapText(ctx, text, maxWidth);
+    if (lines.length <= maxLines) {
+      return { lines, fontSize: size, lineHeight: Math.round(size * 1.25) };
+    }
+  }
+
+  const size = sizes[sizes.length - 1];
+  ctx.font = `bold ${size}px 'Arial', sans-serif`;
+  const allLines = wrapText(ctx, text, maxWidth);
+  const lines = allLines.slice(0, maxLines);
+  let last = lines[lines.length - 1] ?? "";
+  while (last.length > 1 && ctx.measureText(`${last}…`).width > maxWidth) {
+    last = last.slice(0, -1);
+  }
+  lines[lines.length - 1] = `${last}…`;
+  return { lines, fontSize: size, lineHeight: Math.round(size * 1.25) };
+}
+
 function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, w: number, h: number, r: number
@@ -55,23 +108,6 @@ function roundRect(
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
-}
-
-function drawTwoColorText(
-  ctx: CanvasRenderingContext2D,
-  text1: string, color1: string,
-  text2: string, color2: string,
-  centerX: number, y: number
-) {
-  const w1 = ctx.measureText(text1).width;
-  const w2 = ctx.measureText(text2).width;
-  const startX = centerX - (w1 + w2) / 2;
-  ctx.textAlign = "left";
-  ctx.fillStyle = color1;
-  ctx.fillText(text1, startX, y);
-  ctx.fillStyle = color2;
-  ctx.fillText(text2, startX + w1, y);
-  ctx.textAlign = "center";
 }
 
 // 4-pointed star path (center cx,cy; outer radius R, inner radius r)
@@ -104,23 +140,100 @@ function calcPromoPrice(price: number, offer: Offer): number | null {
   return null;
 }
 
-// ─── Draw: rotated "¡OFERTA!" badge ──────────────────────────────────────────
+function formatPrice(v: number) {
+  return `$${v.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
 
-function drawOfertaBadge(ctx: CanvasRenderingContext2D, W: number) {
+// ─── Header / footer compartidos (logo real + colores de marca) ─────────────
+
+function drawHeader(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  logoImage: HTMLImageElement | null | undefined
+) {
+  ctx.fillStyle = BRAND.blue;
+  ctx.fillRect(0, 0, W, 120);
+  ctx.fillStyle = BRAND.lime;
+  ctx.fillRect(0, 120, W, 10);
+
+  const logoReady = !!(logoImage && logoImage.complete && logoImage.naturalWidth > 0);
+  if (logoReady) {
+    const logoH = 96;
+    const logoW = logoH * (logoImage!.naturalWidth / logoImage!.naturalHeight);
+    ctx.drawImage(logoImage!, W / 2 - logoW / 2, 12, logoW, logoH);
+  } else {
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = `bold 48px 'Arial', sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText("Super Juampy", W / 2, 72);
+  }
+
+  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  ctx.font = `22px 'Arial', sans-serif`;
+  ctx.textAlign = "right";
+  ctx.fillText("Charata, Chaco", W - 40, 108);
+  ctx.textAlign = "center";
+}
+
+function drawFooter(
+  ctx: CanvasRenderingContext2D,
+  footerY: number,
+  W: number,
+  template: TemplateId,
+  offerText: string
+) {
+  ctx.fillStyle = BRAND.blue;
+  ctx.fillRect(0, footerY, W, 110);
+  ctx.fillStyle = BRAND.lime;
+  ctx.fillRect(0, footerY, W, 6);
+
+  let headline: string;
+  let subtitle: string;
+  if (offerText) {
+    headline = "¡Aprovechá esta promo!";
+    subtitle = "Super Juampy · Charata, Chaco";
+  } else if (template === "imperdible") {
+    headline = "¡No te lo pierdas!";
+    subtitle = "Super Juampy · Charata, Chaco";
+  } else {
+    headline = "¡Visitanos en Charata, Chaco!";
+    subtitle = "Super Juampy · Tu supermercado de confianza";
+  }
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = offerText ? BRAND.gold : "#FFFFFF";
+  ctx.font = `bold ${offerText ? 36 : 32}px 'Arial', sans-serif`;
+  ctx.fillText(headline, W / 2, footerY + 52);
+
+  ctx.fillStyle = "rgba(255,255,255,0.8)";
+  ctx.font = `22px 'Arial', sans-serif`;
+  ctx.fillText(subtitle, W / 2, footerY + (offerText ? 86 : 88));
+}
+
+// ─── Draw: ribbon rotado (¡OFERTA! / ¡IMPERDIBLE!) ───────────────────────────
+
+function drawRibbonBadge(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  label: string,
+  bg: string,
+  fg: string
+) {
   ctx.save();
   ctx.translate(W - 30, 195);
   ctx.rotate(-15 * (Math.PI / 180));
 
-  const bW = 220, bH = 66;
+  const bH = 66;
+  ctx.font = `bold 36px 'Arial', sans-serif`;
+  const textW = ctx.measureText(label).width;
+  const bW = textW + 64;
 
-  // Drop shadow
   ctx.shadowColor = "rgba(0,0,0,0.45)";
   ctx.shadowBlur = 12;
   ctx.shadowOffsetX = 3;
   ctx.shadowOffsetY = 4;
 
-  // Yellow background
-  ctx.fillStyle = "#FFD700";
+  ctx.fillStyle = bg;
   roundRect(ctx, -bW, -bH / 2, bW, bH, 14);
   ctx.fill();
 
@@ -128,47 +241,43 @@ function drawOfertaBadge(ctx: CanvasRenderingContext2D, W: number) {
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
 
-  // Thin dark border
   ctx.strokeStyle = "rgba(0,0,0,0.15)";
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Text "¡OFERTA!"
-  ctx.fillStyle = "#CC2020";
-  ctx.font = `bold 36px 'Arial', sans-serif`;
+  ctx.fillStyle = fg;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("¡OFERTA!", -bW / 2, 2);
+  ctx.fillText(label, -bW / 2, 2);
   ctx.textBaseline = "alphabetic";
   ctx.restore();
 }
 
-// ─── Draw: sparkles around price badge ───────────────────────────────────────
+// ─── Draw: sparkles alrededor de una zona ────────────────────────────────────
 
 function drawSparkles(
   ctx: CanvasRenderingContext2D,
   W: number,
-  priceY: number,
-  pillH: number,
+  zoneY: number,
+  zoneH: number,
   contentBottom: number
 ) {
   const pillW = 520;
   const left = W / 2 - pillW / 2;
   const right = W / 2 + pillW / 2;
-  const top = priceY;
-  const mid = priceY + pillH / 2;
-  const bottom = Math.min(priceY + pillH, contentBottom - 10);
+  const top = zoneY;
+  const mid = zoneY + zoneH / 2;
+  const bottom = Math.min(zoneY + zoneH, contentBottom - 10);
 
   const sparkles = [
-    { x: left - 42, y: top + 18,       r: 20, color: "#FFD700", points: 4 },
-    { x: right + 42, y: top + 18,      r: 16, color: "#A8C62A", points: 4 },
-    { x: left - 52, y: mid,            r: 14, color: "#A8C62A", points: 4 },
-    { x: right + 52, y: mid,           r: 22, color: "#FFD700", points: 4 },
-    { x: left - 28, y: bottom - 22,    r: 12, color: "#FFD700", points: 4 },
-    { x: right + 28, y: bottom - 22,   r: 16, color: "#A8C62A", points: 4 },
+    { x: left - 42, y: top + 18,       r: 20, color: BRAND.gold, points: 4 },
+    { x: right + 42, y: top + 18,      r: 16, color: BRAND.lime, points: 4 },
+    { x: left - 52, y: mid,            r: 14, color: BRAND.lime, points: 4 },
+    { x: right + 52, y: mid,           r: 22, color: BRAND.gold, points: 4 },
+    { x: left - 28, y: bottom - 22,    r: 12, color: BRAND.gold, points: 4 },
+    { x: right + 28, y: bottom - 22,   r: 16, color: BRAND.lime, points: 4 },
   ];
 
-  // Clip so sparkles never bleed into the footer
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 130, W, contentBottom - 130);
@@ -184,14 +293,48 @@ function drawSparkles(
   ctx.restore();
 }
 
-// ─── Draw: price badge (with optional promo/strikethrough) ───────────────────
+// ─── Draw: foto de producto circular ─────────────────────────────────────────
+
+function drawCircularPhoto(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  cx: number,
+  cy: number,
+  radius: number,
+  ringColor: string
+) {
+  ctx.fillStyle = ringColor;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius + 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.clip();
+  const imgW = img.naturalWidth;
+  const imgH = img.naturalHeight;
+  const diameter = radius * 2;
+  const scale = Math.max(diameter / imgW, diameter / imgH);
+  ctx.drawImage(
+    img,
+    cx - (imgW * scale) / 2,
+    cy - (imgH * scale) / 2,
+    imgW * scale,
+    imgH * scale
+  );
+  ctx.restore();
+}
+
+// ─── Draw: pill de precio (tema oscuro sobre rojo / claro sobre blanco) ─────
 
 function drawPriceBadge(
   ctx: CanvasRenderingContext2D,
   product: Product,
   offer: Offer | undefined | null,
   W: number,
-  priceY: number
+  priceY: number,
+  theme: "dark" | "light"
 ): number {
   const promoPrice = offer ? calcPromoPrice(product.price, offer) : null;
   const hasPromo = promoPrice !== null && promoPrice < product.price;
@@ -200,59 +343,51 @@ function drawPriceBadge(
   const pillH = hasPromo ? 172 : 130;
   const pillX = (W - pillW) / 2;
 
-  ctx.fillStyle = "rgba(255,255,255,0.15)";
+  ctx.fillStyle = theme === "dark" ? "rgba(255,255,255,0.15)" : "rgba(17,24,39,0.05)";
   roundRect(ctx, pillX, priceY, pillW, pillH, 24);
   ctx.fill();
 
   ctx.textAlign = "center";
 
   if (hasPromo) {
-    // Strikethrough original price
-    const origText = `$${product.price.toLocaleString("es-AR", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    })}`;
+    const origText = formatPrice(product.price);
     ctx.font = `28px 'Arial', sans-serif`;
-    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fillStyle = theme === "dark" ? "rgba(255,255,255,0.5)" : "rgba(17,24,39,0.4)";
     ctx.fillText(origText, W / 2, priceY + 40);
 
     const origW = ctx.measureText(origText).width;
-    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.strokeStyle = theme === "dark" ? "rgba(255,255,255,0.5)" : "rgba(17,24,39,0.4)";
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(W / 2 - origW / 2, priceY + 28);
     ctx.lineTo(W / 2 + origW / 2, priceY + 28);
     ctx.stroke();
 
-    // "PRECIO OFERTA" label in green
-    ctx.fillStyle = "#A8C62A";
+    ctx.fillStyle = theme === "dark" ? BRAND.lime : BRAND.red;
     ctx.font = `bold 24px 'Arial', sans-serif`;
     ctx.fillText("PRECIO OFERTA", W / 2, priceY + 76);
 
-    // Promo price big and green
-    const promoFormatted = `$${promoPrice!.toLocaleString("es-AR", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    })}`;
-    ctx.fillStyle = "#A8C62A";
+    const promoFormatted = formatPrice(promoPrice!);
+    ctx.fillStyle = theme === "dark" ? BRAND.lime : BRAND.red;
     ctx.font = `bold 92px 'Arial', sans-serif`;
-    ctx.shadowColor = "rgba(0,0,0,0.5)";
-    ctx.shadowBlur = 12;
+    if (theme === "dark") {
+      ctx.shadowColor = "rgba(0,0,0,0.5)";
+      ctx.shadowBlur = 12;
+    }
     ctx.fillText(promoFormatted, W / 2, priceY + 160);
     ctx.shadowBlur = 0;
   } else {
-    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    ctx.fillStyle = theme === "dark" ? "rgba(255,255,255,0.8)" : "rgba(17,24,39,0.55)";
     ctx.font = `28px 'Arial', sans-serif`;
     ctx.fillText("PRECIO", W / 2, priceY + 38);
 
-    const priceFormatted = `$${product.price.toLocaleString("es-AR", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    })}`;
-    ctx.fillStyle = "#FFFFFF";
+    const priceFormatted = formatPrice(product.price);
+    ctx.fillStyle = theme === "dark" ? "#FFFFFF" : BRAND.blue;
     ctx.font = `bold 80px 'Arial', sans-serif`;
-    ctx.shadowColor = "rgba(0,0,0,0.4)";
-    ctx.shadowBlur = 10;
+    if (theme === "dark") {
+      ctx.shadowColor = "rgba(0,0,0,0.4)";
+      ctx.shadowBlur = 10;
+    }
     ctx.fillText(priceFormatted, W / 2, priceY + 112);
     ctx.shadowBlur = 0;
   }
@@ -260,14 +395,235 @@ function drawPriceBadge(
   return pillH;
 }
 
-// ─── Main canvas draw ─────────────────────────────────────────────────────────
+// ─── Draw: bloque de nombre grande + oferta + precio (sin foto) ─────────────
+// Compartido por "oferta" (sin foto) y "imperdible". Cuando reserveRibbonSpace
+// es true, deja libre la esquina superior derecha para que el ribbon rotado
+// nunca se superponga con la primera línea del nombre (ver drawRibbonBadge).
+
+function drawBigNameBlock(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  contentTop: number,
+  contentBottom: number,
+  product: Product,
+  offerText: string,
+  offer: Offer | undefined | null,
+  reserveRibbonSpace: boolean,
+  sizes: number[]
+) {
+  const nameTop = reserveRibbonSpace ? contentTop + 110 : contentTop + 30;
+  const nameBudget = reserveRibbonSpace ? 360 : 440;
+
+  const { lines, fontSize, lineHeight } = fitText(
+    ctx, product.name.toUpperCase(), W - 120, 3, sizes
+  );
+  const nameBlockH = lines.length * lineHeight;
+  const nameStartY = nameTop + (nameBudget - nameBlockH) / 2 + fontSize;
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.textAlign = "center";
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = 16;
+  ctx.shadowOffsetY = 4;
+  lines.forEach((line, i) => ctx.fillText(line, W / 2, nameStartY + i * lineHeight));
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+
+  if (offerText) {
+    ctx.fillStyle = BRAND.lime;
+    ctx.fillRect(60, 630, W - 120, 68);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = `bold 32px 'Arial', sans-serif`;
+    ctx.fillText(offerText.toUpperCase(), W / 2, 674);
+  }
+
+  const priceY = offerText ? 730 : 680;
+  const pillH = drawPriceBadge(ctx, product, offer, W, priceY, "dark");
+  drawSparkles(ctx, W, priceY, pillH, contentBottom);
+}
+
+// ─── Template (a): Oferta destacada ──────────────────────────────────────────
+
+function drawOfertaContent(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  contentTop: number,
+  contentBottom: number,
+  product: Product,
+  offerText: string,
+  offer: Offer | undefined | null,
+  productImage: HTMLImageElement | null
+) {
+  if (offerText) {
+    drawRibbonBadge(ctx, W, "¡OFERTA!", BRAND.gold, BRAND.red);
+  }
+
+  if (productImage) {
+    const photoRadius = 155;
+    const photoCX = W / 2;
+    const photoCY = contentTop + 180;
+    drawCircularPhoto(ctx, productImage, photoCX, photoCY, photoRadius, "rgba(255,255,255,0.2)");
+
+    const { lines, fontSize, lineHeight } = fitText(
+      ctx, product.name.toUpperCase(), W - 120, 2, [72, 60, 48]
+    );
+    const nameStartY = photoCY + photoRadius + 30 + fontSize;
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.textAlign = "center";
+    ctx.shadowColor = "rgba(0,0,0,0.55)";
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 4;
+    lines.forEach((line, i) => ctx.fillText(line, W / 2, nameStartY + i * lineHeight));
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    const nameBottom = nameStartY + (lines.length - 1) * lineHeight;
+
+    let priceY: number;
+    if (offerText) {
+      const obY = nameBottom + 28;
+      ctx.fillStyle = BRAND.lime;
+      ctx.fillRect(60, obY, W - 120, 68);
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = `bold 32px 'Arial', sans-serif`;
+      ctx.fillText(offerText.toUpperCase(), W / 2, obY + 44);
+      priceY = obY + 68 + 24;
+    } else {
+      priceY = nameBottom + 36;
+    }
+
+    const pillH = drawPriceBadge(ctx, product, offer, W, priceY, "dark");
+    drawSparkles(ctx, W, priceY, pillH, contentBottom);
+  } else {
+    drawBigNameBlock(ctx, W, contentTop, contentBottom, product, offerText, offer, !!offerText, [96, 76, 60]);
+  }
+}
+
+// ─── Template (b): Limpio con foto ───────────────────────────────────────────
+
+function drawCleanContent(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  contentTop: number,
+  contentBottom: number,
+  product: Product,
+  offerText: string,
+  offer: Offer | undefined | null,
+  productImage: HTMLImageElement | null
+) {
+  const boxSize = 360;
+  const boxX = (W - boxSize) / 2;
+
+  // Medición previa (nombre + precio) para centrar todo el bloque verticalmente
+  // en el área de contenido, en vez de dejarlo pegado arriba con hueco abajo.
+  const nameFit = fitText(ctx, product.name, W - 140, 2, [50, 42, 34]);
+  const nameBlockH = nameFit.fontSize + (nameFit.lines.length - 1) * nameFit.lineHeight;
+  const promoPrice = offer ? calcPromoPrice(product.price, offer) : null;
+  const priceH = promoPrice !== null && promoPrice < product.price ? 172 : 130;
+  const offerPillH = offerText ? 60 : 0;
+
+  const totalH = boxSize + 64 + offerPillH + nameBlockH + 24 + priceH;
+  const available = contentBottom - contentTop;
+  const boxY = contentTop + Math.max(20, (available - totalH) / 2);
+
+  ctx.save();
+  ctx.shadowColor = "rgba(17,24,39,0.15)";
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 8;
+  ctx.fillStyle = "#FFFFFF";
+  roundRect(ctx, boxX, boxY, boxSize, boxSize, 32);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  roundRect(ctx, boxX, boxY, boxSize, boxSize, 32);
+  ctx.clip();
+
+  if (productImage) {
+    const imgW = productImage.naturalWidth;
+    const imgH = productImage.naturalHeight;
+    const scale = Math.max(boxSize / imgW, boxSize / imgH);
+    ctx.drawImage(
+      productImage,
+      boxX + boxSize / 2 - (imgW * scale) / 2,
+      boxY + boxSize / 2 - (imgH * scale) / 2,
+      imgW * scale,
+      imgH * scale
+    );
+  } else {
+    ctx.fillStyle = "rgba(26,95,168,0.06)";
+    ctx.fillRect(boxX, boxY, boxSize, boxSize);
+    ctx.fillStyle = BRAND.blue;
+    ctx.globalAlpha = 0.5;
+    ctx.font = `bold 150px 'Arial', sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      product.name.trim().charAt(0).toUpperCase(),
+      boxX + boxSize / 2,
+      boxY + boxSize / 2
+    );
+    ctx.globalAlpha = 1;
+    ctx.textBaseline = "alphabetic";
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = BRAND.lime;
+  ctx.lineWidth = 6;
+  roundRect(ctx, boxX, boxY, boxSize, boxSize, 32);
+  ctx.stroke();
+
+  let cursorY = boxY + boxSize + 64;
+  ctx.textAlign = "center";
+
+  if (offerText) {
+    ctx.font = `bold 26px 'Arial', sans-serif`;
+    const textW = ctx.measureText(offerText.toUpperCase()).width;
+    const pillW = textW + 48;
+    ctx.fillStyle = BRAND.red;
+    roundRect(ctx, W / 2 - pillW / 2, cursorY - 34, pillW, 48, 24);
+    ctx.fill();
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillText(offerText.toUpperCase(), W / 2, cursorY);
+    cursorY += 60;
+  }
+
+  ctx.font = `bold ${nameFit.fontSize}px 'Arial', sans-serif`;
+  ctx.fillStyle = "#1F2937";
+  const nameBaseline = cursorY + Math.round(nameFit.fontSize * 0.8);
+  nameFit.lines.forEach((line, i) => ctx.fillText(line, W / 2, nameBaseline + i * nameFit.lineHeight));
+  const nameBottom = nameBaseline + (nameFit.lines.length - 1) * nameFit.lineHeight;
+
+  const priceY = nameBottom + 24;
+  drawPriceBadge(ctx, product, offer, W, priceY, "light");
+}
+
+// ─── Template (c): ¡Imperdible! (sin foto) ───────────────────────────────────
+
+function drawImperdibleContent(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  contentTop: number,
+  contentBottom: number,
+  product: Product,
+  offerText: string,
+  offer: Offer | undefined | null
+) {
+  drawRibbonBadge(ctx, W, "¡IMPERDIBLE!", BRAND.gold, BRAND.red);
+  drawBigNameBlock(ctx, W, contentTop, contentBottom, product, offerText, offer, true, [104, 84, 66]);
+}
+
+// ─── Dispatcher principal ────────────────────────────────────────────────────
 
 function drawMarketingImage(
   canvas: HTMLCanvasElement,
   product: Product,
   offerText: string,
-  offer?: Offer | null,
-  productImage?: HTMLImageElement | null
+  offer: Offer | undefined | null,
+  productImage: HTMLImageElement | null | undefined,
+  logoImage: HTMLImageElement | null | undefined,
+  template: TemplateId
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -277,177 +633,40 @@ function drawMarketingImage(
   canvas.width = W;
   canvas.height = H;
 
-  // Background
-  ctx.fillStyle = "#CC2020";
+  const footerY = H - 110;
+  const contentTop = 130;
+  const contentBottom = footerY;
+  const isClean = template === "clean";
+
+  ctx.fillStyle = isClean ? "#FFFFFF" : BRAND.red;
   ctx.fillRect(0, 0, W, H);
 
-  // Diagonal lines overlay
-  ctx.globalAlpha = 0.06;
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 2;
-  for (let i = -H; i < W + H; i += 60) {
-    ctx.beginPath();
-    ctx.moveTo(i, 0);
-    ctx.lineTo(i + H, H);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-
-  // ── Top blue header ──
-  ctx.fillStyle = "#1A5FA8";
-  ctx.fillRect(0, 0, W, 120);
-
-  ctx.font = `bold 62px 'Arial', sans-serif`;
-  drawTwoColorText(ctx, "Super ", "#FFFFFF", "Juampy", "#A8C62A", W / 2, 82);
-
-  ctx.fillStyle = "#A8C62A";
-  ctx.fillRect(0, 120, W, 10);
-
-  ctx.fillStyle = "rgba(255,255,255,0.7)";
-  ctx.font = `22px 'Arial', sans-serif`;
-  ctx.textAlign = "right";
-  ctx.fillText("Charata, Chaco", W - 40, 108);
-  ctx.textAlign = "center";
-
-  // Footer y-position (content area ends here)
-  const footerY = H - 110;
-
-  // ── "¡OFERTA!" rotated badge (top-right, only when there's an offer) ──
-  if (offerText) {
-    drawOfertaBadge(ctx, W);
-  }
-
-  const hasPhoto =
-    !!(productImage && productImage.complete && productImage.naturalWidth > 0);
-
-  if (hasPhoto) {
-    // ── Layout WITH product photo ──
-    const photoRadius = 155;
-    const photoCX = W / 2;
-    const photoCY = 310;
-
-    // White ring
-    ctx.fillStyle = "rgba(255,255,255,0.2)";
-    ctx.beginPath();
-    ctx.arc(photoCX, photoCY, photoRadius + 10, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Circular clip + cover-fit
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(photoCX, photoCY, photoRadius, 0, Math.PI * 2);
-    ctx.clip();
-    const imgW = productImage!.naturalWidth;
-    const imgH = productImage!.naturalHeight;
-    const diameter = photoRadius * 2;
-    const scale = Math.max(diameter / imgW, diameter / imgH);
-    ctx.drawImage(
-      productImage!,
-      photoCX - (imgW * scale) / 2,
-      photoCY - (imgH * scale) / 2,
-      imgW * scale,
-      imgH * scale
-    );
-    ctx.restore();
-
-    // Product name below photo — bigger + stronger shadow
-    const name = product.name.toUpperCase();
-    let nameFontSize = 72;
-    if (name.length > 20) nameFontSize = 60;
-    if (name.length > 35) nameFontSize = 48;
-
-    ctx.font = `bold ${nameFontSize}px 'Arial', sans-serif`;
-    const nameLines = wrapText(ctx, name, W - 120);
-    const nameLineH = nameFontSize * 1.25;
-    const nameStartY = photoCY + photoRadius + 30 + nameFontSize;
-
-    ctx.fillStyle = "#FFFFFF";
-    ctx.shadowColor = "rgba(0,0,0,0.55)";
-    ctx.shadowBlur = 16;
-    ctx.shadowOffsetY = 4;
-    nameLines.forEach((line, i) =>
-      ctx.fillText(line, W / 2, nameStartY + i * nameLineH)
-    );
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-
-    const nameBottom = nameStartY + (nameLines.length - 1) * nameLineH;
-
-    let priceY: number;
-    if (offerText) {
-      const obY = nameBottom + 28;
-      ctx.fillStyle = "#A8C62A";
-      ctx.fillRect(60, obY, W - 120, 68);
-      ctx.fillStyle = "#FFFFFF";
-      ctx.font = `bold 32px 'Arial', sans-serif`;
-      ctx.textAlign = "center";
-      ctx.fillText(offerText.toUpperCase(), W / 2, obY + 44);
-      priceY = obY + 68 + 24;
-    } else {
-      priceY = nameBottom + 36;
+  if (!isClean) {
+    ctx.globalAlpha = 0.06;
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    for (let i = -H; i < W + H; i += 60) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i + H, H);
+      ctx.stroke();
     }
-
-    const pillH = drawPriceBadge(ctx, product, offer, W, priceY);
-    drawSparkles(ctx, W, priceY, pillH, footerY);
-
-  } else {
-    // ── Layout WITHOUT photo ──
-    const name = product.name.toUpperCase();
-    let nameFontSize = 96;
-    if (name.length > 28) nameFontSize = 76;
-    if (name.length > 42) nameFontSize = 60;
-
-    ctx.font = `bold ${nameFontSize}px 'Arial', sans-serif`;
-    const nameLines = wrapText(ctx, name, W - 120);
-    const nameBlockH = nameLines.length * nameFontSize * 1.25;
-    const nameStartY = 160 + (440 - nameBlockH) / 2 + nameFontSize;
-
-    ctx.fillStyle = "#FFFFFF";
-    ctx.shadowColor = "rgba(0,0,0,0.55)";
-    ctx.shadowBlur = 16;
-    ctx.shadowOffsetY = 4;
-    nameLines.forEach((line, i) =>
-      ctx.fillText(line, W / 2, nameStartY + i * nameFontSize * 1.25)
-    );
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-
-    if (offerText) {
-      ctx.fillStyle = "#A8C62A";
-      ctx.fillRect(60, 630, W - 120, 68);
-      ctx.fillStyle = "#FFFFFF";
-      ctx.font = `bold 32px 'Arial', sans-serif`;
-      ctx.textAlign = "center";
-      ctx.fillText(offerText.toUpperCase(), W / 2, 674);
-    }
-
-    const priceY = offerText ? 730 : 680;
-    const pillH = drawPriceBadge(ctx, product, offer, W, priceY);
-    drawSparkles(ctx, W, priceY, pillH, footerY);
+    ctx.globalAlpha = 1;
   }
 
-  // ── Bottom blue footer ──
-  ctx.fillStyle = "#1A5FA8";
-  ctx.fillRect(0, footerY, W, 110);
-  ctx.fillStyle = "#A8C62A";
-  ctx.fillRect(0, footerY, W, 6);
+  drawHeader(ctx, W, logoImage);
 
-  ctx.textAlign = "center";
-  if (offerText) {
-    ctx.fillStyle = "#FFD700";
-    ctx.font = `bold 36px 'Arial', sans-serif`;
-    ctx.fillText("¡Aprovechá esta promo!", W / 2, footerY + 52);
-    ctx.fillStyle = "rgba(255,255,255,0.8)";
-    ctx.font = `22px 'Arial', sans-serif`;
-    ctx.fillText("Super Juampy · Charata, Chaco", W / 2, footerY + 86);
+  const hasPhoto = !!(productImage && productImage.complete && productImage.naturalWidth > 0);
+
+  if (template === "oferta") {
+    drawOfertaContent(ctx, W, contentTop, contentBottom, product, offerText, offer, hasPhoto ? productImage! : null);
+  } else if (template === "clean") {
+    drawCleanContent(ctx, W, contentTop, contentBottom, product, offerText, offer, hasPhoto ? productImage! : null);
   } else {
-    ctx.fillStyle = "#FFFFFF";
-    ctx.font = `bold 32px 'Arial', sans-serif`;
-    ctx.fillText("¡Visitanos en Charata, Chaco!", W / 2, footerY + 52);
-    ctx.fillStyle = "rgba(255,255,255,0.75)";
-    ctx.font = `22px 'Arial', sans-serif`;
-    ctx.fillText("Super Juampy · Tu supermercado de confianza", W / 2, footerY + 88);
+    drawImperdibleContent(ctx, W, contentTop, contentBottom, product, offerText, offer);
   }
+
+  drawFooter(ctx, footerY, W, template, offerText);
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -468,6 +687,9 @@ export default function MarketingPage() {
 
   const [productImageSrc, setProductImageSrc] = useState<string | null>(null);
 
+  const [template, setTemplate] = useState<TemplateId>("imperdible");
+  const [templateAuto, setTemplateAuto] = useState(true);
+
   const [generating, setGenerating] = useState(false);
   const [texts, setTexts] = useState<GeneratedTexts | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
@@ -476,6 +698,8 @@ export default function MarketingPage() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const productImageRef = useRef<HTMLImageElement | null>(null);
+  const logoImageRef = useRef<HTMLImageElement | null>(null);
+  const [logoLoaded, setLogoLoaded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -486,6 +710,22 @@ export default function MarketingPage() {
     setReady(true);
     if (supervisor) void loadSuggestions();
   }, []);
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      logoImageRef.current = img;
+      setLogoLoaded(true);
+    };
+    img.src = LOGO_SRC;
+  }, []);
+
+  useEffect(() => {
+    if (logoLoaded && selectedProduct) {
+      redrawCanvas(selectedProduct, selectedOffer, productImageRef.current, template);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logoLoaded]);
 
   async function loadSuggestions() {
     setLoadingSuggestions(true);
@@ -510,10 +750,19 @@ export default function MarketingPage() {
   function redrawCanvas(
     prod: Product,
     offer: Offer | undefined,
-    imgEl: HTMLImageElement | null
+    imgEl: HTMLImageElement | null,
+    tmpl: TemplateId
   ) {
     if (!canvasRef.current) return;
-    drawMarketingImage(canvasRef.current, prod, getOfferLabel(offer), offer, imgEl);
+    drawMarketingImage(
+      canvasRef.current,
+      prod,
+      getOfferLabel(offer),
+      offer,
+      imgEl,
+      logoImageRef.current,
+      tmpl
+    );
   }
 
   const searchProducts = useCallback(async (q: string) => {
@@ -551,7 +800,10 @@ export default function MarketingPage() {
     setSearchResults([]);
     setProductImageSrc(null);
     productImageRef.current = null;
-    requestAnimationFrame(() => redrawCanvas(prod, offer, null));
+    setTemplateAuto(true);
+    const nextTemplate = pickDefaultTemplate(!!offer, false);
+    setTemplate(nextTemplate);
+    requestAnimationFrame(() => redrawCanvas(prod, offer, null, nextTemplate));
   }
 
   function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -566,7 +818,9 @@ export default function MarketingPage() {
         productImageRef.current = img;
         const prod = selectedProduct;
         const offer = selectedOffer;
-        if (prod) redrawCanvas(prod, offer, img);
+        const nextTemplate = templateAuto ? pickDefaultTemplate(!!offer, true) : template;
+        if (nextTemplate !== template) setTemplate(nextTemplate);
+        redrawCanvas(prod, offer, img, nextTemplate);
       };
       img.src = src;
     };
@@ -580,7 +834,17 @@ export default function MarketingPage() {
     if (selectedProduct) {
       const prod = selectedProduct;
       const offer = selectedOffer;
-      requestAnimationFrame(() => redrawCanvas(prod, offer, null));
+      const nextTemplate = templateAuto ? pickDefaultTemplate(!!offer, false) : template;
+      if (nextTemplate !== template) setTemplate(nextTemplate);
+      requestAnimationFrame(() => redrawCanvas(prod, offer, null, nextTemplate));
+    }
+  }
+
+  function chooseTemplate(id: TemplateId) {
+    setTemplateAuto(false);
+    setTemplate(id);
+    if (selectedProduct) {
+      redrawCanvas(selectedProduct, selectedOffer, productImageRef.current, id);
     }
   }
 
@@ -811,6 +1075,23 @@ export default function MarketingPage() {
             >
               ⬇ Descargar PNG
             </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {TEMPLATE_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => chooseTemplate(opt.id)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  template === opt.id
+                    ? "border-[#1A5FA8] bg-[#1A5FA8] text-white"
+                    : "border-neutral-300 text-neutral-600 hover:border-[#1A5FA8] hover:bg-blue-50"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
