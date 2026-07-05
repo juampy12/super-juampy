@@ -467,6 +467,7 @@ export default function VentasPage() {
     setMpAmount(0);
     setAccountAmount(0);
     setNotes("");
+    setShowNotes(false);
     setShowCancelConfirm(false);
     setTimeout(() => searchInputRef.current?.focus(), 0);
   }
@@ -670,10 +671,15 @@ export default function VentasPage() {
   }, []);
 
   // =========================
-  // C) FEEDBACK POST VENTA (overlay)
+  // C) FRANJA "ÚLTIMA VENTA"
   // =========================
+  // A diferencia del viejo overlay, esta franja NO se autocierra por tiempo:
+  // queda visible (para que el cajero tenga el vuelto a mano si se distrajo)
+  // hasta que arranca la venta siguiente — se limpia en flashLastAdded, que
+  // corre cada vez que se agrega el primer producto de un carrito nuevo.
   const [saleFeedback, setSaleFeedback] = useState<null | {
     total: number;
+    totalPaid: number;
     method: PaymentMethod;
     change: number;
     items: number;
@@ -682,10 +688,10 @@ export default function VentasPage() {
   }>(null);
 
   const confirmLockRef = useRef(false);
-  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function showSaleFeedback(payload: {
     total: number;
+    totalPaid: number;
     method: PaymentMethod;
     change: number;
     items: number;
@@ -697,21 +703,6 @@ export default function VentasPage() {
     setTimeout(() => {
       confirmLockRef.current = false;
     }, 650);
-
-    // Auto-cierre del feedback en 2.5s
-    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
-    feedbackTimerRef.current = setTimeout(() => {
-      setSaleFeedback(null);
-      feedbackTimerRef.current = null;
-    }, 2500);
-  }
-
-  function closeSaleFeedback() {
-    if (feedbackTimerRef.current) {
-      clearTimeout(feedbackTimerRef.current);
-      feedbackTimerRef.current = null;
-    }
-    setSaleFeedback(null);
   }
 
   // =========================
@@ -784,6 +775,7 @@ export default function VentasPage() {
   const [mpAmount, setMpAmount] = useState(0);
   const [accountAmount, setAccountAmount] = useState(0);
   const [notes, setNotes] = useState("");
+  const [showNotes, setShowNotes] = useState(false);
 
   // En modo rápido: fuerza métodos simples y UI simple
   useEffect(() => {
@@ -1170,6 +1162,10 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
       setLastAddedKey(null);
       lastAddedTimerRef.current = null;
     }, 1500);
+
+    // Cualquier producto agregado marca el arranque de la venta siguiente:
+    // ahí desaparece la franja de "última venta" (con el vuelto de la anterior).
+    setSaleFeedback(null);
   }
 
   function updateQty(key: string, qty: number) {
@@ -1211,10 +1207,6 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
       const isTextarea = tag === "textarea";
       const isSelect = tag === "select";
       const isTyping = isInput || isTextarea || isSelect;
-
-      // El próximo escaneo/tecla cierra al toque el overlay de "venta confirmada"
-      // en vez de dejarlo tapando el carrito (que ya quedó vacío y listo debajo).
-      if (saleFeedback) closeSaleFeedback();
 
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         if (canConfirmNow()) {
@@ -1387,7 +1379,6 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
     quickMode,
     results,
     selectedResultIdx,
-    saleFeedback,
   ]);
 
   // =========================
@@ -1395,70 +1386,6 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
   // =========================
   return (
     <div className="mx-auto max-w-6xl p-3 sm:p-4">
-      {saleFeedback && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl border">
-            <div className="text-center">
-              <div className="text-2xl font-bold">✅ VENTA CONFIRMADA</div>
-              <div className="mt-1 text-sm text-gray-600">
-                {saleFeedback.items} ítems · {paymentLabel(saleFeedback.method)}
-              </div>
-
-              <div className="mt-3 rounded-xl border bg-neutral-50 p-3">
-                <div className="text-xs text-gray-500">TOTAL</div>
-                <div className="text-3xl font-bold">
-                  ${saleFeedback.total.toFixed(2)}
-                </div>
-                {saleFeedback.method === "efectivo" && (
-                  <div className="mt-2 text-sm">
-                    Vuelto:{" "}
-                    <span className="font-semibold">
-                      ${saleFeedback.change.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-3 text-xs text-gray-500">
-                {quickMode ? "Modo cajero rápido" : "POS"} · Se cierra automáticamente
-              </div>
-              <div className="mt-4 flex gap-2">
-                <button
-                  className="w-full rounded-lg border px-3 py-2 text-sm"
-                  onClick={closeSaleFeedback}
-                >
-                  Cerrar
-                </button>
-                {/* Imprimir ticket: re-habilitar cuando llegue la impresora térmica
-                <button
-                  className="flex-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white"
-                  onClick={async () => {
-                    closeSaleFeedback();
-                    const { exportReceiptPDF } = await import("@/app/_utils/receipt");
-                    await exportReceiptPDF({
-                      saleId: saleFeedback.saleId ?? undefined,
-                      storeName: stores.find(s => s.id === selectedStoreId)?.name ?? "Super Juampy",
-                      items: items.map(it => ({
-                        name: it.name,
-                        qty: it.qty,
-                        price: it.unit_price,
-                        subtotal: it.qty * it.unit_price,
-                      })),
-                      payMethod: saleFeedback.method,
-                      amount: saleFeedback.total,
-                      change: saleFeedback.change,
-                      total: saleFeedback.total,
-                    });
-                  }}
-                >
-                  🖨️ Imprimir ticket
-                </button> */}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {weightModal && (
         <WeightModal
           productName={weightModal.productName}
@@ -1764,16 +1691,30 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* IZQUIERDA */}
-        <div className="lg:col-span-1 space-y-3">
-          <div className="rounded-xl border bg-white p-4 shadow-sm">
-            <div className="text-sm font-medium mb-3">Sucursal y caja</div>
+      {saleFeedback && (
+        <div className="mb-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-emerald-900">
+            <span className="font-semibold">✅ Última venta:</span> ${saleFeedback.total.toFixed(2)}
+            {saleFeedback.method === "efectivo" && (
+              <> · Pagó: ${saleFeedback.totalPaid.toFixed(2)}</>
+            )}
+          </div>
+          {saleFeedback.method === "efectivo" && (
+            <div className="text-2xl font-bold text-emerald-700">
+              Vuelto: ${saleFeedback.change.toFixed(2)}
+            </div>
+          )}
+        </div>
+      )}
 
-            <label className="block text-xs text-gray-600 mb-1">Sucursal</label>
-            {isSupervisorRole ? (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* IZQUIERDA */}
+        <div className="lg:col-span-1 space-y-4">
+          {isSupervisorRole ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-gray-500">📍</span>
               <select
-                className="border rounded px-3 py-2 w-full mb-3"
+                className="rounded border px-2 py-1"
                 value={selectedStoreId ?? ""}
                 onChange={(e) => setSelectedStoreId(e.target.value)}
               >
@@ -1783,39 +1724,32 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                   </option>
                 ))}
               </select>
-            ) : (
-              <div className="border rounded px-3 py-2 w-full mb-3 bg-gray-50 text-sm font-medium">
-                {stores.find(s => s.id === selectedStoreId)?.name ?? "Cargando..."}
-              </div>
-            )}
+              {registers.length > 0 && (
+                <select
+                  className="rounded border px-2 py-1"
+                  value={selectedRegisterId ?? ""}
+                  onChange={(e) => setSelectedRegisterId(e.target.value)}
+                >
+                  {registers.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-600">
+              📍 {stores.find(s => s.id === selectedStoreId)?.name ?? "Cargando..."}
+              {registers.length > 0 && (
+                <> · {registers.find(r => r.id === selectedRegisterId)?.name ?? "Cargando..."}</>
+              )}
+            </div>
+          )}
 
-            {registers.length > 0 && (
-              <>
-                <label className="block text-xs text-gray-600 mb-1">Caja</label>
-                {isSupervisorRole ? (
-                  <select
-                    className="border rounded px-3 py-2 w-full"
-                    value={selectedRegisterId ?? ""}
-                    onChange={(e) => setSelectedRegisterId(e.target.value)}
-                  >
-                    {registers.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="border rounded px-3 py-2 w-full bg-gray-50 text-sm font-medium">
-                    {registers.find(r => r.id === selectedRegisterId)?.name ?? "Cargando..."}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <div className="rounded-xl border-2 border-blue-100 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-medium">Buscar producto</div>
+              <div className="text-sm font-semibold">🔎 Buscar producto</div>
               <div className="text-xs text-gray-500">Escáner: automático</div>
             </div>
 
@@ -1987,14 +1921,14 @@ onKeyDown={(e) => {
                   Todavía no agregaste productos.
                 </p>
               ) : (
-                <table className="min-w-[720px] text-sm">
+                <table className="w-full table-fixed text-sm">
                   <thead>
                     <tr className="border-b text-left bg-gray-50">
                       <th className="py-2 px-2">Producto</th>
-                      <th className="py-2 px-2 text-right">Cant.</th>
-                      <th className="py-2 px-2 text-right">Precio</th>
-                      <th className="py-2 px-2 text-right">Subtotal</th>
-                      <th className="py-2 px-2 text-right">Acción</th>
+                      <th className="py-2 px-1 text-right w-24">Cant.</th>
+                      <th className="py-2 px-2 text-right w-20">Precio</th>
+                      <th className="py-2 px-2 text-right w-20">Subtotal</th>
+                      <th className="py-2 px-1 text-right w-9"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2006,7 +1940,7 @@ onKeyDown={(e) => {
                         }`}
                       >
                         <td className="py-2 px-2">
-                          {it.name}
+                          <span className="block break-words">{it.name}</span>
                           {it.has_offer && (
                             <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-800">
                               OFERTA
@@ -2029,11 +1963,11 @@ onKeyDown={(e) => {
                           )}
                         </td>
 
-                        <td className="py-2 px-2">
-                          <div className="flex items-center justify-end gap-2">
+                        <td className="py-2 px-1">
+                          <div className="flex items-center justify-end gap-0.5">
                             <button
                               type="button"
-                              className="px-4 py-2 min-w-[44px] min-h-[44px] rounded border text-sm"
+                              className="w-6 h-6 shrink-0 rounded border text-xs leading-none disabled:opacity-40"
                               onClick={() => {
                                 if ((it as any).is_balanza) return;
                                 if ((it as any).is_weighted) {
@@ -2058,14 +1992,14 @@ onKeyDown={(e) => {
                             </button>
 
                             {(it as any).is_balanza ? (
-                              <span className="w-16 text-center">1</span>
+                              <span className="w-10 text-center text-xs">1</span>
                             ) : (it as any).is_weighted ? (
-                              <span className="w-16 text-center">{it.qty} g</span>
+                              <span className="w-10 text-center text-xs">{it.qty}g</span>
                             ) : (
                               <input
                                 type="number"
                                 min={1}
-                                className="w-16 rounded border px-1 py-1 text-center"
+                                className="w-10 rounded border px-0.5 py-0.5 text-center text-xs"
                                 value={it.qty}
                                 onChange={(e) => {
                                   const n = parseInt(e.target.value, 10);
@@ -2076,7 +2010,7 @@ onKeyDown={(e) => {
 
                             <button
                               type="button"
-                              className="px-4 py-2 min-w-[44px] min-h-[44px] rounded border text-sm"
+                              className="w-6 h-6 shrink-0 rounded border text-xs leading-none disabled:opacity-40"
                               onClick={() => {
                                 if ((it as any).is_balanza) return;
                                 if ((it as any).is_weighted) {
@@ -2126,13 +2060,15 @@ onKeyDown={(e) => {
                           ${calcLineTotal(it as any).toFixed(2)}
                         </td>
 
-                        <td className="py-2 px-2 text-right">
+                        <td className="py-2 px-1 text-right">
                           <button
                             type="button"
-                            className="px-3 py-2 min-w-[44px] min-h-[44px] rounded border text-sm text-red-600 hover:bg-red-50"
+                            className="w-7 h-7 rounded border text-red-600 hover:bg-red-50"
                             onClick={() => removeItem(lineKey(it))}
+                            title="Quitar"
+                            aria-label="Quitar producto"
                           >
-                            Quitar
+                            ✕
                           </button>
                         </td>
                       </tr>
@@ -2336,20 +2272,33 @@ onKeyDown={(e) => {
               </div>
             )}
 
-            {/* Notas: se ocultan en modo rápido */}
+            {/* Notas: se ocultan en modo rápido, y detrás de un link salvo que se usen */}
             {!quickMode && (
-              <div className="mt-3 space-y-1">
-                <label className="text-sm font-medium">Notas</label>
-                <textarea
-                  rows={2}
-                  className="w-full rounded border px-3 py-2 text-sm"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Ej: Pago mixto, datos de tarjeta, cliente de cuenta corriente..."
-                />
-                <div className="text-xs text-gray-500">
-                  Tip: si estás escribiendo, usá <b>Ctrl+Enter</b> para confirmar.
-                </div>
+              <div className="mt-3">
+                {showNotes ? (
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Notas</label>
+                    <textarea
+                      autoFocus
+                      rows={2}
+                      className="w-full rounded border px-3 py-2 text-sm"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Ej: Pago mixto, datos de tarjeta, cliente de cuenta corriente..."
+                    />
+                    <div className="text-xs text-gray-500">
+                      Tip: si estás escribiendo, usá <b>Ctrl+Enter</b> para confirmar.
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowNotes(true)}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    + Agregar nota
+                  </button>
+                )}
               </div>
             )}
 
@@ -2378,6 +2327,7 @@ onKeyDown={(e) => {
                   onConfirmed={(saleId) => {
                     showSaleFeedback({
                       total,
+                      totalPaid,
                       method: paymentMethod,
                       change,
                       items: totalItems,
@@ -2395,6 +2345,7 @@ onKeyDown={(e) => {
                     setMpAmount(0);
                     setAccountAmount(0);
                     setNotes("");
+                    setShowNotes(false);
 
                     setTimeout(() => searchInputRef.current?.focus(), 0);
                   }}
