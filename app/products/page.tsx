@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import toast from "react-hot-toast";
 
 type Store = { id: string; name: string };
 
@@ -108,6 +109,7 @@ export default function ProductsPage() {
   const dirtyCount = Object.keys(dirtyById).length;
 
   const firstInputRef = useRef<HTMLInputElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const hasChanges = useMemo(() => dirtyCount > 0, [dirtyCount]);
 
@@ -132,23 +134,15 @@ export default function ProductsPage() {
     return { up, down };
   }, [dirtyById, rows]);
 
-  function confirmDiscardIfNeeded(actionLabel: string) {
-    if (!hasChanges) return true;
-    return window.confirm(
-      `Tenés ${dirtyCount} producto(s) con cambios sin guardar.\n\nSi continuás, se van a limpiar.\n\n¿Querés continuar con: ${actionLabel}?`
-    );
-  }
-
-  async function reload(opts?: { sid?: string; useLimit?: number; keepEdits?: boolean }) {
+  // Buscar/escanear ya NO descarta cambios pendientes: dirtyById solo se
+  // limpia tras un guardado exitoso o si el usuario confirma el cambio de
+  // sucursal (ver <select> de sucursal más abajo).
+  async function reload(opts?: { sid?: string; useLimit?: number; focusAfter?: "search" | "cost" }) {
     const useId = opts?.sid ?? storeId;
     if (!useId) return;
 
-    const keepEdits = opts?.keepEdits ?? false;
     const useLimit = opts?.useLimit ?? dataLimit;
-
-    if (!keepEdits) {
-      if (!confirmDiscardIfNeeded("Buscar/recargar")) return;
-    }
+    const focusAfter = opts?.focusAfter ?? "cost";
 
     setLoading(true);
     try {
@@ -174,11 +168,12 @@ export default function ProductsPage() {
         return Math.min(p, maxPage);
       });
 
-      if (!keepEdits) setDirtyById({});
-
-      setTimeout(() => firstInputRef.current?.focus(), 50);
+      setTimeout(() => {
+        if (focusAfter === "search") searchInputRef.current?.focus();
+        else firstInputRef.current?.focus();
+      }, 50);
     } catch (e: any) {
-      alert(`Error cargando productos: ${e?.message ?? e}`);
+      toast.error(`Error cargando productos: ${e?.message ?? e}`);
     } finally {
       setLoading(false);
     }
@@ -188,7 +183,7 @@ export default function ProductsPage() {
     if (!storeId) return;
     setPage(0);
     setDataLimit(pageSize);
-    await reload({ sid: storeId, useLimit: pageSize, keepEdits: false });
+    await reload({ sid: storeId, useLimit: pageSize });
   }
 
   async function goPrevPage() {
@@ -202,7 +197,7 @@ export default function ProductsPage() {
 
     if (neededLimit > dataLimit) {
       setDataLimit(neededLimit);
-      await reload({ sid: storeId, useLimit: neededLimit, keepEdits: true });
+      await reload({ sid: storeId, useLimit: neededLimit });
     }
 
     setPage(nextPage);
@@ -225,7 +220,7 @@ export default function ProductsPage() {
     if (!storeId) return;
     setPage(0);
     setDataLimit(pageSize);
-    reload({ sid: storeId, useLimit: pageSize, keepEdits: false });
+    reload({ sid: storeId, useLimit: pageSize, focusAfter: "search" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
@@ -234,47 +229,90 @@ export default function ProductsPage() {
     const t = setTimeout(() => {
       setPage(0);
       setDataLimit(pageSize);
-      reload({ sid: storeId, useLimit: pageSize, keepEdits: false });
+      reload({ sid: storeId, useLimit: pageSize });
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
+  // Atajo "/" para saltar al buscador desde cualquier lado (mismo patrón que /ventas),
+  // salvo que el foco ya esté en un input/textarea/select.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
+      const isTyping = tag === "input" || tag === "textarea" || tag === "select";
+      if (isTyping) return;
+      if (e.key === "/") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Avisar antes de cerrar/recargar la pestaña con cambios sin guardar.
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (!hasChanges) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasChanges]);
+
   const saveAll = async () => {
     const ids = Object.keys(dirtyById);
     if (ids.length === 0) return;
 
-    if (!window.confirm(`¿Guardar ${ids.length} productos?`)) return;
-
     setLoading(true);
     try {
-      for (const productId of ids) {
+      const updates = ids.map((productId) => {
         const payload = dirtyById[productId];
+        return {
+          productId,
+          use_final_price: payload.use_final_price === true,
+          final_price: payload.use_final_price ? payload.final_price : null,
+          cost_net: payload.cost_net,
+          vat_rate: payload.vat_rate,
+          markup_rate: payload.markup_rate,
+        };
+      });
 
-        const res = await fetch("/api/products/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            productId,
-            cost_net: payload.cost_net,
-            vat_rate: payload.vat_rate,
-            markup_rate: payload.markup_rate,
-            units_per_case: payload.units_per_case,
-            use_final_price: payload.use_final_price === true,
-            final_price: payload.use_final_price ? payload.final_price : null,
-          }),
-        });
+      const res = await fetch("/api/products/bulk-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates }),
+      });
 
-        const json = await res.json().catch(() => ({}));
-        if (!json?.ok) {
-          alert(`Error guardando producto (${productId}): ${json?.error ?? "desconocido"}`);
-          return;
-        }
+      const json = await res.json().catch(() => ({}));
+      if (!json?.ok) {
+        // Nada se guardó: se mantienen todos los pendientes.
+        toast.error(`Error guardando cambios: ${json?.error ?? "desconocido"}`);
+        return;
       }
 
-      setDirtyById({});
-      await reload({ sid: storeId, useLimit: dataLimit, keepEdits: true });
-      alert("Cambios guardados ✅");
+      const failedIds: string[] = Array.isArray(json.failedIds) ? json.failedIds : [];
+      const savedCount = ids.length - failedIds.length;
+
+      // Solo se limpian los que efectivamente se guardaron.
+      setDirtyById((prev) => {
+        const next = { ...prev };
+        for (const id of ids) {
+          if (!failedIds.includes(id)) delete next[id];
+        }
+        return next;
+      });
+
+      if (failedIds.length > 0) {
+        toast.error(`${failedIds.length} producto(s) con datos inválidos no se guardaron.`);
+      }
+      if (savedCount > 0) {
+        toast.success(`${savedCount} cambio${savedCount === 1 ? "" : "s"} guardado${savedCount === 1 ? "" : "s"}`);
+      }
+
+      await reload({ sid: storeId, useLimit: dataLimit, focusAfter: "search" });
     } finally {
       setLoading(false);
     }
@@ -330,8 +368,15 @@ export default function ProductsPage() {
           className="w-full border rounded px-3 py-3 sm:py-2 lg:w-auto"
           value={storeId}
           onChange={(e) => {
+            const nextId = e.target.value;
+            if (hasChanges) {
+              const ok = window.confirm(
+                `Tenés ${dirtyCount} producto(s) con cambios sin guardar.\n\nCambiar de sucursal los va a descartar.\n\n¿Querés continuar?`
+              );
+              if (!ok) return;
+            }
             setDirtyById({});
-            setStoreId(e.target.value);
+            setStoreId(nextId);
           }}
         >
           {stores.map((s) => (
@@ -342,8 +387,9 @@ export default function ProductsPage() {
         </select>
 
         <input
+          ref={searchInputRef}
           className="w-full border rounded px-3 py-3 sm:py-2 lg:w-72"
-          placeholder="Buscar nombre o SKU"
+          placeholder="Buscar nombre o SKU (atajo: /)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -388,12 +434,20 @@ export default function ProductsPage() {
           {dirtyCount === 0 ? "Guardar cambios" : `Guardar ${dirtyCount} cambio${dirtyCount === 1 ? "" : "s"}`}
         </button>
 
-        <span className="text-sm text-gray-700 sm:self-center">
-          {dirtyCount === 0 ? "0 cambios pendientes" : <><b>{dirtyCount}</b> cambios pendientes</>}{" "}
+        <span
+          className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold sm:self-center ${
+            dirtyCount > 0
+              ? "border border-amber-300 bg-amber-100 text-amber-800"
+              : "text-gray-500"
+          }`}
+        >
+          {dirtyCount === 0
+            ? "0 cambios pendientes"
+            : `${dirtyCount} cambio${dirtyCount === 1 ? "" : "s"} pendiente${dirtyCount === 1 ? "" : "s"}`}
           {dirtyCount > 0 && (
             <>
-              | <span className="text-emerald-700">↑ {changesSummary.up}</span>{" "}
-              | <span className="text-red-600">↓ {changesSummary.down}</span>
+              <span className="text-emerald-700">↑ {changesSummary.up}</span>
+              <span className="text-red-600">↓ {changesSummary.down}</span>
             </>
           )}
         </span>
@@ -461,6 +515,7 @@ export default function ProductsPage() {
               key={r.id}
               row={r}
               isDirty={!!dirtyById[r.id]}
+              pending={dirtyById[r.id]}
               firstRow={idx === 0}
               firstInputRef={firstInputRef}
               onDirtyChange={(payload) => {
@@ -509,6 +564,7 @@ export default function ProductsPage() {
                 key={r.id}
                 row={r}
                 isDirty={!!dirtyById[r.id]}
+                pending={dirtyById[r.id]}
                 firstRow={idx === 0}
                 firstInputRef={firstInputRef}
                 onDirtyChange={(payload) => {
@@ -552,24 +608,36 @@ function focusNextInput(from: HTMLInputElement) {
 function PriceMobileCard({
   row,
   isDirty,
+  pending,
   onDirtyChange,
   firstRow,
   firstInputRef,
 }: {
   row: Row;
   isDirty: boolean;
+  pending?: DirtyPayload;
   onDirtyChange: (payload: DirtyPayload) => void;
   firstRow: boolean;
   firstInputRef: React.MutableRefObject<HTMLInputElement | null>;
 }) {
-  const [cost, setCost] = useState(n(row.cost_net, 0));
-  const [vat, setVat] = useState(n(row.vat_rate, 21));
-  const [margin, setMargin] = useState(n(row.markup_rate, 0));
+  const [cost, setCost] = useState(n(pending?.cost_net ?? row.cost_net, 0));
+  const [vat, setVat] = useState(n(pending?.vat_rate ?? row.vat_rate, 21));
+  const [margin, setMargin] = useState(n(pending?.markup_rate ?? row.markup_rate, 0));
   const unitsCaseFixed = Math.max(1, n(row.units_per_case, 1));
-  const [useFinalPrice, setUseFinalPrice] = useState(false);
-  const [finalManual, setFinalManual] = useState(n(row.price, 0));
+  const [useFinalPrice, setUseFinalPrice] = useState(pending?.use_final_price === true);
+  const [finalManual, setFinalManual] = useState(n(pending?.final_price ?? row.price, 0));
 
   useEffect(() => {
+    // Si ya hay un cambio pendiente para este producto (reapareció tras una
+    // nueva búsqueda), restaurarlo en vez de pisarlo con los valores de la base.
+    if (pending) {
+      setCost(n(pending.cost_net, 0));
+      setVat(n(pending.vat_rate, 21));
+      setMargin(n(pending.markup_rate, 0));
+      setUseFinalPrice(pending.use_final_price === true);
+      setFinalManual(n(pending.final_price ?? row.price, 0));
+      return;
+    }
     const nextCost = n(row.cost_net, 0);
     const nextVat = n(row.vat_rate, 21);
     const nextMargin = n(row.markup_rate, 0);
@@ -580,7 +648,7 @@ function PriceMobileCard({
     setFinalManual(nextPrice);
     const calc = calcFinalPrice(nextCost, nextVat, nextMargin);
     setUseFinalPrice(Math.abs(nextPrice - calc) > 0.009);
-  }, [row.id, row.cost_net, row.vat_rate, row.markup_rate, row.price]);
+  }, [row.id, row.cost_net, row.vat_rate, row.markup_rate, row.price, pending]);
 
   const calcPrice = calcFinalPrice(cost, vat, margin);
   const shownPrice = useFinalPrice ? finalManual : calcPrice;
@@ -671,29 +739,43 @@ function PriceMobileCard({
 function RowLine({
   row,
   isDirty,
+  pending,
   onDirtyChange,
   firstRow,
   firstInputRef,
 }: {
   row: Row;
   isDirty: boolean;
+  pending?: DirtyPayload;
   onDirtyChange: (payload: DirtyPayload) => void;
   firstRow: boolean;
   firstInputRef: React.MutableRefObject<HTMLInputElement | null>;
 }) {
-  const [cost, setCost] = useState(n(row.cost_net, 0));
-  const [vat, setVat] = useState(n(row.vat_rate, 21));
-  const [margin, setMargin] = useState(n(row.markup_rate, 0));
+  const [cost, setCost] = useState(n(pending?.cost_net ?? row.cost_net, 0));
+  const [vat, setVat] = useState(n(pending?.vat_rate ?? row.vat_rate, 21));
+  const [margin, setMargin] = useState(n(pending?.markup_rate ?? row.markup_rate, 0));
 
   // fijo: no se edita acá
   const unitsCaseFixed = Math.max(1, n(row.units_per_case, 1));
 
   // ✅ modo manual/auto persistente al recargar
-  const [useFinalPrice, setUseFinalPrice] = useState(false);
-  const [finalManual, setFinalManual] = useState(n(row.price, 0));
+  const [useFinalPrice, setUseFinalPrice] = useState(pending?.use_final_price === true);
+  const [finalManual, setFinalManual] = useState(n(pending?.final_price ?? row.price, 0));
 
-  // ✅ sincronizar state cuando cambian los datos del row (recargar / cambiar sucursal / buscar)
+  // ✅ sincronizar state cuando cambian los datos del row (recargar / cambiar sucursal / buscar),
+  // salvo que ya haya un cambio pendiente para este producto: en ese caso se
+  // restaura el pendiente en vez de pisarlo con los valores de la base
+  // (puede reaparecer tras una nueva búsqueda sin haberse guardado todavía).
   useEffect(() => {
+    if (pending) {
+      setCost(n(pending.cost_net, 0));
+      setVat(n(pending.vat_rate, 21));
+      setMargin(n(pending.markup_rate, 0));
+      setUseFinalPrice(pending.use_final_price === true);
+      setFinalManual(n(pending.final_price ?? row.price, 0));
+      return;
+    }
+
     const nextCost = n(row.cost_net, 0);
     const nextVat = n(row.vat_rate, 21);
     const nextMargin = n(row.markup_rate, 0);
@@ -710,7 +792,7 @@ function RowLine({
     const isManual = Math.abs(nextPrice - calc) > 0.009;
     setUseFinalPrice(isManual);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [row.id, row.cost_net, row.vat_rate, row.markup_rate, row.price]);
+  }, [row.id, row.cost_net, row.vat_rate, row.markup_rate, row.price, pending]);
 
   const calcPrice = calcFinalPrice(cost, vat, margin);
   const shownPrice = useFinalPrice ? finalManual : calcPrice;
