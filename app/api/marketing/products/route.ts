@@ -31,7 +31,35 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Error al procesar la operación" }, { status: 500 });
     }
 
-    return NextResponse.json({ products: data ?? [] });
+    const products = data ?? [];
+    const productIds = products.map((p) => p.id);
+
+    let offerByProduct = new Map<string, { type: string; value: number }>();
+    if (productIds.length > 0) {
+      const nowIso = new Date().toISOString();
+      const { data: offers, error: offersError } = await supabaseAdmin
+        .from("product_offers")
+        .select("product_id, type, value")
+        .in("product_id", productIds)
+        .eq("is_active", true)
+        .lte("starts_at", nowIso)
+        .gte("ends_at", nowIso);
+
+      if (offersError) {
+        console.error("Error buscando ofertas:", offersError);
+      } else {
+        offerByProduct = new Map(
+          (offers ?? []).map((o) => [o.product_id, { type: o.type, value: Number(o.value) }])
+        );
+      }
+    }
+
+    const productsWithOffers = products.map((p) => ({
+      ...p,
+      offer: offerByProduct.get(p.id),
+    }));
+
+    return NextResponse.json({ products: productsWithOffers });
   } catch (e) {
     console.error("Error en /api/marketing/products:", e);
     return NextResponse.json({ error: "Error inesperado" }, { status: 500 });

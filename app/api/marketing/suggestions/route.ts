@@ -80,9 +80,13 @@ export async function GET(req: Request) {
 
     const seen = new Set<string>();
 
+    // Tope total de sugerencias mostradas (antes 5, con las ofertas capadas en 3
+    // se cortaban en silencio si había más promos activas que eso).
+    const MAX_SUGGESTIONS = 10;
+
     // Priority 1: products with active offers
     for (const [productId, offer] of offerByProduct) {
-      if (seen.size >= 3) break;
+      if (seen.size >= MAX_SUGGESTIONS) break;
       const prod = productMap.get(productId);
       if (!prod) continue;
       seen.add(productId);
@@ -111,7 +115,7 @@ export async function GET(req: Request) {
       });
 
     for (const c of highStockCandidates) {
-      if (suggestions.length >= 5) break;
+      if (suggestions.length >= MAX_SUGGESTIONS) break;
       const prod = productMap.get(c.id)!;
       seen.add(c.id);
       const reason =

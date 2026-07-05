@@ -3,17 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getPosEmployee } from "@/lib/posSession";
 
-type Product = { id: string; name: string; price: number };
+type Offer = { type: string; value: number };
+
+type Product = { id: string; name: string; price: number; offer?: Offer };
 
 type Suggestion = Product & {
   reason: string;
   stock: number;
   sold7d: number;
-  offer?: { type: string; value: number };
 };
 
 type GeneratedTexts = { instagram: string; facebook: string };
-type Offer = { type: string; value: number };
 
 // ─── Marca / constantes ─────────────────────────────────────────────────────
 
@@ -992,7 +992,7 @@ export default function MarketingPage() {
               <li
                 key={p.id}
                 className="flex items-center justify-between px-3 py-2 hover:bg-neutral-50 cursor-pointer"
-                onClick={() => selectProduct(p)}
+                onClick={() => selectProduct(p, p.offer)}
               >
                 <span className="flex-1 truncate">{p.name}</span>
                 <span className="ml-3 font-medium text-xs whitespace-nowrap">
