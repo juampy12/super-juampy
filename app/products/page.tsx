@@ -359,32 +359,38 @@ export default function ProductsPage() {
       <h1 className="text-2xl font-semibold mb-4">Precios</h1>
 
       <p className="mb-4 max-w-3xl text-sm text-neutral-600">
-        Editá precios base por sucursal. El precio sugerido es solo una referencia calculada con costo, IVA y margen;
-        el POS sigue cobrando el precio final.
+        Los precios son únicos para todas las sucursales. El precio sugerido es solo una referencia calculada con
+        costo, IVA y margen; el POS sigue cobrando el precio final.
       </p>
 
       <div className="grid gap-3 mb-4 sm:grid-cols-2 lg:flex lg:items-end lg:flex-wrap">
-        <select
-          className="w-full border rounded px-3 py-3 sm:py-2 lg:w-auto"
-          value={storeId}
-          onChange={(e) => {
-            const nextId = e.target.value;
-            if (hasChanges) {
-              const ok = window.confirm(
-                `Tenés ${dirtyCount} producto(s) con cambios sin guardar.\n\nCambiar de sucursal los va a descartar.\n\n¿Querés continuar?`
-              );
-              if (!ok) return;
-            }
-            setDirtyById({});
-            setStoreId(nextId);
-          }}
-        >
-          {stores.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex w-full flex-col gap-1 lg:w-auto">
+          <label className="text-xs text-neutral-500">
+            Sucursal <span className="text-neutral-400">— filtra la lista (los precios aplican a todas)</span>
+          </label>
+          <select
+            className="w-full border rounded px-3 py-3 sm:py-2 lg:w-auto"
+            value={storeId}
+            title="Filtro de búsqueda: los precios son únicos para todas las sucursales"
+            onChange={(e) => {
+              const nextId = e.target.value;
+              if (hasChanges) {
+                const ok = window.confirm(
+                  `Tenés ${dirtyCount} producto(s) con cambios sin guardar.\n\nCambiar de sucursal los va a descartar.\n\n¿Querés continuar?`
+                );
+                if (!ok) return;
+              }
+              setDirtyById({});
+              setStoreId(nextId);
+            }}
+          >
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <input
           ref={searchInputRef}
@@ -535,25 +541,19 @@ export default function ProductsPage() {
       </div>
 
       <div className="hidden border rounded bg-white overflow-auto md:block">
-        <table className="min-w-[1120px] w-full text-sm">
+        <table className="min-w-[860px] w-full text-sm">
           <thead className="bg-gray-50 sticky top-0">
             <tr>
-              <th className="p-2 text-left">Nombre</th>
-              <th className="p-2">SKU</th>
-              <th className="p-2 text-right">Costo</th>
-              <th className="p-2 text-right">IVA %</th>
-              <th className="p-2 text-right">Margen %</th>
-              <th className="p-2 text-right">
-                Precio sugerido
-                <div className="text-xs text-gray-500">(costo + IVA + margen)</div>
+              <th className="p-1.5 text-left">Nombre</th>
+              <th className="p-1.5">SKU</th>
+              <th className="p-1.5 text-right">Costo</th>
+              <th className="p-1.5 text-right">IVA %</th>
+              <th className="p-1.5 text-right">Margen %</th>
+              <th className="p-1.5 text-right" title="Precio sugerido = costo + IVA + margen">
+                Sugerido
               </th>
-              <th className="p-2 text-right">
+              <th className="p-1.5 text-right" title="Editable — al modificarlo pasa a precio manual">
                 Precio final
-                <div className="text-xs text-gray-500">(editable)</div>
-              </th>
-              <th className="p-2 text-right">
-                IVA incluido
-                <div className="text-xs text-gray-500">(21%, ya incluido en el precio)</div>
               </th>
             </tr>
           </thead>
@@ -583,7 +583,7 @@ export default function ProductsPage() {
 
             {pageRows.length === 0 && (
               <tr>
-                <td className="p-4 text-gray-600" colSpan={8}>
+                <td className="p-4 text-gray-600" colSpan={7}>
                   No hay resultados para esta búsqueda.
                 </td>
               </tr>
@@ -814,7 +814,7 @@ function RowLine({
 
   return (
     <tr className={`${isDirty ? "bg-amber-50" : ""} ${belowCost ? "bg-red-50" : ""}`}>
-      <td className="p-2">
+      <td className="p-1.5">
         <div className="font-medium">{row.name}</div>
         <div className="mt-1 flex flex-wrap gap-1">
           {useFinalPrice && (
@@ -849,12 +849,12 @@ function RowLine({
           )}
         </div>
       </td>
-      <td className="p-2 text-neutral-600">{row.sku ?? "-"}</td>
+      <td className="p-1.5 text-neutral-600">{row.sku ?? "-"}</td>
 
-      <td className="p-2 text-right">
+      <td className="p-1.5 text-right">
         <input
           data-price-input="1"
-          className="border rounded px-2 py-1 w-24 text-right"
+          className="border rounded px-2 py-1 w-20 text-right"
           value={cost}
           onChange={(e) => {
             setCost(n(e.target.value, 0));
@@ -870,10 +870,10 @@ function RowLine({
         />
       </td>
 
-      <td className="p-2 text-right">
+      <td className="p-1.5 text-right">
         <input
           data-price-input="1"
-          className="border rounded px-2 py-1 w-16 text-right"
+          className="border rounded px-2 py-1 w-14 text-right"
           value={vat}
           onChange={(e) => {
             setVat(n(e.target.value, 21));
@@ -888,10 +888,10 @@ function RowLine({
         />
       </td>
 
-      <td className="p-2 text-right">
+      <td className="p-1.5 text-right">
         <input
           data-price-input="1"
-          className="border rounded px-2 py-1 w-16 text-right"
+          className="border rounded px-2 py-1 w-14 text-right"
           value={margin}
           onChange={(e) => {
             setMargin(n(e.target.value, 0));
@@ -906,14 +906,14 @@ function RowLine({
         />
       </td>
 
-      <td className="p-2 text-right">
+      <td className="p-1.5 text-right">
         <div className="font-semibold">{formatMoney(calcPrice)}</div>
         <div className="text-[11px] text-neutral-500">
           {noCost || noMargin ? "Faltan datos" : "Referencia"}
         </div>
       </td>
 
-      <td className="p-2 text-right">
+      <td className="p-1.5 text-right">
         <input
           data-price-input="1"
           className={`border rounded px-2 py-1 w-24 text-right font-semibold ${
@@ -935,11 +935,9 @@ function RowLine({
         <div className={`text-[11px] mt-1 ${belowCost ? "text-red-600 font-medium" : "text-neutral-500"}`}>
           {belowCost ? "Revisar" : useFinalPrice ? "Manual" : "Auto"}
         </div>
-      </td>
-
-      <td className="p-2 text-right text-neutral-700">
-        {formatMoney(calcIvaIncluido(shownPrice))}
-        <div className="text-[11px] text-neutral-500">Informativo</div>
+        <div className="text-[11px] text-neutral-400">
+          IVA inc.: {formatMoney(calcIvaIncluido(shownPrice))} · Informativo
+        </div>
       </td>
     </tr>
   );
