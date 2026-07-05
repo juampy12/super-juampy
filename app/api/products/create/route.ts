@@ -98,6 +98,19 @@ if (use_final_price) {
   finalPrice = Math.round(withVat * (1 + markup_rate / 100) * 100) / 100;
 }
 
+    // Stock inicial (opcional): validar ANTES de crear el producto para no
+    // dejar un alta a medias si falta la sucursal.
+    const initialStock = Number(body?.initial_stock ?? 0);
+    const wantsStock = Number.isFinite(initialStock) && initialStock > 0;
+    const stockStoreId = body?.stock_store_id != null ? String(body.stock_store_id).trim() : "";
+
+    if (wantsStock && !stockStoreId) {
+      return NextResponse.json(
+        { ok: false, error: "Falta la sucursal para el stock inicial" },
+        { status: 400 }
+      );
+    }
+
     const { data, error } = await supabaseAdmin
       .from("products")
       .insert({
@@ -123,7 +136,60 @@ if (use_final_price) {
       return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, product: data });
+    let stock_warning: string | null = null;
+
+    if (wantsStock) {
+      let targetStoreIds: string[] = [];
+
+      if (stockStoreId === "all") {
+        const { data: storeRows, error: storesErr } = await supabaseAdmin
+          .from("stores")
+          .select("id");
+        if (storesErr || !storeRows?.length) {
+          stock_warning = "No se pudieron leer las sucursales";
+        } else {
+          targetStoreIds = storeRows.map((s) => s.id);
+        }
+      } else {
+        targetStoreIds = [stockStoreId];
+      }
+
+      if (targetStoreIds.length > 0) {
+        const { error: psErr } = await supabaseAdmin.from("product_stocks").upsert(
+          targetStoreIds.map((store_id) => ({
+            store_id,
+            product_id: data.id,
+            stock: initialStock,
+          })),
+          { onConflict: "store_id,product_id" }
+        );
+
+        if (psErr) {
+          console.error("Error creando stock inicial:", psErr);
+          stock_warning = "No se pudo guardar el stock inicial";
+        } else {
+          const now = new Date().toISOString();
+          const { error: movErr } = await supabaseAdmin.from("stock_movements").insert(
+            targetStoreIds.map((store_id) => ({
+              store_id,
+              product_id: data.id,
+              qty: initialStock,
+              qty_delta: initialStock,
+              delta: initialStock,
+              reason: "alta_inicial",
+              note: null,
+              created_at: now,
+            }))
+          );
+          if (movErr) {
+            console.error("Error registrando movimiento de stock inicial:", movErr);
+            stock_warning = "Stock guardado, pero no se pudo registrar el movimiento";
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({ ok: true, product: data, stock_warning });
   } catch (e: any) {
     console.error("Error inesperado en /api/products/create:", e);
     return NextResponse.json({ ok: false, error: "Error inesperado" }, { status: 500 });

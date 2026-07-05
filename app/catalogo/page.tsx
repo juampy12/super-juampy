@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
 function n(v: any, d = 0) {
@@ -69,6 +69,59 @@ export default function CatalogoPage() {
   const [useFinal, setUseFinal] = useState(false);
   const [finalManual, setFinalManual] = useState(0);
 
+  const [isWeighted, setIsWeighted] = useState(false);
+  const [initialStock, setInitialStock] = useState(0);
+  const [stockStoreId, setStockStoreId] = useState("");
+  const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/stores");
+        const json = await res.json().catch(() => ({}));
+        setStores(json?.stores ?? []);
+      } catch {
+        // silencioso: el selector queda vacío, no bloquea la carga
+      }
+    })();
+  }, []);
+
+  // Refs para navegar el form a pura tecla (SKU escaneado -> Enter -> siguiente campo)
+  const skuRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const costRef = useRef<HTMLInputElement>(null);
+  const vatRef = useRef<HTMLInputElement>(null);
+  const marginRef = useRef<HTMLInputElement>(null);
+  const unitsCaseRef = useRef<HTMLInputElement>(null);
+  const finalPriceRef = useRef<HTMLInputElement>(null);
+  const stockRef = useRef<HTMLInputElement>(null);
+
+  function focusNext(e: React.KeyboardEvent, nextRef: React.RefObject<HTMLElement | null>) {
+    if (e.key === "Enter" && !e.ctrlKey) {
+      e.preventDefault();
+      nextRef.current?.focus();
+    }
+  }
+
+  function submitOnEnter(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !e.ctrlKey) {
+      e.preventDefault();
+      void createProduct();
+    }
+  }
+
+  function handleFormKeyDown(e: React.KeyboardEvent<HTMLFormElement>) {
+    if (e.ctrlKey && e.key === "Enter") {
+      e.preventDefault();
+      void createProduct();
+    }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    void createProduct();
+  }
+
   const calcPrice = useMemo(
     () => calcFinalPrice(n(cost, 0), n(vat, 21), n(margin, 0)),
     [cost, vat, margin]
@@ -76,7 +129,8 @@ export default function CatalogoPage() {
   const finalPrice = useFinal ? n(finalManual, 0) : calcPrice;
   const priceCase = finalPrice * Math.max(1, n(unitsCase, 1));
 
-  const reset = () => {
+  // Reset completo (botón "Limpiar"): también borra IVA/Margen/Sucursal
+  const resetAll = () => {
     setName("");
     setIsOwn(true);
     setSku("");
@@ -86,6 +140,22 @@ export default function CatalogoPage() {
     setUnitsCase(1);
     setUseFinal(false);
     setFinalManual(0);
+    setIsWeighted(false);
+    setInitialStock(0);
+    setStockStoreId("");
+  };
+
+  // Reset tras crear: IVA%, Margen% y Sucursal persisten (mismo remito, misma sucursal)
+  const resetAfterCreate = () => {
+    setName("");
+    setIsOwn(true);
+    setSku("");
+    setCost(0);
+    setUnitsCase(1);
+    setUseFinal(false);
+    setFinalManual(0);
+    setIsWeighted(false);
+    setInitialStock(0);
   };
 
   const createProduct = async () => {
@@ -101,9 +171,14 @@ export default function CatalogoPage() {
       toast.error("Si NO es producto propio, el SKU/código de barras es obligatorio.");
       return;
     }
+    if (n(initialStock, 0) > 0 && !stockStoreId) {
+      toast.error("Elegí una sucursal para el stock inicial.");
+      return;
+    }
 
     setCreating(true);
     try {
+      const wantsStock = n(initialStock, 0) > 0;
       const res = await fetch("/api/products/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -119,6 +194,11 @@ export default function CatalogoPage() {
 
           use_final_price: useFinal,
           final_price: useFinal ? n(finalManual, 0) : null,
+
+          is_weighted: isWeighted,
+
+          initial_stock: wantsStock ? n(initialStock, 0) : null,
+          stock_store_id: wantsStock ? stockStoreId : null,
         }),
       });
 
@@ -128,11 +208,12 @@ export default function CatalogoPage() {
         return;
       }
 
-      toast.success(`Producto creado — SKU: ${json.product?.sku} · ${json.product?.name}`);
-      reset();
-      setTab("editar");
-      setQ(json.product?.sku ?? "");
-      // no auto-buscamos para no confundir
+      toast.success(`✓ ${json.product?.name ?? name.trim()} creado`);
+      if (json?.stock_warning) {
+        toast.error(`El producto se creó, pero el stock inicial falló: ${json.stock_warning}`);
+      }
+      resetAfterCreate();
+      skuRef.current?.focus();
     } finally {
       setCreating(false);
     }
@@ -413,17 +494,28 @@ export default function CatalogoPage() {
 
           {/* ===== CREAR ===== */}
           {tab === "crear" && (
-            <div className="border rounded-xl bg-white p-4 shadow-sm">
+            <form
+              className="border rounded-xl bg-white p-4 shadow-sm"
+              onSubmit={handleSubmit}
+              onKeyDown={handleFormKeyDown}
+            >
               <div className="text-lg font-semibold mb-3">Crear producto</div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="md:col-span-2">
-                  <label className="text-sm text-gray-600">Nombre *</label>
+                  <label className="text-sm text-gray-600">
+                    SKU / código de barras {isOwn ? "(opcional)" : "* obligatorio"}
+                  </label>
                   <input
+                    ref={skuRef}
+                    autoFocus
                     className="border rounded px-3 py-2 w-full"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Ej: Pan hamburguesa x6"
+                    value={sku}
+                    onChange={(e) => setSku(e.target.value)}
+                    onKeyDown={(e) => focusNext(e, nameRef)}
+                    placeholder={
+                      isOwn ? "Escanear o dejar vacío para autogenerar" : "Escanear código de barras"
+                    }
                   />
                 </div>
 
@@ -440,58 +532,64 @@ export default function CatalogoPage() {
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="text-sm text-gray-600">
-                    SKU {isOwn ? "(opcional)" : "* obligatorio"}
-                  </label>
+                  <label className="text-sm text-gray-600">Nombre *</label>
                   <input
+                    ref={nameRef}
                     className="border rounded px-3 py-2 w-full"
-                    value={sku}
-                    onChange={(e) => setSku(e.target.value)}
-                    placeholder={
-                      isOwn ? "Dejar vacío para autogenerar" : "Código de barras"
-                    }
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onKeyDown={(e) => focusNext(e, costRef)}
+                    placeholder="Ej: Pan hamburguesa x6"
                   />
                 </div>
 
                 <div>
                   <label className="text-sm text-gray-600">Costo</label>
                   <input
+                    ref={costRef}
                     type="number"
                     className="border rounded px-3 py-2 w-full text-right"
                     value={cost}
                     onChange={(e) => setCost(n(e.target.value, 0))}
+                    onKeyDown={(e) => focusNext(e, vatRef)}
                   />
                 </div>
 
                 <div>
                   <label className="text-sm text-gray-600">IVA %</label>
                   <input
+                    ref={vatRef}
                     type="number"
                     className="border rounded px-3 py-2 w-full text-right"
                     value={vat}
                     onChange={(e) => setVat(n(e.target.value, 21))}
+                    onKeyDown={(e) => focusNext(e, marginRef)}
                   />
                 </div>
 
                 <div>
                   <label className="text-sm text-gray-600">Margen %</label>
                   <input
+                    ref={marginRef}
                     type="number"
                     className="border rounded px-3 py-2 w-full text-right"
                     value={margin}
                     onChange={(e) => setMargin(n(e.target.value, 0))}
+                    onKeyDown={(e) => focusNext(e, unitsCaseRef)}
                   />
                 </div>
 
                 <div>
                   <label className="text-sm text-gray-600">Unid/caja</label>
                   <input
+                    ref={unitsCaseRef}
                     type="number"
                     className="border rounded px-3 py-2 w-full text-right"
                     value={unitsCase}
                     onChange={(e) =>
                       setUnitsCase(Math.max(1, n(e.target.value, 1)))
                     }
+                    onKeyDown={(e) => focusNext(e, finalPriceRef)}
                   />
                 </div>
 
@@ -507,6 +605,7 @@ export default function CatalogoPage() {
                 <div className="md:col-span-2">
                   <label className="text-sm text-gray-600">Precio final</label>
                   <input
+                    ref={finalPriceRef}
                     type="number"
                     className="border rounded px-3 py-2 w-full text-right font-semibold"
                     value={useFinal ? finalManual : calcPrice}
@@ -514,16 +613,57 @@ export default function CatalogoPage() {
                       setFinalManual(n(e.target.value, 0));
                       setUseFinal(true);
                     }}
+                    onKeyDown={(e) => focusNext(e, stockRef)}
                   />
                   <div className="text-xs text-gray-500 mt-1">
                     Precio caja estimado: <b>{money(priceCase)}</b>
                   </div>
                 </div>
 
+                <div className="md:col-span-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={isWeighted}
+                    onChange={(e) => setIsWeighted(e.target.checked)}
+                  />
+                  <span className="text-sm">
+                    Se vende por peso (kg) — el precio de arriba es <b>por kilo</b>
+                  </span>
+                </div>
+
+                <div>
+                  <label className="text-sm text-gray-600">Sucursal (stock inicial)</label>
+                  <select
+                    className="border rounded px-3 py-2 w-full"
+                    value={stockStoreId}
+                    onChange={(e) => setStockStoreId(e.target.value)}
+                  >
+                    <option value="">Elegir sucursal…</option>
+                    {stores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                    <option value="all">Las 3 sucursales</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-sm text-gray-600">Stock inicial (opcional)</label>
+                  <input
+                    ref={stockRef}
+                    type="number"
+                    className="border rounded px-3 py-2 w-full text-right"
+                    value={initialStock}
+                    onChange={(e) => setInitialStock(Math.max(0, n(e.target.value, 0)))}
+                    onKeyDown={submitOnEnter}
+                  />
+                </div>
+
                 <div className="md:col-span-2 flex gap-2 justify-end mt-2">
                   <button
                     className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200"
-                    onClick={reset}
+                    onClick={resetAll}
                     type="button"
                   >
                     Limpiar
@@ -531,15 +671,14 @@ export default function CatalogoPage() {
 
                   <button
                     className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                    onClick={createProduct}
                     disabled={creating || !isSupervisor}
-                    type="button"
+                    type="submit"
                   >
-                    {creating ? "Creando..." : "Crear producto"}
+                    {creating ? "Creando..." : "Crear producto (Enter)"}
                   </button>
                 </div>
               </div>
-            </div>
+            </form>
           )}
 
           {/* ===== EDITAR / DESACTIVAR ===== */}
