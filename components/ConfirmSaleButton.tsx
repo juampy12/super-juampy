@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { exportReceiptPDF } from "@/app/_utils/receipt";
 
 type ConfirmItem = {
   product_id: string;
@@ -49,15 +48,10 @@ const METHOD_LABELS: Record<string, string> = {
 };
 
 export default function ConfirmSaleButton({
-  items, total, payment, onConfirmed, storeId, registerId, storeName, isOnline = true, onQueued,
+  items, total, payment, onConfirmed, storeId, registerId, isOnline = true, onQueued,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [showTicket, setShowTicket] = useState(false);
-  const [lastSaleId, setLastSaleId] = useState<string | null>(null);
-  const [savedItems, setSavedItems] = useState<ConfirmItem[]>([]);
-  const [savedTotal, setSavedTotal] = useState(0);
-  const [savedPayment, setSavedPayment] = useState<PaymentInfo | null>(null);
   const inFlightRef = useRef(false);
   // UUID estable por venta. Se usa como clave de idempotencia en el servidor:
   // si el mismo key llega dos veces (timeout + reintento, o cola offline),
@@ -105,9 +99,6 @@ export default function ConfirmSaleButton({
     inFlightRef.current = true;
     setShowModal(false);
     setLoading(true);
-    setSavedItems([...items]);
-    setSavedTotal(total);
-    setSavedPayment(payment ?? null);
 
     const currentKey = idempotencyKeyRef.current;
 
@@ -122,7 +113,6 @@ export default function ConfirmSaleButton({
         idempotencyKeyRef.current = crypto.randomUUID();
         onConfirmed?.(null);
         onQueued?.();
-        setShowTicket(true);
         return;
       }
 
@@ -152,7 +142,6 @@ export default function ConfirmSaleButton({
         idempotencyKeyRef.current = crypto.randomUUID();
         onConfirmed?.(null);
         onQueued?.();
-        setShowTicket(true);
         return;
       }
 
@@ -168,7 +157,6 @@ export default function ConfirmSaleButton({
           idempotencyKeyRef.current = crypto.randomUUID();
           onConfirmed?.(null);
           onQueued?.();
-          setShowTicket(true);
         } else if (res.status === 401) {
           // Sesión expirada: encolar la venta para no perderla y avisar al cajero.
           const { addToQueue } = await import("@/lib/offlineQueue");
@@ -179,7 +167,6 @@ export default function ConfirmSaleButton({
           idempotencyKeyRef.current = crypto.randomUUID();
           onConfirmed?.(null);
           onQueued?.();
-          setShowTicket(true);
           toast.error(
             "Tu sesión expiró. Recargá la página e iniciá sesión de nuevo. La venta quedó guardada.",
             { duration: 10000 },
@@ -194,59 +181,16 @@ export default function ConfirmSaleButton({
 
       const json = await res.json().catch(() => ({}));
       const saleId = json?.saleId ?? null;
-      setLastSaleId(saleId);
       idempotencyKeyRef.current = crypto.randomUUID();
       onConfirmed?.(saleId);
-      setShowTicket(true);
     } finally {
       setLoading(false);
       inFlightRef.current = false;
     }
   }
 
-  async function imprimirTicket() {
-    await exportReceiptPDF({
-      saleId: lastSaleId ?? undefined,
-      storeName: storeName ?? "Super Juampy",
-      items: savedItems.map(it => ({
-        name: it.name,
-        qty: it.qty,
-        price: it.unit_price,
-        subtotal: it.qty * it.unit_price,
-      })),
-      payMethod: savedPayment?.method ?? "efectivo",
-      amount: savedPayment?.total_paid ?? 0,
-      change: savedPayment?.change ?? 0,
-      total: savedTotal,
-    });
-    setShowTicket(false);
-  }
-
   return (
     <>
-      {showTicket && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ background:"#fff", borderRadius:16, padding:"28px 32px", maxWidth:320, width:"90%", textAlign:"center", boxShadow:"0 8px 32px rgba(0,0,0,0.25)" }}>
-            <div style={{ fontSize:48, marginBottom:12 }}>✅</div>
-            <h2 style={{ fontSize:20, fontWeight:600, marginBottom:8, color:"#111" }}>Venta confirmada</h2>
-            <p style={{ fontSize:15, color:"#555", marginBottom:4 }}>Total: <strong>${savedTotal.toFixed(2)}</strong></p>
-            <p style={{ fontSize:13, color:"#777", marginBottom:24 }}>
-              {METHOD_LABELS[savedPayment?.method ?? ""] ?? savedPayment?.method}
-              {(savedPayment?.change ?? 0) > 0 && ` · Vuelto: $${(savedPayment?.change ?? 0).toFixed(2)}`}
-            </p>
-            <div style={{ display:"flex", gap:10 }}>
-              <button onClick={() => setShowTicket(false)} style={{ flex:1, padding:"11px 0", borderRadius:8, border:"1px solid #ddd", background:"#fff", cursor:"pointer", fontSize:14, color:"#333" }}>
-                Cerrar
-              </button>
-              {/* Imprimir ticket: re-habilitar cuando llegue la impresora térmica
-              <button onClick={imprimirTicket} style={{ flex:2, padding:"11px 0", borderRadius:8, border:"none", background:"#1d4ed8", color:"#fff", cursor:"pointer", fontSize:14, fontWeight:600 }}>
-                🖨️ Imprimir ticket
-              </button> */}
-            </div>
-          </div>
-        </div>
-      )}
-
       {showModal && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:9998, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <div style={{ background:"#fff", borderRadius:16, padding:"24px 28px", maxWidth:340, width:"90%", boxShadow:"0 8px 32px rgba(0,0,0,0.2)" }}>

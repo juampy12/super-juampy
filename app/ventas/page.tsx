@@ -632,6 +632,7 @@ export default function VentasPage() {
           is_balanza: true,
         },
       ]);
+      flashLastAdded(lineId);
       playBeep(880, 100, 0.15);
       toast.success(`${p.name} — $${price.toFixed(2)}`);
     } catch {
@@ -734,6 +735,10 @@ export default function VentasPage() {
   // true solo cuando el usuario usó ↑/↓ o hover para elegir un resultado
   const hasNavigatedRef = useRef(false);
   const [items, setItems] = useState<CartItem[]>([]);
+  // Resalta unos segundos la fila del último producto agregado, para que el
+  // cajero confirme de un vistazo que el escaneo entró bien.
+  const [lastAddedKey, setLastAddedKey] = useState<string | null>(null);
+  const lastAddedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [holds, setHolds] = useState<Hold[]>([]);
   const [showHolds, setShowHolds] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -1044,28 +1049,28 @@ setResults(ordered);
 // Guardar resultados en cache para uso offline
 if (selectedStoreId) mergeIntoCachedProducts(selectedStoreId, activeList as any);
 
+// CASO SCANNER: código de barras real (6+ dígitos), venga del buffer global
+// o del input de búsqueda enfocado. Solo agrega si hay match exacto de SKU;
+// si no matchea ningún producto, se limpia el buscador y se avisa (nunca
+// queda el código viejo pegado para que el próximo escaneo se concatene).
+if (opts?.source === "scanner" && /^\d{6,}$/.test(term)) {
+  const exact = ordered.find(
+    (p) => String(p.sku ?? "").trim() === term
+  );
+
+  if (exact) {
+    addToCartMaybeWeighted(exact);
+  } else {
+    toast.error(`Producto no encontrado: ${term}`);
+  }
+  setSearch("");
+  setResults([]);
+  setTimeout(() => searchInputRef.current?.focus(), 0);
+  return;
+}
+
 if (opts?.autoAddFirst && ordered.length >= 1) {
   const is4Digits = /^\d{4}$/.test(term);
-  const isBarcode = /^\d{6,}$/.test(term); // barcode real
-
-  // CASO SCANNER: solo agrega si hay match exacto
-  if (opts?.source === "scanner" && isBarcode) {
-    const exact = ordered.find(
-      (p) => String(p.sku ?? "").trim() === term
-    );
-
-    if (exact) {
-      addToCartMaybeWeighted(exact);
-      setSearch("");
-      setResults([]);
-      setTimeout(() => searchInputRef.current?.focus(), 0);
-    } else {
-      // no agrega nada si no hay match exacto
-      setTimeout(() => searchInputRef.current?.focus(), 0);
-    }
-
-    return;
-  }
 
   // CASO MANUAL
   const pick = is4Digits
@@ -1117,6 +1122,7 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
               } as any,
             ];
           });
+          flashLastAdded(p.id);
         },
       });
       return;
@@ -1146,6 +1152,7 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
         },
       ];
     });
+    flashLastAdded(p.id);
 
     setSearch("");
     setResults([]);
@@ -1154,6 +1161,15 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
 
   function lineKey(it: CartItem) {
     return it.lineId ?? it.product_id;
+  }
+
+  function flashLastAdded(key: string) {
+    if (lastAddedTimerRef.current) clearTimeout(lastAddedTimerRef.current);
+    setLastAddedKey(key);
+    lastAddedTimerRef.current = setTimeout(() => {
+      setLastAddedKey(null);
+      lastAddedTimerRef.current = null;
+    }, 1500);
   }
 
   function updateQty(key: string, qty: number) {
@@ -1195,6 +1211,10 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
       const isTextarea = tag === "textarea";
       const isSelect = tag === "select";
       const isTyping = isInput || isTextarea || isSelect;
+
+      // El próximo escaneo/tecla cierra al toque el overlay de "venta confirmada"
+      // en vez de dejarlo tapando el carrito (que ya quedó vacío y listo debajo).
+      if (saleFeedback) closeSaleFeedback();
 
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         if (canConfirmNow()) {
@@ -1367,6 +1387,7 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
     quickMode,
     results,
     selectedResultIdx,
+    saleFeedback,
   ]);
 
   // =========================
@@ -1837,10 +1858,12 @@ onKeyDown={(e) => {
 
     const term = search.trim();
     const isOwn4DigitSku = /^\d{4}$/.test(term); // SOLO 4 dígitos
+    const isBarcode = /^\d{6,}$/.test(term); // código de barras real (lector USB)
 
     void handleSearch({
       term,
       autoAddFirst: quickMode ? true : isOwn4DigitSku,
+      source: isBarcode ? "scanner" : undefined,
     });
   }
 }}
@@ -1952,9 +1975,9 @@ onKeyDown={(e) => {
                 )}
               </h2>
 
-              <div className="inline-flex items-baseline justify-between gap-2 rounded-lg text-white px-3 py-2 sm:justify-start" style={{background:"#1A5FA8"}}>
+              <div className="inline-flex items-baseline justify-between gap-2 rounded-lg text-white px-4 py-2 sm:justify-start" style={{background:"#1A5FA8"}}>
                 <span className="text-xs font-medium">TOTAL</span>
-                <span className="text-xl font-bold">${formattedTotal}</span>
+                <span className="text-4xl font-bold">${formattedTotal}</span>
               </div>
             </div>
 
@@ -1976,7 +1999,12 @@ onKeyDown={(e) => {
                   </thead>
                   <tbody>
                     {items.map((it) => (
-                      <tr key={lineKey(it)} className="border-b last:border-0">
+                      <tr
+                        key={lineKey(it)}
+                        className={`border-b last:border-0 transition-colors duration-[1200ms] ${
+                          lineKey(it) === lastAddedKey ? "bg-amber-100" : "bg-transparent"
+                        }`}
+                      >
                         <td className="py-2 px-2">
                           {it.name}
                           {it.has_offer && (
@@ -2029,13 +2057,22 @@ onKeyDown={(e) => {
                               -
                             </button>
 
-                            <span className="w-16 text-center">
-                              {(it as any).is_balanza
-                                ? "1"
-                                : (it as any).is_weighted
-                                ? `${it.qty} g`
-                                : it.qty}
-                            </span>
+                            {(it as any).is_balanza ? (
+                              <span className="w-16 text-center">1</span>
+                            ) : (it as any).is_weighted ? (
+                              <span className="w-16 text-center">{it.qty} g</span>
+                            ) : (
+                              <input
+                                type="number"
+                                min={1}
+                                className="w-16 rounded border px-1 py-1 text-center"
+                                value={it.qty}
+                                onChange={(e) => {
+                                  const n = parseInt(e.target.value, 10);
+                                  updateQty(lineKey(it), Number.isFinite(n) ? n : 1);
+                                }}
+                              />
+                            )}
 
                             <button
                               type="button"
@@ -2141,7 +2178,7 @@ onKeyDown={(e) => {
                   <input
                     ref={cashInputRef}
                     type="number"
-                    className="w-full rounded-md border px-3 py-3 text-right text-xl"
+                    className="w-full rounded-md border px-3 py-3 text-right text-3xl font-semibold"
                     value={cashGivenStr}
                     onChange={(e) => setCashGivenStr(e.target.value)}
                     onKeyDown={(e) => {
@@ -2158,7 +2195,7 @@ onKeyDown={(e) => {
                   <label className="text-sm font-medium">Vuelto</label>
                   <input
                     readOnly
-                    className="w-full rounded border bg-neutral-50 px-2 py-3 text-right text-xl"
+                    className="w-full rounded border bg-neutral-50 px-2 py-3 text-right text-4xl font-bold text-emerald-700"
                     value={change.toFixed(2)}
                   />
                 </div>
