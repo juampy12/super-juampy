@@ -1967,7 +1967,7 @@ onKeyDown={(e) => {
                           <div className="flex items-center justify-end gap-0.5">
                             <button
                               type="button"
-                              className="w-6 h-6 shrink-0 rounded border text-xs leading-none disabled:opacity-40"
+                              className="w-4 h-4 shrink-0 rounded border border-neutral-200 text-[10px] leading-none text-neutral-400 hover:text-neutral-700 hover:border-neutral-400 disabled:opacity-40"
                               onClick={() => {
                                 if ((it as any).is_balanza) return;
                                 if ((it as any).is_weighted) {
@@ -1992,14 +1992,14 @@ onKeyDown={(e) => {
                             </button>
 
                             {(it as any).is_balanza ? (
-                              <span className="w-10 text-center text-xs">1</span>
+                              <span className="w-11 text-center text-sm font-semibold">1</span>
                             ) : (it as any).is_weighted ? (
-                              <span className="w-10 text-center text-xs">{it.qty}g</span>
+                              <span className="w-11 text-center text-sm font-semibold">{it.qty}g</span>
                             ) : (
                               <input
                                 type="number"
                                 min={1}
-                                className="w-10 rounded border px-0.5 py-0.5 text-center text-xs"
+                                className="pos-qty-input w-11 rounded border text-center text-sm font-semibold"
                                 value={it.qty}
                                 onChange={(e) => {
                                   const n = parseInt(e.target.value, 10);
@@ -2010,7 +2010,7 @@ onKeyDown={(e) => {
 
                             <button
                               type="button"
-                              className="w-6 h-6 shrink-0 rounded border text-xs leading-none disabled:opacity-40"
+                              className="w-4 h-4 shrink-0 rounded border border-neutral-200 text-[10px] leading-none text-neutral-400 hover:text-neutral-700 hover:border-neutral-400 disabled:opacity-40"
                               onClick={() => {
                                 if ((it as any).is_balanza) return;
                                 if ((it as any).is_weighted) {

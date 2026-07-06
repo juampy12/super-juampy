@@ -209,6 +209,21 @@ html[data-theme="dark"] .card, html[data-theme="dark"] .card * {
   color: var(--fg) !important;
 }
 
+/* ====== Input de cantidad del carrito (POS) — compacto ====== */
+input.pos-qty-input[type="number"] {
+  padding: 2px 2px;
+  border-radius: 6px;
+  color: var(--fg);
+  background: #fff;
+  -moz-appearance: textfield;
+  appearance: none;
+}
+input.pos-qty-input[type="number"]::-webkit-outer-spin-button,
+input.pos-qty-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* ====== Fixes de clic ====== */
 .site-header { position: sticky; top: 0; z-index: 1000; }
 .site-header::before, .site-header::after { pointer-events: none !important; }
