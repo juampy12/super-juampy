@@ -921,6 +921,16 @@ function sortResultsForTerm(list: ProductRow[], termRaw: string) {
     return it.qty * it.unit_price;
   }
 
+  function calcBaseLineTotal(it: {
+    qty: number;
+    base_unit_price?: number;
+    is_weighted?: boolean;
+  }) {
+    const base = Number(it.base_unit_price ?? 0);
+    if (it.is_weighted) return (base * it.qty) / 1000;
+    return it.qty * base;
+  }
+
   const total = useMemo(
     () => items.reduce((sum, it) => sum + calcLineTotal(it as any), 0),
     [items]
@@ -1923,7 +1933,7 @@ onKeyDown={(e) => {
               </div>
             </div>
 
-            <div className="border rounded-md overflow-x-auto overflow-y-auto max-h-[42vh]">
+            <div className="border rounded-md overflow-x-auto overflow-y-auto max-h-[32vh]">
               {items.length === 0 ? (
                 <p className="px-3 py-2 text-sm text-neutral-500">
                   Todavía no agregaste productos.
@@ -1932,11 +1942,10 @@ onKeyDown={(e) => {
                 <table className="w-full table-fixed text-sm">
                   <thead>
                     <tr className="border-b text-left">
-                      <th className="sticky top-0 z-10 bg-gray-50 py-2 px-2">Producto</th>
-                      <th className="sticky top-0 z-10 bg-gray-50 py-2 px-1 text-right w-24">Cant.</th>
-                      <th className="sticky top-0 z-10 bg-gray-50 py-2 px-2 text-right w-20">Precio</th>
-                      <th className="sticky top-0 z-10 bg-gray-50 py-2 px-2 text-right w-20">Subtotal</th>
-                      <th className="sticky top-0 z-10 bg-gray-50 py-2 px-1 text-right w-9"></th>
+                      <th className="sticky top-0 z-30 bg-gray-50 py-2 px-2">Producto</th>
+                      <th className="sticky top-0 z-30 bg-gray-50 py-2 px-1 text-right w-24">Cant.</th>
+                      <th className="sticky top-0 z-30 bg-gray-50 py-2 px-2 text-right w-24">Importe</th>
+                      <th className="sticky top-0 z-30 bg-gray-50 py-2 px-1 text-right w-9"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1950,6 +1959,11 @@ onKeyDown={(e) => {
                       >
                         <td className="py-2 px-2">
                           <span className="block break-words">{it.name}</span>
+                          {it.qty > 1 && !(it as any).is_weighted && (
+                            <span className="block text-xs text-neutral-500">
+                              {it.qty} × ${Number(it.unit_price).toFixed(2)}
+                            </span>
+                          )}
                           {it.has_offer && (
                             <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-800">
                               OFERTA
@@ -2049,24 +2063,15 @@ onKeyDown={(e) => {
                           {it.has_offer ? (
                             <div className="inline-block text-right">
                               <div className="text-xs text-neutral-500 line-through">
-                                ${Number(it.base_unit_price ?? 0).toFixed(2)}
-                                {(it as any).is_weighted ? "/kg" : ""}
+                                ${calcBaseLineTotal(it as any).toFixed(2)}
                               </div>
                               <div className="font-semibold text-green-700">
-                                ${Number(it.unit_price).toFixed(2)}
-                                {(it as any).is_weighted ? "/kg" : ""}
+                                ${calcLineTotal(it as any).toFixed(2)}
                               </div>
                             </div>
                           ) : (
-                            <span>
-                              ${Number(it.unit_price).toFixed(2)}
-                              {(it as any).is_weighted ? "/kg" : ""}
-                            </span>
+                            <span>${calcLineTotal(it as any).toFixed(2)}</span>
                           )}
-                        </td>
-
-                        <td className="py-2 px-2 text-right">
-                          ${calcLineTotal(it as any).toFixed(2)}
                         </td>
 
                         <td className="py-2 px-1 text-right">
@@ -2089,16 +2094,16 @@ onKeyDown={(e) => {
           </div>
 
           {/* Pago */}
-          <div className="rounded-xl border bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <h2 className="font-medium">Pago</h2>
+          <div className="rounded-xl border bg-white p-3 shadow-sm">
+            <div className="flex flex-wrap items-end gap-3">
+              <h2 className="font-medium shrink-0">Pago</h2>
 
-              <div className="flex flex-col gap-1 sm:ml-auto sm:flex-row sm:items-center sm:gap-2">
-                <span className="text-sm font-medium">Método:</span>
+              <div className="flex flex-col gap-1 shrink-0">
+                <label className="text-xs font-medium text-neutral-600">Método</label>
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-                  className="w-full rounded border px-2 py-2 text-sm sm:w-auto sm:py-1"
+                  className="rounded border px-2 py-2 text-sm w-full sm:w-36 sm:py-1.5"
                 >
                   <option value="efectivo">Efectivo</option>
                   <option value="debito">Débito</option>
@@ -2113,44 +2118,44 @@ onKeyDown={(e) => {
                   )}
                 </select>
               </div>
+
+              {/* EFECTIVO */}
+              {paymentMethod === "efectivo" && (
+                <>
+                  <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
+                    <label className="text-xs font-medium text-neutral-600">Con cuánto paga</label>
+                    <input
+                      ref={cashInputRef}
+                      type="number"
+                      className="w-full rounded-md border px-3 py-2 text-right text-2xl font-semibold placeholder:text-neutral-400 placeholder:font-normal"
+                      value={cashGivenStr}
+                      placeholder="0"
+                      onChange={(e) => setCashGivenStr(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          if (canConfirmNow()) {
+                            e.preventDefault();
+                            tryConfirmSale();
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
+                    <label className="text-xs font-medium text-neutral-600">Vuelto</label>
+                    <input
+                      readOnly
+                      className="w-full rounded border bg-neutral-50 px-2 py-2 text-right text-2xl font-bold text-emerald-700"
+                      value={change.toFixed(2)}
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* EFECTIVO */}
-            {paymentMethod === "efectivo" && (
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Con cuánto paga (efectivo)</label>
-                  <input
-                    ref={cashInputRef}
-                    type="number"
-                    className="w-full rounded-md border px-3 py-3 text-right text-3xl font-semibold placeholder:text-neutral-400 placeholder:font-normal"
-                    value={cashGivenStr}
-                    placeholder="0"
-                    onChange={(e) => setCashGivenStr(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        if (canConfirmNow()) {
-                          e.preventDefault();
-                          tryConfirmSale();
-                        }
-                      }
-                    }}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Vuelto</label>
-                  <input
-                    readOnly
-                    className="w-full rounded border bg-neutral-50 px-2 py-3 text-right text-4xl font-bold text-emerald-700"
-                    value={change.toFixed(2)}
-                  />
-                </div>
-
-                {missing > 0 && (
-                  <div className="md:col-span-2 text-sm text-red-600">
-                    Falta cobrar: ${missing.toFixed(2)}
-                  </div>
-                )}
+            {paymentMethod === "efectivo" && missing > 0 && (
+              <div className="mt-2 text-sm text-red-600">
+                Falta cobrar: ${missing.toFixed(2)}
               </div>
             )}
 
@@ -2159,7 +2164,7 @@ onKeyDown={(e) => {
               paymentMethod === "credito" ||
               paymentMethod === "mp" ||
               paymentMethod === "cuenta_corriente") && (
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-sm font-medium">
                     Monto ({paymentLabel(paymentMethod)})
@@ -2202,7 +2207,7 @@ onKeyDown={(e) => {
 
             {/* MIXTO */}
             {paymentMethod === "mixto" && (
-              <div className="space-y-3">
+              <div className="mt-3 space-y-3">
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-1">
                     <label className="text-sm font-medium">Efectivo</label>
