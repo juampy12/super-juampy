@@ -461,7 +461,7 @@ export default function VentasPage() {
     setSearch("");
     setResults([]);
     setPaymentMethod("efectivo");
-    setCashGivenStr("0");
+    setCashGivenStr("");
     setDebitAmount(0);
     setCreditAmount(0);
     setMpAmount(0);
@@ -730,6 +730,7 @@ export default function VentasPage() {
   // cajero confirme de un vistazo que el escaneo entró bien.
   const [lastAddedKey, setLastAddedKey] = useState<string | null>(null);
   const lastAddedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cartRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const [holds, setHolds] = useState<Hold[]>([]);
   const [showHolds, setShowHolds] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -766,10 +767,17 @@ export default function VentasPage() {
     }
   }, [selectedResultIdx]);
 
+  // El carrito scrollea internamente: al agregar/escanear, siempre se ve el último ítem.
+  useEffect(() => {
+    if (lastAddedKey) {
+      cartRowRefs.current[lastAddedKey]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [lastAddedKey]);
+
   // Pago
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>("efectivo");
-  const [cashGivenStr, setCashGivenStr] = useState("0");
+  const [cashGivenStr, setCashGivenStr] = useState("");
   const [debitAmount, setDebitAmount] = useState(0);
   const [creditAmount, setCreditAmount] = useState(0);
   const [mpAmount, setMpAmount] = useState(0);
@@ -1915,7 +1923,7 @@ onKeyDown={(e) => {
               </div>
             </div>
 
-            <div className="border rounded-md overflow-x-auto">
+            <div className="border rounded-md overflow-x-auto overflow-y-auto max-h-[42vh]">
               {items.length === 0 ? (
                 <p className="px-3 py-2 text-sm text-neutral-500">
                   Todavía no agregaste productos.
@@ -1923,18 +1931,19 @@ onKeyDown={(e) => {
               ) : (
                 <table className="w-full table-fixed text-sm">
                   <thead>
-                    <tr className="border-b text-left bg-gray-50">
-                      <th className="py-2 px-2">Producto</th>
-                      <th className="py-2 px-1 text-right w-24">Cant.</th>
-                      <th className="py-2 px-2 text-right w-20">Precio</th>
-                      <th className="py-2 px-2 text-right w-20">Subtotal</th>
-                      <th className="py-2 px-1 text-right w-9"></th>
+                    <tr className="border-b text-left">
+                      <th className="sticky top-0 z-10 bg-gray-50 py-2 px-2">Producto</th>
+                      <th className="sticky top-0 z-10 bg-gray-50 py-2 px-1 text-right w-24">Cant.</th>
+                      <th className="sticky top-0 z-10 bg-gray-50 py-2 px-2 text-right w-20">Precio</th>
+                      <th className="sticky top-0 z-10 bg-gray-50 py-2 px-2 text-right w-20">Subtotal</th>
+                      <th className="sticky top-0 z-10 bg-gray-50 py-2 px-1 text-right w-9"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {items.map((it) => (
                       <tr
                         key={lineKey(it)}
+                        ref={(el) => { cartRowRefs.current[lineKey(it)] = el; }}
                         className={`border-b last:border-0 transition-colors duration-[1200ms] ${
                           lineKey(it) === lastAddedKey ? "bg-amber-100" : "bg-transparent"
                         }`}
@@ -2114,8 +2123,9 @@ onKeyDown={(e) => {
                   <input
                     ref={cashInputRef}
                     type="number"
-                    className="w-full rounded-md border px-3 py-3 text-right text-3xl font-semibold"
+                    className="w-full rounded-md border px-3 py-3 text-right text-3xl font-semibold placeholder:text-neutral-400 placeholder:font-normal"
                     value={cashGivenStr}
+                    placeholder="0"
                     onChange={(e) => setCashGivenStr(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
@@ -2339,7 +2349,7 @@ onKeyDown={(e) => {
                     setSearch("");
 
                     setPaymentMethod("efectivo");
-                    setCashGivenStr("0");
+                    setCashGivenStr("");
                     setDebitAmount(0);
                     setCreditAmount(0);
                     setMpAmount(0);
