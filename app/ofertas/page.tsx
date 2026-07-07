@@ -16,23 +16,36 @@ type ProductRow = {
   has_offer: boolean;
   offer_type: string | null;
   offer_value: number | null;
+  qty_buy?: number | null;
+  qty_pay?: number | null;
   stock: number;
+  is_weighted?: boolean | null;
 
   // ✅ para ocultar desactivados
   active?: boolean | null;
 };
 
+type OfferType = "fixed_price" | "percent" | "nxm";
+
 type Offer = {
   id: string;
   product_id: string;
   store_id: string | null;
-  type: "fixed_price" | "percent";
+  type: OfferType;
   value: number;
+  qty_buy: number | null;
+  qty_pay: number | null;
   starts_at: string;
   ends_at: string;
   is_active: boolean;
   created_at: string;
 };
+
+const NXM_SHORTCUTS: Array<{ label: string; qty_buy: number; qty_pay: number }> = [
+  { label: "2x1", qty_buy: 2, qty_pay: 1 },
+  { label: "3x2", qty_buy: 3, qty_pay: 2 },
+  { label: "3x1", qty_buy: 3, qty_pay: 1 },
+];
 
 function isoLocalInput(dt?: Date) {
   const d = dt ?? new Date();
@@ -55,8 +68,10 @@ export default function OfertasPage() {
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [selected, setSelected] = useState<ProductRow | null>(null);
 
-  const [type, setType] = useState<"fixed_price" | "percent">("fixed_price");
+  const [type, setType] = useState<OfferType>("fixed_price");
   const [value, setValue] = useState<number>(0);
+  const [qtyBuy, setQtyBuy] = useState<number>(2);
+  const [qtyPay, setQtyPay] = useState<number>(1);
   const [startsAt, setStartsAt] = useState<string>(
     isoLocalInput(new Date(Date.now() - 60_000))
   );
@@ -179,20 +194,33 @@ export default function OfertasPage() {
   async function createOffer() {
     if (!selected) return void toast("Seleccioná un producto");
     if (!storeId) return void toast("Seleccioná una sucursal");
-    if (!value || value <= 0) return void toast.error("Valor inválido");
 
     // ✅ seguridad extra: no permitir crear oferta a desactivados
     if ((selected as any)?.active === false) {
       return void toast.error("Ese producto está desactivado. Reactivalo en Catálogo.");
     }
 
+    if (type === "nxm") {
+      if (selected.is_weighted) {
+        return void toast.error("Las ofertas NxM no están disponibles para productos pesables");
+      }
+      if (!Number.isInteger(qtyBuy) || !Number.isInteger(qtyPay) || qtyPay < 1 || qtyBuy <= qtyPay) {
+        return void toast.error("Revisá qty_buy / qty_pay: llevá debe ser mayor que pagá (mínimo 1)");
+      }
+      if (qtyBuy > 10) return void toast.error("qty_buy no puede superar 10");
+    } else if (!value || value <= 0) {
+      return void toast.error("Valor inválido");
+    }
+
     setLoading(true);
-    
+
     const payload = {
       product_id: selected.id,
       store_id: isGlobal ? null : storeId,
       type,
-      value,
+      value: type === "nxm" ? 0 : value,
+      qty_buy: type === "nxm" ? qtyBuy : undefined,
+      qty_pay: type === "nxm" ? qtyPay : undefined,
       starts_at: new Date(startsAt).toISOString(),
       ends_at: new Date(endsAt).toISOString(),
     };
@@ -335,9 +363,15 @@ export default function OfertasPage() {
                       SKU {p.sku} · Stock {Number(p.stock)} · Normal $
                       {Number(p.price).toFixed(2)}
                       {p.has_offer ? (
-                        <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-800">
-                          OFERTA ${Number(p.effective_price).toFixed(2)}
-                        </span>
+                        p.offer_type === "nxm" && p.qty_buy && p.qty_pay ? (
+                          <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-purple-100 text-purple-800 font-semibold">
+                            {p.qty_buy}X{p.qty_pay}
+                          </span>
+                        ) : (
+                          <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-800">
+                            OFERTA ${Number(p.effective_price).toFixed(2)}
+                          </span>
+                        )
                       ) : null}
                     </div>
                   </button>
@@ -361,31 +395,89 @@ export default function OfertasPage() {
               <select
                 className="mt-1 w-full border rounded-lg px-3 py-2"
                 value={type}
-                onChange={(e) => setType(e.target.value as any)}
+                onChange={(e) => setType(e.target.value as OfferType)}
               >
                 <option value="fixed_price">Precio fijo</option>
                 <option value="percent">% Descuento</option>
+                <option value="nxm" disabled={Boolean(selected?.is_weighted)}>
+                  2x1 / 3x2 (NxM){selected?.is_weighted ? " — no disponible para pesables" : ""}
+                </option>
               </select>
             </label>
 
-            <label className="text-sm">
-              Valor ({type === "fixed_price" ? "precio final" : "%"})
-              <input
-                className="mt-1 w-full border rounded-lg px-3 py-2"
-                type="number"
-                value={value || ""}
-                onChange={(e) => setValue(Number(e.target.value))}
-                placeholder={type === "fixed_price" ? "Ej: 2999" : "Ej: 20"}
-              />
-              {selected && value > 0 && (
-                <span className="text-xs text-emerald-600 mt-1 block">
-                  {type === "fixed_price"
-                    ? `Precio normal $${Number(selected.price).toFixed(2)} → oferta $${Number(value).toFixed(2)}`
-                    : `Precio normal $${Number(selected.price).toFixed(2)} → oferta $${(Number(selected.price) * (1 - value / 100)).toFixed(2)} (-${value}%)`
-                  }
-                </span>
-              )}
-            </label>
+            {type === "nxm" ? (
+              <label className="text-sm">
+                Llevá / Pagá
+                {selected?.is_weighted && (
+                  <span className="mt-1 block text-xs text-red-600">
+                    Este producto es pesable: las ofertas NxM no están disponibles.
+                  </span>
+                )}
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {NXM_SHORTCUTS.map((s) => (
+                    <button
+                      type="button"
+                      key={s.label}
+                      onClick={() => { setQtyBuy(s.qty_buy); setQtyPay(s.qty_pay); }}
+                      className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
+                        qtyBuy === s.qty_buy && qtyPay === s.qty_pay
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-700"
+                          : "hover:bg-black/5"
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    className="w-16 rounded-lg border px-2 py-2 text-center"
+                    type="number"
+                    min={2}
+                    max={10}
+                    value={qtyBuy}
+                    onChange={(e) => setQtyBuy(Number(e.target.value))}
+                  />
+                  <span className="text-xs opacity-70">lleva</span>
+                  <input
+                    className="w-16 rounded-lg border px-2 py-2 text-center"
+                    type="number"
+                    min={1}
+                    max={9}
+                    value={qtyPay}
+                    onChange={(e) => setQtyPay(Number(e.target.value))}
+                  />
+                  <span className="text-xs opacity-70">paga</span>
+                </div>
+                {selected && qtyBuy > qtyPay && qtyPay >= 1 && (
+                  <span className="text-xs text-emerald-600 mt-1 block">
+                    Ej: {qtyBuy} unidades a ${Number(selected.price).toFixed(2)} c/u → pagás{" "}
+                    {qtyPay} × ${Number(selected.price).toFixed(2)} = $
+                    {(qtyPay * Number(selected.price)).toFixed(2)} (antes $
+                    {(qtyBuy * Number(selected.price)).toFixed(2)})
+                  </span>
+                )}
+              </label>
+            ) : (
+              <label className="text-sm">
+                Valor ({type === "fixed_price" ? "precio final" : "%"})
+                <input
+                  className="mt-1 w-full border rounded-lg px-3 py-2"
+                  type="number"
+                  value={value || ""}
+                  onChange={(e) => setValue(Number(e.target.value))}
+                  placeholder={type === "fixed_price" ? "Ej: 2999" : "Ej: 20"}
+                />
+                {selected && value > 0 && (
+                  <span className="text-xs text-emerald-600 mt-1 block">
+                    {type === "fixed_price"
+                      ? `Precio normal $${Number(selected.price).toFixed(2)} → oferta $${Number(value).toFixed(2)}`
+                      : `Precio normal $${Number(selected.price).toFixed(2)} → oferta $${(Number(selected.price) * (1 - value / 100)).toFixed(2)} (-${value}%)`
+                    }
+                  </span>
+                )}
+              </label>
+            )}
 
             <label className="min-w-0 text-sm">
               Desde
@@ -440,7 +532,9 @@ export default function OfertasPage() {
                             <b>
                               {o.type === "fixed_price"
                                 ? `$${o.value}`
-                                : `-${o.value}%`}
+                                : o.type === "percent"
+                                ? `-${o.value}%`
+                                : `Llevá ${o.qty_buy} · Pagá ${o.qty_pay}`}
                             </b>
                             <span className="mx-2">·</span>
                             {o.store_id ? "Sucursal" : "Global"}

@@ -39,6 +39,8 @@ type SaleItem = {
   name: string;
   quantity: number;
   unit_price: number;
+  qty_buy?: number | null;
+  qty_pay?: number | null;
 };
 
 type Register = { id: string; name: string };
@@ -535,7 +537,14 @@ export default function SalesHistorialPage() {
                           <div className="space-y-2">
                             {items.map((item, idx) => (
                               <div key={`${item.product_id}-${idx}`} className="rounded-lg bg-white/80 p-2">
-                                <div className="font-medium">{item.name}</div>
+                                <div className="font-medium">
+                                  {item.name}
+                                  {item.qty_buy && item.qty_pay ? (
+                                    <span className="ml-1.5 inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-semibold text-purple-800">
+                                      {item.qty_buy}X{item.qty_pay}
+                                    </span>
+                                  ) : null}
+                                </div>
                                 <div className="mt-1 flex justify-between gap-2 text-neutral-600">
                                   <span>Cant. {item.quantity}</span>
                                   <span>{formatMoney(item.unit_price)} c/u</span>
@@ -658,7 +667,14 @@ export default function SalesHistorialPage() {
                                 <tbody>
                                   {items.map((item, idx) => (
                                     <tr key={`${item.product_id}-${idx}`}>
-                                      <td className="py-0.5 pr-4">{item.name}</td>
+                                      <td className="py-0.5 pr-4">
+                                        {item.name}
+                                        {item.qty_buy && item.qty_pay ? (
+                                          <span className="ml-1.5 inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-semibold text-purple-800">
+                                            {item.qty_buy}X{item.qty_pay}
+                                          </span>
+                                        ) : null}
+                                      </td>
                                       <td className="py-0.5 pr-4 text-right">{item.quantity}</td>
                                       <td className="py-0.5 pr-4 text-right">{formatMoney(item.unit_price)}</td>
                                       <td className="py-0.5 text-right">{formatMoney(item.quantity * item.unit_price)}</td>

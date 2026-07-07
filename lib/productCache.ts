@@ -15,6 +15,8 @@ export type CachedProduct = {
   has_offer?: boolean | null;
   offer_type?: string | null;
   offer_value?: number | null;
+  qty_buy?: number | null;
+  qty_pay?: number | null;
 };
 
 type CacheRecord = {

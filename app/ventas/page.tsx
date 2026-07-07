@@ -23,6 +23,8 @@ type ProductRow = {
   has_offer?: boolean | null;
   offer_type?: string | null;
   offer_value?: number | null;
+  qty_buy?: number | null;
+  qty_pay?: number | null;
 
   // PESABLES
   is_weighted?: boolean | null;
@@ -43,7 +45,21 @@ type CartItem = {
   has_offer?: boolean;
   is_weighted?: boolean;
   is_balanza?: boolean; // precio viene de la etiqueta de balanza, qty siempre 1
+  qty_buy?: number;
+  qty_pay?: number;
 };
+
+// Misma fórmula que confirm_sale_with_stock y /api/pos/confirm: unidades
+// facturadas → precio blended redondeado a 2 decimales. Se recalcula acá solo
+// para que el cajero vea el importe real antes de confirmar; el servidor es
+// quien manda a la hora de cobrar.
+function nxmUnitPrice(qty: number, basePrice: number, qtyBuy: number, qtyPay: number): number {
+  if (!qty || qty <= 0 || !qtyBuy) return basePrice;
+  const fullGroups = Math.floor(qty / qtyBuy);
+  const remainder = qty - fullGroups * qtyBuy;
+  const billedUnits = fullGroups * qtyPay + remainder;
+  return round2((billedUnits * basePrice) / qty);
+}
 
 function cartItemForConfirm(it: CartItem): {
   product_id: string;
@@ -142,6 +158,8 @@ type SaleItem = {
   name: string;
   quantity: number;
   unit_price: number;
+  qty_buy?: number | null;
+  qty_pay?: number | null;
 };
 
 type RecentSale = {
@@ -1142,11 +1160,24 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
   }
 
   function addToCart(p: ProductRow) {
+    const isNxm = p.offer_type === "nxm" && Boolean(p.qty_buy) && Boolean(p.qty_pay);
+    const basePrice = Number(p.price ?? 0);
+
     setItems((prev) => {
       const existing = prev.find((it) => it.product_id === p.id);
       if (existing) {
+        const nextQty = existing.qty + 1;
         return prev.map((it) =>
-          it.product_id === p.id ? { ...it, qty: it.qty + 1 } : it
+          it.product_id === p.id
+            ? {
+                ...it,
+                qty: nextQty,
+                unit_price:
+                  it.qty_buy && it.qty_pay
+                    ? nxmUnitPrice(nextQty, it.base_unit_price ?? basePrice, it.qty_buy, it.qty_pay)
+                    : it.unit_price,
+              }
+            : it
         );
       }
       return [
@@ -1156,9 +1187,11 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
           name: p.name,
           sku: p.sku,
           qty: 1,
-          unit_price: getUnitPrice(p),
-          base_unit_price: Number(p.price ?? 0),
+          unit_price: isNxm ? nxmUnitPrice(1, basePrice, p.qty_buy!, p.qty_pay!) : getUnitPrice(p),
+          base_unit_price: basePrice,
           has_offer: Boolean(p.has_offer),
+          qty_buy: isNxm ? Number(p.qty_buy) : undefined,
+          qty_pay: isNxm ? Number(p.qty_pay) : undefined,
         },
       ];
     });
@@ -1189,7 +1222,14 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
   function updateQty(key: string, qty: number) {
     setItems((prev) => {
       if (qty <= 0) return prev.filter((it) => lineKey(it) !== key);
-      return prev.map((it) => lineKey(it) === key ? { ...it, qty } : it);
+      return prev.map((it) => {
+        if (lineKey(it) !== key) return it;
+        if (it.qty_buy && it.qty_pay) {
+          const base = it.base_unit_price ?? it.unit_price;
+          return { ...it, qty, unit_price: nxmUnitPrice(qty, base, it.qty_buy, it.qty_pay) };
+        }
+        return { ...it, qty };
+      });
     });
   }
 
@@ -1660,7 +1700,14 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                                 <div className="space-y-1">
                                   {items.map((item, idx) => (
                                     <div key={`${item.product_id}-${idx}`} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 text-xs">
-                                      <span className="text-neutral-700 truncate">{item.name}</span>
+                                      <span className="text-neutral-700 truncate">
+                                        {item.name}
+                                        {item.qty_buy && item.qty_pay ? (
+                                          <span className="ml-1.5 inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-semibold text-purple-800">
+                                            {item.qty_buy}X{item.qty_pay}
+                                          </span>
+                                        ) : null}
+                                      </span>
                                       <span className="tabular-nums text-neutral-400 text-right">{item.quantity} u.</span>
                                       <span className="tabular-nums text-neutral-400 text-right">${item.unit_price.toFixed(2)}</span>
                                       <span className="tabular-nums font-medium text-right">${(item.quantity * item.unit_price).toFixed(2)}</span>
@@ -1874,9 +1921,15 @@ onKeyDown={(e) => {
                         ) : null}
 
                         {p.has_offer ? (
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ${isSelected ? "bg-white/20 text-white" : "bg-green-100 text-green-800"}`}>
-                            OFERTA
-                          </span>
+                          p.offer_type === "nxm" && p.qty_buy && p.qty_pay ? (
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${isSelected ? "bg-white/20 text-white" : "bg-purple-100 text-purple-800"}`}>
+                              {p.qty_buy}X{p.qty_pay}
+                            </span>
+                          ) : (
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ${isSelected ? "bg-white/20 text-white" : "bg-green-100 text-green-800"}`}>
+                              OFERTA
+                            </span>
+                          )
                         ) : null}
                       </div>
 
@@ -1886,14 +1939,20 @@ onKeyDown={(e) => {
                         {p.stock !== undefined ? <>Stock: {p.stock ?? "—"}</> : null}
                         {p.stock !== undefined ? " · " : " · "}
                         {p.has_offer ? (
-                          <>
-                            <span className={`font-semibold ${isSelected ? "text-white" : "text-green-700"}`}>
-                              ${Number(p.effective_price ?? 0).toFixed(2)}
-                            </span>{" "}
-                            <span className={`line-through ml-1 ${isSelected ? "text-white/60" : "text-neutral-500"}`}>
-                              ${Number(p.price ?? 0).toFixed(2)}
+                          p.offer_type === "nxm" && p.qty_buy && p.qty_pay ? (
+                            <span className={`font-semibold ${isSelected ? "text-white" : "text-purple-700"}`}>
+                              Llevá {p.qty_buy} pagá {p.qty_pay}
                             </span>
-                          </>
+                          ) : (
+                            <>
+                              <span className={`font-semibold ${isSelected ? "text-white" : "text-green-700"}`}>
+                                ${Number(p.effective_price ?? 0).toFixed(2)}
+                              </span>{" "}
+                              <span className={`line-through ml-1 ${isSelected ? "text-white/60" : "text-neutral-500"}`}>
+                                ${Number(p.price ?? 0).toFixed(2)}
+                              </span>
+                            </>
+                          )
                         ) : (
                           <>${Number(p.price ?? 0).toFixed(2)}</>
                         )}
@@ -1959,15 +2018,21 @@ onKeyDown={(e) => {
                       >
                         <td className="py-2 px-2">
                           <span className="block break-words">{it.name}</span>
-                          {it.qty > 1 && !(it as any).is_weighted && (
+                          {it.qty > 1 && !(it as any).is_weighted && !(it.qty_buy && it.qty_pay) && (
                             <span className="block text-xs text-neutral-500">
                               {it.qty} × ${Number(it.unit_price).toFixed(2)}
                             </span>
                           )}
                           {it.has_offer && (
-                            <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-800">
-                              OFERTA
-                            </span>
+                            it.qty_buy && it.qty_pay ? (
+                              <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-purple-100 text-purple-800 font-semibold">
+                                {it.qty_buy}X{it.qty_pay}
+                              </span>
+                            ) : (
+                              <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-800">
+                                OFERTA
+                              </span>
+                            )
                           )}
                           {(it as any).is_weighted && !(it as any).is_balanza && (
                             <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-blue-100 text-blue-800">

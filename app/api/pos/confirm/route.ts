@@ -284,7 +284,7 @@ export async function POST(req: Request) {
         .in("id", productIds),
       supabaseAdmin
         .from("product_offers")
-        .select("product_id, store_id, type, value")
+        .select("product_id, store_id, type, value, qty_buy, qty_pay")
         .in("product_id", productIds)
         .eq("is_active", true)
         .lte("starts_at", nowIso)
@@ -298,12 +298,27 @@ export async function POST(req: Request) {
     }
 
     // Ofertas: store-specific gana sobre global (store_id = null)
-    const offerMap = new Map<string, { type: string; value: number; storeSpecific: boolean }>();
+    type OfferInfo = {
+      type: string;
+      value: number;
+      qty_buy: number | null;
+      qty_pay: number | null;
+      storeSpecific: boolean;
+    };
+    const offerMap = new Map<string, OfferInfo>();
     for (const o of offerRows ?? []) {
       const pid = String(o.product_id);
       const storeSpecific = o.store_id === storeId;
       const prev = offerMap.get(pid);
-      if (!prev || storeSpecific) offerMap.set(pid, { type: String(o.type), value: toNum(o.value), storeSpecific });
+      if (!prev || storeSpecific) {
+        offerMap.set(pid, {
+          type: String(o.type),
+          value: toNum(o.value),
+          qty_buy: o.qty_buy != null ? toNum(o.qty_buy) : null,
+          qty_pay: o.qty_pay != null ? toNum(o.qty_pay) : null,
+          storeSpecific,
+        });
+      }
     }
 
     const effectivePrice = (basePrice: number, pid: string): number => {
@@ -339,40 +354,62 @@ export async function POST(req: Request) {
 
     const finalItems: Array<{ product_id: string; quantity: number; unit_price: number }> = [];
 
+    // Ítems de balanza: precio individual por escaneo, nunca se agrupan ni llevan nxm.
     for (const it of items) {
+      if (it.source !== "scale_barcode") continue;
       const product = productMap.get(it.product_id)!;
 
-      if (it.source === "scale_barcode") {
-        if (!product.is_weighted) {
-          return NextResponse.json(
-            { error: "El precio de balanza solo se acepta para productos pesables" },
-            { status: 400 }
-          );
-        }
-        if (it.client_unit_price <= 0 || it.client_unit_price > 10_000_000) {
-          return NextResponse.json(
-            { error: "Precio de balanza inválido" },
-            { status: 400 }
-          );
-        }
-
-        finalItems.push({
-          product_id: it.product_id,
-          quantity: 1,
-          unit_price: it.client_unit_price,
-        });
-        continue;
+      if (!product.is_weighted) {
+        return NextResponse.json(
+          { error: "El precio de balanza solo se acepta para productos pesables" },
+          { status: 400 }
+        );
+      }
+      if (it.client_unit_price <= 0 || it.client_unit_price > 10_000_000) {
+        return NextResponse.json(
+          { error: "Precio de balanza inválido" },
+          { status: 400 }
+        );
       }
 
       finalItems.push({
         product_id: it.product_id,
-        quantity: it.quantity,
-        unit_price: product.price,
+        quantity: 1,
+        unit_price: it.client_unit_price,
       });
     }
 
-    // Total siempre calculado desde precios de DB (no se acepta del cliente)
-    const total = finalItems.reduce((acc, it) => acc + it.quantity * it.unit_price, 0);
+    // Resto de los ítems: se agrupan por product_id (mismo hardening que la RPC
+    // confirm_sale_with_stock) para que el cálculo nxm use la cantidad real total.
+    const groupedQty = new Map<string, number>();
+    for (const it of items) {
+      if (it.source === "scale_barcode") continue;
+      groupedQty.set(it.product_id, (groupedQty.get(it.product_id) ?? 0) + it.quantity);
+    }
+
+    for (const [product_id, quantity] of groupedQty) {
+      const product = productMap.get(product_id)!;
+      const offer = offerMap.get(product_id);
+
+      let unit_price = product.price;
+
+      // Misma fórmula que confirm_sale_with_stock: unidades facturadas → blended
+      // redondeado a 2 decimales. El total de la línea sale de quantity × ese
+      // blended (no de billed_units × precio), para que coincida centavo a
+      // centavo con lo que graba la RPC en sale_items.
+      if (offer && offer.type === "nxm" && offer.qty_buy && offer.qty_pay) {
+        const fullGroups = Math.floor(quantity / offer.qty_buy);
+        const remainder = quantity - fullGroups * offer.qty_buy;
+        const billedUnits = fullGroups * offer.qty_pay + remainder;
+        unit_price = roundMoney((billedUnits * product.price) / quantity);
+      }
+
+      finalItems.push({ product_id, quantity, unit_price });
+    }
+
+    // Total siempre calculado desde precios de DB (no se acepta del cliente).
+    // Cada línea se redondea a 2 decimales antes de sumar — igual que la RPC.
+    const total = finalItems.reduce((acc, it) => acc + roundMoney(it.quantity * it.unit_price), 0);
 
     if (total <= 0) {
       return NextResponse.json(
