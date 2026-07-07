@@ -47,18 +47,37 @@ type CartItem = {
   is_balanza?: boolean; // precio viene de la etiqueta de balanza, qty siempre 1
   qty_buy?: number;
   qty_pay?: number;
+  promo_pct?: number; // % de descuento en la 2da unidad (second_unit_pct)
 };
 
 // Misma fórmula que confirm_sale_with_stock y /api/pos/confirm: unidades
 // facturadas → precio blended redondeado a 2 decimales. Se recalcula acá solo
 // para que el cajero vea el importe real antes de confirmar; el servidor es
 // quien manda a la hora de cobrar.
-function nxmUnitPrice(qty: number, basePrice: number, qtyBuy: number, qtyPay: number): number {
-  if (!qty || qty <= 0 || !qtyBuy) return basePrice;
-  const fullGroups = Math.floor(qty / qtyBuy);
-  const remainder = qty - fullGroups * qtyBuy;
-  const billedUnits = fullGroups * qtyPay + remainder;
-  return round2((billedUnits * basePrice) / qty);
+function promoUnitPrice(
+  qty: number,
+  basePrice: number,
+  promo: { qty_buy?: number | null; qty_pay?: number | null; promo_pct?: number | null } | null | undefined
+): number {
+  if (!promo || !qty || qty <= 0) return basePrice;
+
+  if (promo.qty_buy && promo.qty_pay) {
+    // nxm: llevá qty_buy, pagá qty_pay
+    const fullGroups = Math.floor(qty / promo.qty_buy);
+    const remainder = qty - fullGroups * promo.qty_buy;
+    const billedUnits = fullGroups * promo.qty_pay + remainder;
+    return round2((billedUnits * basePrice) / qty);
+  }
+
+  if (promo.qty_buy === 2 && promo.promo_pct) {
+    // second_unit_pct: pares de 2, la 2da unidad de cada par con descuento
+    const fullGroups = Math.floor(qty / 2);
+    const remainder = qty - fullGroups * 2;
+    const billedUnits = fullGroups * (2 - promo.promo_pct / 100) + remainder;
+    return round2((billedUnits * basePrice) / qty);
+  }
+
+  return basePrice;
 }
 
 function cartItemForConfirm(it: CartItem): {
@@ -160,6 +179,7 @@ type SaleItem = {
   unit_price: number;
   qty_buy?: number | null;
   qty_pay?: number | null;
+  promo_pct?: number | null;
 };
 
 type RecentSale = {
@@ -1161,6 +1181,7 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
 
   function addToCart(p: ProductRow) {
     const isNxm = p.offer_type === "nxm" && Boolean(p.qty_buy) && Boolean(p.qty_pay);
+    const isSecondUnitPct = p.offer_type === "second_unit_pct" && Boolean(p.qty_buy) && Boolean(p.offer_value);
     const basePrice = Number(p.price ?? 0);
 
     setItems((prev) => {
@@ -1172,10 +1193,13 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
             ? {
                 ...it,
                 qty: nextQty,
-                unit_price:
-                  it.qty_buy && it.qty_pay
-                    ? nxmUnitPrice(nextQty, it.base_unit_price ?? basePrice, it.qty_buy, it.qty_pay)
-                    : it.unit_price,
+                unit_price: it.qty_buy
+                  ? promoUnitPrice(nextQty, it.base_unit_price ?? basePrice, {
+                      qty_buy: it.qty_buy,
+                      qty_pay: it.qty_pay,
+                      promo_pct: it.promo_pct,
+                    })
+                  : it.unit_price,
               }
             : it
         );
@@ -1187,11 +1211,17 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
           name: p.name,
           sku: p.sku,
           qty: 1,
-          unit_price: isNxm ? nxmUnitPrice(1, basePrice, p.qty_buy!, p.qty_pay!) : getUnitPrice(p),
+          unit_price:
+            isNxm
+              ? promoUnitPrice(1, basePrice, { qty_buy: p.qty_buy, qty_pay: p.qty_pay })
+              : isSecondUnitPct
+              ? promoUnitPrice(1, basePrice, { qty_buy: 2, promo_pct: Number(p.offer_value) })
+              : getUnitPrice(p),
           base_unit_price: basePrice,
           has_offer: Boolean(p.has_offer),
-          qty_buy: isNxm ? Number(p.qty_buy) : undefined,
+          qty_buy: isNxm ? Number(p.qty_buy) : isSecondUnitPct ? 2 : undefined,
           qty_pay: isNxm ? Number(p.qty_pay) : undefined,
+          promo_pct: isSecondUnitPct ? Number(p.offer_value) : undefined,
         },
       ];
     });
@@ -1224,9 +1254,17 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
       if (qty <= 0) return prev.filter((it) => lineKey(it) !== key);
       return prev.map((it) => {
         if (lineKey(it) !== key) return it;
-        if (it.qty_buy && it.qty_pay) {
+        if (it.qty_buy) {
           const base = it.base_unit_price ?? it.unit_price;
-          return { ...it, qty, unit_price: nxmUnitPrice(qty, base, it.qty_buy, it.qty_pay) };
+          return {
+            ...it,
+            qty,
+            unit_price: promoUnitPrice(qty, base, {
+              qty_buy: it.qty_buy,
+              qty_pay: it.qty_pay,
+              promo_pct: it.promo_pct,
+            }),
+          };
         }
         return { ...it, qty };
       });
@@ -1706,6 +1744,10 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                                           <span className="ml-1.5 inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-semibold text-purple-800">
                                             {item.qty_buy}X{item.qty_pay}
                                           </span>
+                                        ) : item.qty_buy === 2 && item.promo_pct ? (
+                                          <span className="ml-1.5 inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-semibold text-purple-800">
+                                            2DA AL {item.promo_pct}%
+                                          </span>
                                         ) : null}
                                       </span>
                                       <span className="tabular-nums text-neutral-400 text-right">{item.quantity} u.</span>
@@ -1925,6 +1967,10 @@ onKeyDown={(e) => {
                             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${isSelected ? "bg-white/20 text-white" : "bg-purple-100 text-purple-800"}`}>
                               {p.qty_buy}X{p.qty_pay}
                             </span>
+                          ) : p.offer_type === "second_unit_pct" && p.offer_value ? (
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${isSelected ? "bg-white/20 text-white" : "bg-purple-100 text-purple-800"}`}>
+                              2DA AL {p.offer_value}%
+                            </span>
                           ) : (
                             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ${isSelected ? "bg-white/20 text-white" : "bg-green-100 text-green-800"}`}>
                               OFERTA
@@ -1942,6 +1988,10 @@ onKeyDown={(e) => {
                           p.offer_type === "nxm" && p.qty_buy && p.qty_pay ? (
                             <span className={`font-semibold ${isSelected ? "text-white" : "text-purple-700"}`}>
                               Llevá {p.qty_buy} pagá {p.qty_pay}
+                            </span>
+                          ) : p.offer_type === "second_unit_pct" && p.offer_value ? (
+                            <span className={`font-semibold ${isSelected ? "text-white" : "text-purple-700"}`}>
+                              2da unidad al {p.offer_value}% de descuento
                             </span>
                           ) : (
                             <>
@@ -2018,7 +2068,7 @@ onKeyDown={(e) => {
                       >
                         <td className="py-2 px-2">
                           <span className="block break-words">{it.name}</span>
-                          {it.qty > 1 && !(it as any).is_weighted && !(it.qty_buy && it.qty_pay) && (
+                          {it.qty > 1 && !(it as any).is_weighted && !it.qty_buy && (
                             <span className="block text-xs text-neutral-500">
                               {it.qty} × ${Number(it.unit_price).toFixed(2)}
                             </span>
@@ -2027,6 +2077,10 @@ onKeyDown={(e) => {
                             it.qty_buy && it.qty_pay ? (
                               <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-purple-100 text-purple-800 font-semibold">
                                 {it.qty_buy}X{it.qty_pay}
+                              </span>
+                            ) : it.qty_buy === 2 && it.promo_pct ? (
+                              <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-purple-100 text-purple-800 font-semibold">
+                                2DA AL {it.promo_pct}%
                               </span>
                             ) : (
                               <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-800">

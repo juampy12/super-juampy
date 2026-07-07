@@ -25,7 +25,7 @@ type ProductRow = {
   active?: boolean | null;
 };
 
-type OfferType = "fixed_price" | "percent" | "nxm";
+type OfferType = "fixed_price" | "percent" | "nxm" | "second_unit_pct";
 
 type Offer = {
   id: string;
@@ -46,6 +46,8 @@ const NXM_SHORTCUTS: Array<{ label: string; qty_buy: number; qty_pay: number }> 
   { label: "3x2", qty_buy: 3, qty_pay: 2 },
   { label: "3x1", qty_buy: 3, qty_pay: 1 },
 ];
+
+const SECOND_UNIT_SHORTCUTS = [50, 70];
 
 function isoLocalInput(dt?: Date) {
   const d = dt ?? new Date();
@@ -208,6 +210,13 @@ export default function OfertasPage() {
         return void toast.error("Revisá qty_buy / qty_pay: llevá debe ser mayor que pagá (mínimo 1)");
       }
       if (qtyBuy > 10) return void toast.error("qty_buy no puede superar 10");
+    } else if (type === "second_unit_pct") {
+      if (selected.is_weighted) {
+        return void toast.error("Esta promo no está disponible para productos pesables");
+      }
+      if (!value || value <= 0 || value >= 100) {
+        return void toast.error("El descuento de la 2da unidad debe ser un porcentaje entre 0 y 100");
+      }
     } else if (!value || value <= 0) {
       return void toast.error("Valor inválido");
     }
@@ -219,7 +228,7 @@ export default function OfertasPage() {
       store_id: isGlobal ? null : storeId,
       type,
       value: type === "nxm" ? 0 : value,
-      qty_buy: type === "nxm" ? qtyBuy : undefined,
+      qty_buy: type === "nxm" ? qtyBuy : type === "second_unit_pct" ? 2 : undefined,
       qty_pay: type === "nxm" ? qtyPay : undefined,
       starts_at: new Date(startsAt).toISOString(),
       ends_at: new Date(endsAt).toISOString(),
@@ -367,6 +376,10 @@ export default function OfertasPage() {
                           <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-purple-100 text-purple-800 font-semibold">
                             {p.qty_buy}X{p.qty_pay}
                           </span>
+                        ) : p.offer_type === "second_unit_pct" && p.offer_value ? (
+                          <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-purple-100 text-purple-800 font-semibold">
+                            2DA -{p.offer_value}%
+                          </span>
                         ) : (
                           <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-800">
                             OFERTA ${Number(p.effective_price).toFixed(2)}
@@ -401,6 +414,9 @@ export default function OfertasPage() {
                 <option value="percent">% Descuento</option>
                 <option value="nxm" disabled={Boolean(selected?.is_weighted)}>
                   2x1 / 3x2 (NxM){selected?.is_weighted ? " — no disponible para pesables" : ""}
+                </option>
+                <option value="second_unit_pct" disabled={Boolean(selected?.is_weighted)}>
+                  2da unidad al X%{selected?.is_weighted ? " — no disponible para pesables" : ""}
                 </option>
               </select>
             </label>
@@ -455,6 +471,52 @@ export default function OfertasPage() {
                     {qtyPay} × ${Number(selected.price).toFixed(2)} = $
                     {(qtyPay * Number(selected.price)).toFixed(2)} (antes $
                     {(qtyBuy * Number(selected.price)).toFixed(2)})
+                  </span>
+                )}
+              </label>
+            ) : type === "second_unit_pct" ? (
+              <label className="text-sm">
+                Descuento en la 2da unidad
+                {selected?.is_weighted && (
+                  <span className="mt-1 block text-xs text-red-600">
+                    Este producto es pesable: esta promo no está disponible.
+                  </span>
+                )}
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {SECOND_UNIT_SHORTCUTS.map((pct) => (
+                    <button
+                      type="button"
+                      key={pct}
+                      onClick={() => setValue(pct)}
+                      className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
+                        value === pct
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-700"
+                          : "hover:bg-black/5"
+                      }`}
+                    >
+                      {pct}%
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    className="w-20 rounded-lg border px-2 py-2 text-center"
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={value || ""}
+                    onChange={(e) => setValue(Number(e.target.value))}
+                    placeholder="Ej: 50"
+                  />
+                  <span className="text-xs opacity-70">% de descuento en la 2da unidad</span>
+                </div>
+                {selected && value > 0 && value < 100 && (
+                  <span className="text-xs text-emerald-600 mt-1 block">
+                    Ej: 2 unidades a ${Number(selected.price).toFixed(2)} c/u → pagás $
+                    {Number(selected.price).toFixed(2)} + $
+                    {(Number(selected.price) * (1 - value / 100)).toFixed(2)} = $
+                    {(Number(selected.price) * (1 + (1 - value / 100))).toFixed(2)} (antes $
+                    {(Number(selected.price) * 2).toFixed(2)})
                   </span>
                 )}
               </label>
@@ -534,6 +596,8 @@ export default function OfertasPage() {
                                 ? `$${o.value}`
                                 : o.type === "percent"
                                 ? `-${o.value}%`
+                                : o.type === "second_unit_pct"
+                                ? `2da unidad -${o.value}%`
                                 : `Llevá ${o.qty_buy} · Pagá ${o.qty_pay}`}
                             </b>
                             <span className="mx-2">·</span>

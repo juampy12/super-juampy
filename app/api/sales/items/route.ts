@@ -37,7 +37,7 @@ export async function GET(req: Request) {
 
     const { data: items, error: itemsErr } = await supabaseAdmin
       .from("sale_items")
-      .select("product_id, quantity, unit_price, qty_buy, qty_pay")
+      .select("product_id, quantity, unit_price, qty_buy, qty_pay, promo_pct")
       .eq("sale_id", sale_id);
 
     if (itemsErr) {
@@ -68,6 +68,7 @@ export async function GET(req: Request) {
       unit_price: Number(item.unit_price),
       qty_buy: item.qty_buy != null ? Number(item.qty_buy) : null,
       qty_pay: item.qty_pay != null ? Number(item.qty_pay) : null,
+      promo_pct: item.promo_pct != null ? Number(item.promo_pct) : null,
     }));
 
     return NextResponse.json({ data: mapped });

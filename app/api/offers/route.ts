@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
-type OfferType = "fixed_price" | "percent" | "nxm";
+type OfferType = "fixed_price" | "percent" | "nxm" | "second_unit_pct";
 
 const NXM_MAX_QTY_BUY = 10;
 
@@ -60,7 +60,10 @@ export async function POST(req: NextRequest) {
     const ends_at = body?.ends_at as string | undefined;
 
     if (!product_id) return jsonError("Falta product_id");
-    if (!type || (type !== "fixed_price" && type !== "percent" && type !== "nxm")) {
+    if (
+      !type ||
+      (type !== "fixed_price" && type !== "percent" && type !== "nxm" && type !== "second_unit_pct")
+    ) {
       return jsonError("Tipo inválido");
     }
     if (!starts_at || !ends_at) return jsonError("Faltan fechas (starts_at / ends_at)");
@@ -74,6 +77,20 @@ export async function POST(req: NextRequest) {
     let qty_buy: number | null = null;
     let qty_pay: number | null = null;
 
+    if (type === "nxm" || type === "second_unit_pct") {
+      // Bloqueo de pesables: ambas promos por cantidad no tienen sentido con peso variable.
+      const { data: prod, error: prodErr } = await supabaseAdmin
+        .from("products")
+        .select("is_weighted")
+        .eq("id", product_id)
+        .maybeSingle();
+      if (prodErr) return jsonError("Error verificando el producto: " + prodErr.message, 500);
+      if (!prod) return jsonError("Producto no encontrado");
+      if (prod.is_weighted) {
+        return jsonError("Esta promo no está disponible para productos pesables");
+      }
+    }
+
     if (type === "nxm") {
       qty_buy = Number(body?.qty_buy);
       qty_pay = Number(body?.qty_pay);
@@ -86,17 +103,13 @@ export async function POST(req: NextRequest) {
       if (qty_buy > NXM_MAX_QTY_BUY) {
         return jsonError(`qty_buy no puede superar ${NXM_MAX_QTY_BUY}`);
       }
-
-      const { data: prod, error: prodErr } = await supabaseAdmin
-        .from("products")
-        .select("is_weighted")
-        .eq("id", product_id)
-        .maybeSingle();
-      if (prodErr) return jsonError("Error verificando el producto: " + prodErr.message, 500);
-      if (!prod) return jsonError("Producto no encontrado");
-      if (prod.is_weighted) {
-        return jsonError("Las ofertas NxM no están disponibles para productos pesables");
+    } else if (type === "second_unit_pct") {
+      value = Number(body?.value);
+      if (!Number.isFinite(value) || value <= 0 || value >= 100) {
+        return jsonError("El descuento de la 2da unidad debe ser un porcentaje mayor a 0 y menor a 100");
       }
+      qty_buy = 2;
+      qty_pay = null;
     } else {
       value = Number(body?.value);
       if (!Number.isFinite(value) || value <= 0) return jsonError("Valor inválido");

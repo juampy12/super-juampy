@@ -402,6 +402,11 @@ export async function POST(req: Request) {
         const remainder = quantity - fullGroups * offer.qty_buy;
         const billedUnits = fullGroups * offer.qty_pay + remainder;
         unit_price = roundMoney((billedUnits * product.price) / quantity);
+      } else if (offer && offer.type === "second_unit_pct" && offer.value > 0) {
+        const fullGroups = Math.floor(quantity / 2);
+        const remainder = quantity - fullGroups * 2;
+        const billedUnits = fullGroups * (2 - offer.value / 100) + remainder;
+        unit_price = roundMoney((billedUnits * product.price) / quantity);
       }
 
       finalItems.push({ product_id, quantity, unit_price });
