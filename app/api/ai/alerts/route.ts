@@ -12,6 +12,13 @@ function dateAR(d: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
 }
 
+// supabase-js no lanza excepción en un error de query — devuelve {data: null,
+// error}. Sin este log, un error queda enmascarado por el fallback `data ?? []`
+// y la alerta se arma como si simplemente no hubiera datos.
+function logIfError(label: string, error: { message?: string } | null | undefined) {
+  if (error) console.error(`ai/alerts: error en ${label}:`, error.message ?? error);
+}
+
 export async function GET(req: Request) {
   const session = await getSessionFromRequest(req);
   if (!session) return unauthorized();
@@ -74,6 +81,12 @@ export async function GET(req: Request) {
         .limit(20),
     ]);
 
+    logIfError("product_stocks (bajo stock)", lowStockRes.error);
+    logIfError("fn_top_products_range_all (semana)", recentSoldRes.error);
+    logIfError("sales (hoy)", todaySalesRes.error);
+    logIfError("cash_closures", closuresRes.error);
+    logIfError("stock_movements (deficit)", stockDeficitRes.error);
+
     // ── Productos con stock bajo y ventas recientes ───────────────────────
     const rpcItems: any[] = recentSoldRes.data ?? [];
     const rpcHasIds = rpcItems.length > 0 && rpcItems[0]?.product_id != null;
@@ -99,11 +112,14 @@ export async function GET(req: Request) {
     const [productsRes, storesRes] = await Promise.all([
       productIds.length > 0
         ? supabaseAdmin.from("products").select("id, name").in("id", productIds)
-        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+        : Promise.resolve({ data: [] as { id: string; name: string }[], error: null }),
       storeIds.length > 0
         ? supabaseAdmin.from("stores").select("id, name").in("id", storeIds)
-        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+        : Promise.resolve({ data: [] as { id: string; name: string }[], error: null }),
     ]);
+
+    logIfError("products (nombres)", productsRes.error);
+    logIfError("stores (nombres)", storesRes.error);
 
     const productNames: Record<string, string> = {};
     (productsRes.data ?? []).forEach((p: any) => { productNames[p.id] = p.name; });

@@ -14,6 +14,14 @@ const anthropic = new Anthropic({
 // Requiere la tabla ai_business_cache: key TEXT PK, data JSONB, expires_at TIMESTAMPTZ.
 const CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutos
 
+// supabase-js no lanza excepción en un error de query — devuelve {data: null,
+// error}. Sin este log, un error (columna inexistente, RPC rota, etc.) queda
+// enmascarado por el fallback `data ?? []` y el asistente responde como si
+// simplemente no hubiera datos, en vez de avisar que la query falló.
+function logIfError(label: string, error: { message?: string } | null | undefined) {
+  if (error) console.error(`getBusinessData: error en ${label}:`, error.message ?? error);
+}
+
 async function getBusinessDataCached(cacheKey: string) {
   // 1. Buscar hit vigente en la DB (sobrevive cold starts)
   const { data: cached } = await supabase
@@ -108,17 +116,39 @@ async function getBusinessData() {
       .eq("active", true),
   ]);
 
+  logIfError("sales (hoy)", salesToday.error);
+  logIfError("sales (ayer)", salesYesterday.error);
+  logIfError("sales (semana)", salesWeek.error);
+  logIfError("sales (mes)", salesMonth.error);
+  logIfError("sales (mes anterior)", salesPrevMonth.error);
+  logIfError("fn_top_products_range_all (semana)", topWeek.error);
+  logIfError("fn_top_products_range_all (mes)", topMonth.error);
+  logIfError("product_min_stock", lowStock.error);
+  logIfError("stores", stores.error);
+  logIfError("products (margen)", allProducts.error);
+  logIfError("cash_closures", closures.error);
+  logIfError("stock_movements", stockMovements.error);
+  logIfError("product_offers", activeOffers.error);
+
   const storeMap: Record<string, string> = {};
   (stores.data ?? []).forEach((s: any) => { storeMap[s.id] = s.name; });
 
   // 1B + 1C: bloque histórico secuencial (cacheado, latencia aceptable)
+  // Columnas reales: v_sales_daily tiene "total" (no "total_amount"),
+  // v_sales_products tiene "date"/"product_name" (no "day"/"name"). Un typo
+  // acá hacía que ambas queries fallaran en silencio y el asistente nunca
+  // tuviera datos de meses anteriores (ver auditoria-motor-promos.md / fix
+  // posterior de este mismo bug).
   const [salesHistoryRes, topSixMonthsRes] = await Promise.all([
     supabase.from("v_sales_daily")
-      .select("date, store_id, total_amount, tickets")
+      .select("date, store_id, total, tickets")
       .gte("date", twelveMonthsAgoAR)
       .order("date", { ascending: true }),
     supabase.rpc("fn_top_products_range_all", { p_from: sixMonthsAgoAR, p_to: todayAR, p_limit: 50 }),
   ]);
+
+  logIfError("v_sales_daily (historico_mensual)", salesHistoryRes.error);
+  logIfError("fn_top_products_range_all (6 meses, top50)", topSixMonthsRes.error);
 
   const top50Ids = (topSixMonthsRes.data ?? [])
     .map((p: any) => p.product_id as string)
@@ -127,11 +157,12 @@ async function getBusinessData() {
 
   let productTrendsData: any[] = [];
   if (top50Ids.length > 0) {
-    const { data: trendsData } = await supabase.from("v_sales_products")
-      .select("day, product_id, name, units, revenue")
+    const { data: trendsData, error: trendsError } = await supabase.from("v_sales_products")
+      .select("date, product_id, product_name, units, revenue")
       .in("product_id", top50Ids)
-      .gte("day", sixMonthsAgoAR)
-      .order("day", { ascending: true });
+      .gte("date", sixMonthsAgoAR)
+      .order("date", { ascending: true });
+    logIfError("v_sales_products (tendencias_productos)", trendsError);
     productTrendsData = trendsData ?? [];
   }
 
@@ -208,7 +239,7 @@ async function getBusinessData() {
     const sucursal = storeMap[r.store_id] ?? (r.store_id ?? "general");
     const key = `${mes}|${sucursal}`;
     if (!mensualMap[key]) mensualMap[key] = { mes, sucursal, total: 0, tickets: 0 };
-    mensualMap[key].total += Number(r.total_amount ?? r.revenue ?? 0);
+    mensualMap[key].total += Number(r.total ?? 0);
     mensualMap[key].tickets += Number(r.tickets ?? 0);
   });
   const historico_mensual = Object.values(mensualMap)
@@ -218,9 +249,9 @@ async function getBusinessData() {
   // 1C: tendencias mensuales de los top 50 productos (últimos 6 meses)
   const trendMap: Record<string, { nombre: string; por_mes: Record<string, { unidades: number; facturacion: number }> }> = {};
   productTrendsData.forEach((r: any) => {
-    const mes = String(r.day ?? "").slice(0, 7);
+    const mes = String(r.date ?? "").slice(0, 7);
     if (!mes || !r.product_id) return;
-    if (!trendMap[r.product_id]) trendMap[r.product_id] = { nombre: r.name, por_mes: {} };
+    if (!trendMap[r.product_id]) trendMap[r.product_id] = { nombre: r.product_name, por_mes: {} };
     const m = trendMap[r.product_id].por_mes;
     if (!m[mes]) m[mes] = { unidades: 0, facturacion: 0 };
     m[mes].unidades += Number(r.units ?? 0);
