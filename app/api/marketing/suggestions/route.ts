@@ -27,7 +27,7 @@ export async function GET(req: Request) {
       ),
       supabaseAdmin
         .from("product_offers")
-        .select("product_id, type, value")
+        .select("product_id, type, value, qty_buy, qty_pay")
         .eq("is_active", true)
         .lte("starts_at", nowIso)
         .gte("ends_at", nowIso)
@@ -63,9 +63,17 @@ export async function GET(req: Request) {
     }
 
     // Active offers
-    const offerByProduct = new Map<string, { type: string; value: number }>();
+    const offerByProduct = new Map<
+      string,
+      { type: string; value: number; qty_buy: number | null; qty_pay: number | null }
+    >();
     for (const o of offersRes.data ?? []) {
-      offerByProduct.set(o.product_id, { type: o.type, value: Number(o.value) });
+      offerByProduct.set(o.product_id, {
+        type: o.type,
+        value: Number(o.value),
+        qty_buy: o.qty_buy != null ? Number(o.qty_buy) : null,
+        qty_pay: o.qty_pay != null ? Number(o.qty_pay) : null,
+      });
     }
 
     const suggestions: Array<{
@@ -75,7 +83,7 @@ export async function GET(req: Request) {
       reason: string;
       stock: number;
       sold7d: number;
-      offer?: { type: string; value: number };
+      offer?: { type: string; value: number; qty_buy: number | null; qty_pay: number | null };
     }> = [];
 
     const seen = new Set<string>();
@@ -93,6 +101,10 @@ export async function GET(req: Request) {
       const discountLabel =
         offer.type === "percent"
           ? `${offer.value}% de descuento`
+          : offer.type === "nxm"
+          ? `Llevá ${offer.qty_buy}, pagá ${offer.qty_pay}`
+          : offer.type === "second_unit_pct"
+          ? `2da unidad al ${offer.value}% OFF`
           : `Precio especial $${Number(offer.value).toLocaleString("es-AR")}`;
       suggestions.push({
         id: prod.id, name: prod.name, price: prod.price,

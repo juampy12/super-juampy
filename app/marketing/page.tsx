@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getPosEmployee } from "@/lib/posSession";
 
-type Offer = { type: string; value: number };
+type Offer = { type: string; value: number; qty_buy?: number | null; qty_pay?: number | null };
 
 type Product = { id: string; name: string; price: number; offer?: Offer };
 
@@ -129,12 +129,14 @@ function starPath(
   ctx.closePath();
 }
 
-// Returns computed promo price (null if not computable)
+// Returns computed promo price (null if not computable — nxm/second_unit_pct
+// no tienen un precio unitario fijo, dependen de la cantidad, así que no se
+// dibuja el pill de precio tachado para esos tipos)
 function calcPromoPrice(price: number, offer: Offer): number | null {
   if (offer.type === "percent" && offer.value > 0 && offer.value < 100) {
     return Math.round(price * (1 - offer.value / 100));
   }
-  if ((offer.type === "fixed" || offer.type === "price") && offer.value > 0) {
+  if (offer.type === "fixed_price" && offer.value > 0) {
     return Math.round(offer.value);
   }
   return null;
@@ -742,9 +744,10 @@ export default function MarketingPage() {
 
   function getOfferLabel(offer: Offer | undefined) {
     if (!offer) return "";
-    return offer.type === "percent"
-      ? `${offer.value}% OFF`
-      : `Precio especial $${offer.value.toLocaleString("es-AR")}`;
+    if (offer.type === "percent") return `${offer.value}% OFF`;
+    if (offer.type === "nxm") return `Llevá ${offer.qty_buy}, pagá ${offer.qty_pay}`;
+    if (offer.type === "second_unit_pct") return `2da unidad al ${offer.value}% OFF`;
+    return `Precio especial $${offer.value.toLocaleString("es-AR")}`;
   }
 
   function redrawCanvas(
@@ -854,11 +857,7 @@ export default function MarketingPage() {
     setGenError(null);
     setTexts(null);
     try {
-      const offerText = selectedOffer
-        ? selectedOffer.type === "percent"
-          ? `${selectedOffer.value}% de descuento`
-          : `Precio especial $${selectedOffer.value.toLocaleString("es-AR")}`
-        : "";
+      const offerText = selectedOffer ? getOfferLabel(selectedOffer) : "";
       const res = await fetch("/api/marketing/generate-text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -54,7 +54,16 @@ type PaymentInfo = {
   breakdown: PaymentBreakdown;
   notes?: string;
   idempotency_key?: string;
+  // Faltante tolerado en resync offline (oferta vencida u otro cambio de
+  // precio entre la venta y la sincronización). Ausente en ventas normales.
+  shortfall?: number;
+  sync_note?: string;
 };
+
+// Tope de faltante tolerado al re-sincronizar una venta offline: si el precio
+// vigente subió más de esto respecto de lo que el cliente cobró en el local,
+// se rechaza igual (no se acepta cualquier diferencia sin límite).
+const OFFLINE_SHORTFALL_CAP_PCT = 0.10;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -99,7 +108,11 @@ function paymentOk(payment: PaymentInfo) {
   return { ok: true as const, payment };
 }
 
-function validateAndNormalizePayment(p: any, totalRaw: number) {
+function validateAndNormalizePayment(
+  p: any,
+  totalRaw: number,
+  opts?: { allowShortfall?: boolean }
+) {
   if (!p) return paymentError("Falta información de pago");
 
   const method: PaymentMethod = String(p.method ?? "") as PaymentMethod;
@@ -109,6 +122,8 @@ function validateAndNormalizePayment(p: any, totalRaw: number) {
 
   const total = roundMoney(totalRaw);
   const total_paid = toNum(p.total_paid ?? p.totalPaid ?? 0, 0);
+  const allowShortfall = Boolean(opts?.allowShortfall);
+  const shortfallCap = roundMoney(total * OFFLINE_SHORTFALL_CAP_PCT);
 
   // Aceptamos breakdown viejo con "account" y lo pasamos a "cuenta_corriente"
   const raw = (p.breakdown ?? {}) as any;
@@ -132,7 +147,14 @@ function validateAndNormalizePayment(p: any, totalRaw: number) {
 
     if (method === "efectivo") {
       const cash = roundMoney(rawBreakdown.cash || total_paid);
-      if (cash + 0.009 < total) return paymentError("El pago no cubre el total de la venta");
+      const missing = roundMoney(total - cash);
+      if (missing > 0.009) {
+        if (!allowShortfall || missing > shortfallCap + 0.005) {
+          return paymentError("El pago no cubre el total de la venta");
+        }
+        clean.cash = cash;
+        return paymentOk({ method, total_paid: cash, change: 0, breakdown: clean, notes, shortfall: missing });
+      }
       const change = roundMoney(cash - total);
       clean.cash = cash;
       return paymentOk({ method, total_paid: cash, change, breakdown: clean, notes });
@@ -148,8 +170,34 @@ function validateAndNormalizePayment(p: any, totalRaw: number) {
         : rawBreakdown.cuenta_corriente || total_paid;
 
     const normalizedAmount = roundMoney(amount);
-    if (Math.abs(normalizedAmount - total) > 0.01) {
-      return paymentError("El monto del pago debe coincidir con el total de la venta");
+    const diff = roundMoney(total - normalizedAmount); // >0 falta, <0 sobra
+
+    if (Math.abs(diff) > 0.01) {
+      if (diff > 0) {
+        // Falta plata: solo se tolera en resync offline, y hasta el tope.
+        if (!allowShortfall || diff > shortfallCap + 0.005) {
+          return paymentError("El monto del pago debe coincidir con el total de la venta");
+        }
+      } else if (!allowShortfall) {
+        // Sobra plata: en una venta en vivo esto sigue siendo un dato mal
+        // cargado (no hay concepto de "vuelto" en estos métodos). En resync
+        // offline puede pasar legítimamente si el precio bajó — se acepta.
+        return paymentError("El monto del pago debe coincidir con el total de la venta");
+      }
+
+      if (method === "debito") clean.debit = normalizedAmount;
+      if (method === "credito") clean.credit = normalizedAmount;
+      if (method === "mp") clean.mp = normalizedAmount;
+      if (method === "cuenta_corriente") clean.cuenta_corriente = normalizedAmount;
+
+      return paymentOk({
+        method,
+        total_paid: normalizedAmount,
+        change: 0,
+        breakdown: clean,
+        notes,
+        ...(diff > 0 ? { shortfall: diff } : {}),
+      });
     }
 
     if (method === "debito") clean.debit = total;
@@ -173,11 +221,18 @@ function validateAndNormalizePayment(p: any, totalRaw: number) {
       rawBreakdown.mp +
       rawBreakdown.cuenta_corriente
   );
-  if (breakdownTotal + 0.009 < total) {
-    return paymentError("El pago mixto no cubre el total de la venta");
+
+  const missingMixto = roundMoney(total - breakdownTotal);
+  let shortfallMixto: number | undefined;
+
+  if (missingMixto > 0.009) {
+    if (!allowShortfall || missingMixto > shortfallCap + 0.005) {
+      return paymentError("El pago mixto no cubre el total de la venta");
+    }
+    shortfallMixto = missingMixto;
   }
 
-  const overpay = roundMoney(breakdownTotal - total);
+  const overpay = shortfallMixto ? 0 : roundMoney(breakdownTotal - total);
   if (overpay > 0.01 && rawBreakdown.cash <= 0) {
     return paymentError("Solo puede haber vuelto cuando una parte del pago es efectivo");
   }
@@ -198,6 +253,7 @@ function validateAndNormalizePayment(p: any, totalRaw: number) {
     change: overpay,
     breakdown: clean,
     notes,
+    ...(shortfallMixto ? { shortfall: shortfallMixto } : {}),
   });
 }
 
@@ -352,7 +408,18 @@ export async function POST(req: Request) {
       }
     }
 
-    const finalItems: Array<{ product_id: string; quantity: number; unit_price: number }> = [];
+    const finalItems: Array<{
+      product_id: string;
+      quantity: number;
+      unit_price: number;
+      source?: "scale_barcode";
+    }> = [];
+
+    // Acumulador del total esperado, SOLO para validar el pago acá — no es lo
+    // que se manda a la RPC. La RPC es la única que aplica la matemática de
+    // nxm/second_unit_pct; acá se replica la misma fórmula únicamente para
+    // saber cuánto debería cobrarse y así comparar contra total_paid.
+    let expectedTotal = 0;
 
     // Ítems de balanza: precio individual por escaneo, nunca se agrupan ni llevan nxm.
     for (const it of items) {
@@ -376,11 +443,15 @@ export async function POST(req: Request) {
         product_id: it.product_id,
         quantity: 1,
         unit_price: it.client_unit_price,
+        source: "scale_barcode",
       });
+      expectedTotal += roundMoney(it.client_unit_price);
     }
 
     // Resto de los ítems: se agrupan por product_id (mismo hardening que la RPC
-    // confirm_sale_with_stock) para que el cálculo nxm use la cantidad real total.
+    // confirm_sale_with_stock) solo para calcular el total esperado — el
+    // unit_price que se manda a la RPC es siempre el de LISTA (o el ya resuelto
+    // por percent/fixed_price); la RPC es quien aplica el blended de nxm/second_unit_pct.
     const groupedQty = new Map<string, number>();
     for (const it of items) {
       if (it.source === "scale_barcode") continue;
@@ -391,30 +462,31 @@ export async function POST(req: Request) {
       const product = productMap.get(product_id)!;
       const offer = offerMap.get(product_id);
 
-      let unit_price = product.price;
+      const listPrice = product.price;
+      let blendedPrice = listPrice;
 
       // Misma fórmula que confirm_sale_with_stock: unidades facturadas → blended
-      // redondeado a 2 decimales. El total de la línea sale de quantity × ese
-      // blended (no de billed_units × precio), para que coincida centavo a
-      // centavo con lo que graba la RPC en sale_items.
+      // redondeado a 2 decimales. Se usa SOLO para expectedTotal (validación de
+      // pago), nunca para el unit_price que viaja en finalItems.
       if (offer && offer.type === "nxm" && offer.qty_buy && offer.qty_pay) {
         const fullGroups = Math.floor(quantity / offer.qty_buy);
         const remainder = quantity - fullGroups * offer.qty_buy;
         const billedUnits = fullGroups * offer.qty_pay + remainder;
-        unit_price = roundMoney((billedUnits * product.price) / quantity);
+        blendedPrice = roundMoney((billedUnits * listPrice) / quantity);
       } else if (offer && offer.type === "second_unit_pct" && offer.value > 0) {
         const fullGroups = Math.floor(quantity / 2);
         const remainder = quantity - fullGroups * 2;
         const billedUnits = fullGroups * (2 - offer.value / 100) + remainder;
-        unit_price = roundMoney((billedUnits * product.price) / quantity);
+        blendedPrice = roundMoney((billedUnits * listPrice) / quantity);
       }
 
-      finalItems.push({ product_id, quantity, unit_price });
+      finalItems.push({ product_id, quantity, unit_price: listPrice });
+      expectedTotal += roundMoney(quantity * blendedPrice);
     }
 
-    // Total siempre calculado desde precios de DB (no se acepta del cliente).
-    // Cada línea se redondea a 2 decimales antes de sumar — igual que la RPC.
-    const total = finalItems.reduce((acc, it) => acc + roundMoney(it.quantity * it.unit_price), 0);
+    // Total esperado, solo para validar el pago — la RPC calcula y graba el
+    // suyo propio a partir de sus propias líneas (fuente de verdad única).
+    const total = roundMoney(expectedTotal);
 
     if (total <= 0) {
       return NextResponse.json(
@@ -423,7 +495,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const paymentResult = validateAndNormalizePayment(body.payment, total);
+    // Ventas reencoladas desde lib/offlineQueue.ts: el precio pudo cambiar
+    // (oferta vencida, etc.) entre que se cobró en el local y este resync.
+    // Se tolera un faltante hasta el tope — nunca en una confirmación en vivo.
+    const offlineResync = body.offline_resync === true;
+
+    const paymentResult = validateAndNormalizePayment(body.payment, total, {
+      allowShortfall: offlineResync,
+    });
     if (!paymentResult.ok) {
       return NextResponse.json({ error: paymentResult.message }, { status: 400 });
     }
@@ -431,8 +510,18 @@ export async function POST(req: Request) {
 
     // Embeber idempotency_key en el JSONB de payment para que quede persistido en sales.
     // La próxima llamada con el mismo key encontrará la venta ya creada sin crear duplicado.
-    const paymentWithKey: PaymentInfo | null = payment && idempotencyKey
-      ? { ...payment, idempotency_key: idempotencyKey }
+    const paymentWithKey: PaymentInfo | null = payment
+      ? {
+          ...payment,
+          ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+          ...(offlineResync && payment.shortfall
+            ? {
+                sync_note:
+                  "Precio recalculado al sincronizar (oferta vencida u otro cambio de precio): falta " +
+                  payment.shortfall.toFixed(2),
+              }
+            : {}),
+        }
       : payment;
 
     // RPC: confirm_sale_with_stock mete register_id dentro de payment para confirm_sale

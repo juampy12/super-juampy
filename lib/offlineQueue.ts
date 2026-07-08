@@ -70,7 +70,11 @@ export async function syncQueue(): Promise<{ synced: number; failed: number; aba
         const res = await fetch("/api/pos/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sale.payload),
+          // offline_resync: true avisa al server que el precio pudo cambiar
+          // (oferta vencida, etc.) entre que se cobró en el local y este
+          // reintento — tolera un faltante acotado en vez de rechazar y
+          // perder la venta ya cobrada.
+          body: JSON.stringify({ ...sale.payload, offline_resync: true }),
         });
 
         if (res.ok) {

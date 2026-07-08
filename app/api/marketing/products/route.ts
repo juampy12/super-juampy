@@ -34,12 +34,15 @@ export async function GET(req: Request) {
     const products = data ?? [];
     const productIds = products.map((p) => p.id);
 
-    let offerByProduct = new Map<string, { type: string; value: number }>();
+    let offerByProduct = new Map<
+      string,
+      { type: string; value: number; qty_buy: number | null; qty_pay: number | null }
+    >();
     if (productIds.length > 0) {
       const nowIso = new Date().toISOString();
       const { data: offers, error: offersError } = await supabaseAdmin
         .from("product_offers")
-        .select("product_id, type, value")
+        .select("product_id, type, value, qty_buy, qty_pay")
         .in("product_id", productIds)
         .eq("is_active", true)
         .lte("starts_at", nowIso)
@@ -49,7 +52,15 @@ export async function GET(req: Request) {
         console.error("Error buscando ofertas:", offersError);
       } else {
         offerByProduct = new Map(
-          (offers ?? []).map((o) => [o.product_id, { type: o.type, value: Number(o.value) }])
+          (offers ?? []).map((o) => [
+            o.product_id,
+            {
+              type: o.type,
+              value: Number(o.value),
+              qty_buy: o.qty_buy != null ? Number(o.qty_buy) : null,
+              qty_pay: o.qty_pay != null ? Number(o.qty_pay) : null,
+            },
+          ])
         );
       }
     }
