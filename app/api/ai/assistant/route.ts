@@ -111,9 +111,9 @@ async function getBusinessData() {
       .order("created_at", { ascending: false })
       .limit(100),
     supabase.from("product_offers")
-      .select("product_id, type, value, starts_at, ends_at, products(name)")
+      .select("product_id, type, value, qty_buy, qty_pay, starts_at, ends_at, products(name)")
       .gte("ends_at", new Date().toISOString())
-      .eq("active", true),
+      .eq("is_active", true),
   ]);
 
   logIfError("sales (hoy)", salesToday.error);
@@ -323,6 +323,11 @@ async function getBusinessData() {
       producto: (o.products as any)?.name ?? o.product_id,
       tipo: o.type,
       valor: o.value,
+      // Para nxm: qty_buy/qty_pay describen "llevá X, pagá Y" (ej. 3x2).
+      // Para second_unit_pct: qty_buy=2 fijo, "valor" es el % de descuento
+      // de la 2da unidad. Para percent/fixed_price quedan en null.
+      qty_buy: o.qty_buy ?? null,
+      qty_pay: o.qty_pay ?? null,
       desde: o.starts_at,
       hasta: o.ends_at,
     })),
