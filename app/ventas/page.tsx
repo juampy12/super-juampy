@@ -451,10 +451,10 @@ export default function VentasPage() {
     // Supervisor abriendo la PWA instalada en el celular: no hay barra de
     // direcciones en standalone, así que este /ventas solo puede ser el
     // arranque en frío por start_url, nunca una navegación manual — mandarlo
-    // a reportes. En una pestaña de navegador normal (no standalone) queda
-    // intacta la navegación manual a /ventas.
+    // a su panel de inicio. En una pestaña de navegador normal (no standalone)
+    // queda intacta la navegación manual a /ventas.
     if (emp.role === "supervisor" && isMobileViewport() && isStandalonePwa()) {
-      router.replace("/reports");
+      router.replace("/inicio");
       return;
     }
     setPosEmployee(emp);

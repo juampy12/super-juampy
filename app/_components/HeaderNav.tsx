@@ -64,6 +64,7 @@ const cashierLinks = [
 // SVG paths for the mobile menu — avoids CDN dependency when offline
 const MOBILE_ICON_PATHS: Record<string, string> = {
   'ti-shopping-cart': '<path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M6 19m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 19m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17h-11v-14h-2"/><path d="M6 5l14 1l-1 7h-13"/>',
+  'ti-home': '<path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M5 12l-2 0l9 -9l9 9l-2 0"/><path d="M5 12l0 7a2 2 0 0 0 2 2l10 0a2 2 0 0 0 2 -2l0 -7"/><path d="M9 21l0 -6a2 2 0 0 1 2 -2l2 0a2 2 0 0 1 2 2l0 6"/>',
   'ti-tag': '<path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M11 3l9 9a1.5 1.5 0 0 1 0 2l-6 6a1.5 1.5 0 0 1 -2 0l-9 -9v-6a3 3 0 0 1 3 -3h5z"/><circle cx="9" cy="9" r="1" fill="currentColor"/>',
   'ti-package': '<path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 3l8 4.5l0 9l-8 4.5l-8 -4.5l0 -9l8 -4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12l0 9"/><path d="M12 12l-8 -4.5"/><path d="M16 5.25l-8 4.5"/>',
   'ti-chart-bar': '<path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 12m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v5a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M9 8m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v9a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M15 4m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v13a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M4 20l14 0"/>',
@@ -161,10 +162,13 @@ export default function HeaderNav() {
   const isSupervisor = emp?.role === 'supervisor';
   const empName = emp?.name ?? '';
 
-  // En el celular, el supervisor no vende — el POS le molesta, sacarlo del
-  // menú mobile. En desktop y para el cajero (mobile o desktop) no cambia nada.
+  // En el celular, el supervisor no vende — el POS le molesta. Se reemplaza
+  // por un acceso a su panel de inicio. En desktop y para el cajero (mobile
+  // o desktop) no cambia nada.
   const mobileSupervisorGroups = isSupervisor && isMobile
-    ? supervisorGroups.filter(g => g.href !== '/ventas')
+    ? supervisorGroups.map(g => g.href === '/ventas'
+        ? { ...g, label: 'Inicio', icon: 'ti-home', href: '/inicio' }
+        : g)
     : supervisorGroups;
 
   const storeLabels: Record<string, string> = {

@@ -22,9 +22,9 @@ export default function PosLoginPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(json?.error || "Codigo o PIN incorrecto"); return; }
       setPosEmployee(json.employee);
-      // Supervisor en mobile: el POS no es su pantalla de trabajo — arranca en reportes.
+      // Supervisor en mobile: el POS no es su pantalla de trabajo — arranca en su panel de inicio.
       const isSupervisorOnMobile = json.employee?.role === "supervisor" && isMobileViewport();
-      window.location.href = isSupervisorOnMobile ? "/reports" : "/ventas";
+      window.location.href = isSupervisorOnMobile ? "/inicio" : "/ventas";
     } finally {
       setLoading(false);
     }
