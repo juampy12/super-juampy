@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import ConfirmSaleButton from "@/components/ConfirmSaleButton";
 import { useRouter } from "next/navigation";
 import { getPosEmployee, type PosEmployee } from "@/lib/posSession";
+import { isMobileViewport, isStandalonePwa } from "@/lib/useIsMobile";
 import { addToQueue } from "@/lib/offlineQueue";
 import { warmCache, searchCachedProducts, mergeIntoCachedProducts, initProductCache, getCacheSavedAt } from "@/lib/productCache";
 import { useOnlineSync } from "@/lib/useOnlineSync";
@@ -443,8 +444,20 @@ export default function VentasPage() {
   useEffect(() => {
     const emp = getPosEmployee();
     posEmployeeRef.current = emp;
-    if (!emp) router.replace("/pos-login");
-    else setPosEmployee(emp);
+    if (!emp) {
+      router.replace("/pos-login");
+      return;
+    }
+    // Supervisor abriendo la PWA instalada en el celular: no hay barra de
+    // direcciones en standalone, así que este /ventas solo puede ser el
+    // arranque en frío por start_url, nunca una navegación manual — mandarlo
+    // a reportes. En una pestaña de navegador normal (no standalone) queda
+    // intacta la navegación manual a /ventas.
+    if (emp.role === "supervisor" && isMobileViewport() && isStandalonePwa()) {
+      router.replace("/reports");
+      return;
+    }
+    setPosEmployee(emp);
   }, [router]);
 
   // ================= ROLES POS =================

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { getPosEmployee, logoutPos } from '@/lib/posSession';
+import { useIsMobile } from '@/lib/useIsMobile';
 
 type NavGroup = {
   label: string;
@@ -117,6 +118,7 @@ export default function HeaderNav() {
   const [mobileOpenGroup, setMobileOpenGroup] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const navRef = useRef<HTMLElement>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const update = () => setIsOnline(navigator.onLine);
@@ -158,6 +160,12 @@ export default function HeaderNav() {
 
   const isSupervisor = emp?.role === 'supervisor';
   const empName = emp?.name ?? '';
+
+  // En el celular, el supervisor no vende — el POS le molesta, sacarlo del
+  // menú mobile. En desktop y para el cajero (mobile o desktop) no cambia nada.
+  const mobileSupervisorGroups = isSupervisor && isMobile
+    ? supervisorGroups.filter(g => g.href !== '/ventas')
+    : supervisorGroups;
 
   const storeLabels: Record<string, string> = {
     '914dee4d-a78c-4f3f-8998-402c56fc88e9': 'Alberdi',
@@ -365,7 +373,7 @@ export default function HeaderNav() {
           }}
         >
           {isSupervisor ? (
-            supervisorGroups.map((group) => {
+            mobileSupervisorGroups.map((group) => {
               const active = isGroupActive(group);
               const isOpen = mobileOpenGroup === group.label;
 

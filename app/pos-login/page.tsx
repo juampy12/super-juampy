@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { setPosEmployee } from "@/lib/posSession";
+import { isMobileViewport } from "@/lib/useIsMobile";
 import toast from "react-hot-toast";
 
 export default function PosLoginPage() {
@@ -21,7 +22,9 @@ export default function PosLoginPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(json?.error || "Codigo o PIN incorrecto"); return; }
       setPosEmployee(json.employee);
-      window.location.href = "/ventas";
+      // Supervisor en mobile: el POS no es su pantalla de trabajo — arranca en reportes.
+      const isSupervisorOnMobile = json.employee?.role === "supervisor" && isMobileViewport();
+      window.location.href = isSupervisorOnMobile ? "/reports" : "/ventas";
     } finally {
       setLoading(false);
     }
