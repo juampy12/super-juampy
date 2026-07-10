@@ -6,14 +6,14 @@ import { usePathname } from 'next/navigation';
 import { getPosEmployee, logoutPos } from '@/lib/posSession';
 import { useIsMobile } from '@/lib/useIsMobile';
 
-type NavGroup = {
+export type NavGroup = {
   label: string;
   icon: string;
   href?: string;
   children?: { href: string; label: string; icon: string }[];
 };
 
-const supervisorGroups: NavGroup[] = [
+export const supervisorGroups: NavGroup[] = [
   { label: 'POS', icon: 'ti-shopping-cart', href: '/ventas' },
   { label: 'Precios', icon: 'ti-tag', href: '/products' },
   {
