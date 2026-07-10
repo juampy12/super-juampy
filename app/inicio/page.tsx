@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getPosEmployee } from "@/lib/posSession";
+import { supervisorGroups, type NavGroup } from "@/app/_components/HeaderNav";
 
 type StoreBreakdown = { store_id: string; name: string; total: number };
 
@@ -18,14 +19,12 @@ function money(n: number): string {
   return `$${Math.round(n).toLocaleString("es-AR")}`;
 }
 
-const CARDS: { href: string; label: string; icon: string; color: string }[] = [
-  { href: "/reports", label: "Reportes", icon: "ti-chart-bar", color: "#1A5FA8" },
-  { href: "/cierres/historial", label: "Cierres de caja", icon: "ti-calculator", color: "#CC2020" },
-  { href: "/inteligencia/control", label: "Inteligencia", icon: "ti-brain", color: "#A8C62A" },
-  { href: "/stock", label: "Inventario", icon: "ti-package", color: "#1A5FA8" },
-  { href: "/products", label: "Precios", icon: "ti-tag", color: "#CC2020" },
-  { href: "/empleados", label: "Gestión", icon: "ti-settings", color: "#A8C62A" },
-];
+// Reutiliza los grupos del menú de HeaderNav — se excluye "POS" porque
+// en mobile ese grupo apunta a esta misma pantalla (Inicio).
+const CARD_COLORS = ["#1A5FA8", "#CC2020", "#A8C62A"];
+const CARDS: (NavGroup & { color: string })[] = supervisorGroups
+  .filter((g) => g.href !== "/ventas")
+  .map((g, i) => ({ ...g, color: CARD_COLORS[i % CARD_COLORS.length] }));
 
 export default function InicioPage() {
   const router = useRouter();
@@ -33,6 +32,7 @@ export default function InicioPage() {
   const [empName, setEmpName] = useState("");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [openCard, setOpenCard] = useState<(NavGroup & { color: string }) | null>(null);
 
   // Solo supervisor: cajero se va directo al POS, sin sesión al login.
   useEffect(() => {
@@ -162,22 +162,87 @@ export default function InicioPage() {
 
       {/* Menú de tarjetas */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {CARDS.map((c) => (
-          <Link
-            key={c.href}
-            href={c.href}
-            className="flex min-h-[104px] flex-col items-start justify-between gap-3 rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm transition-transform active:scale-[0.98] sm:p-5"
-          >
-            <span
-              className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl"
-              style={{ background: `${c.color}1a`, color: c.color }}
-            >
-              <i className={`ti ${c.icon}`} aria-hidden="true" />
-            </span>
-            <span className="text-sm font-medium text-black sm:text-base">{c.label}</span>
-          </Link>
-        ))}
+        {CARDS.map((c) => {
+          const cardClass =
+            "flex min-h-[104px] flex-col items-start justify-between gap-3 rounded-3xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition-transform active:scale-[0.98] sm:p-5";
+          const cardContent = (
+            <>
+              <span
+                className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl"
+                style={{ background: `${c.color}1a`, color: c.color }}
+              >
+                <i className={`ti ${c.icon}`} aria-hidden="true" />
+              </span>
+              <span className="text-sm font-medium text-black sm:text-base">{c.label}</span>
+            </>
+          );
+
+          if (c.children) {
+            return (
+              <button
+                key={c.label}
+                type="button"
+                onClick={() => setOpenCard(c)}
+                className={cardClass}
+              >
+                {cardContent}
+              </button>
+            );
+          }
+
+          return (
+            <Link key={c.href} href={c.href!} className={cardClass}>
+              {cardContent}
+            </Link>
+          );
+        })}
       </section>
+
+      {/* Submenú (bottom sheet) para tarjetas con varias opciones */}
+      {openCard && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+          onClick={() => setOpenCard(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={openCard.label}
+            className="w-full max-w-lg rounded-t-3xl bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-black">{openCard.label}</h2>
+              <button
+                type="button"
+                onClick={() => setOpenCard(null)}
+                aria-label="Cerrar"
+                className="flex h-11 w-11 items-center justify-center rounded-full text-neutral-500 active:bg-neutral-100"
+              >
+                <i className="ti ti-x text-xl" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="flex flex-col gap-1">
+              {openCard.children?.map((child) => (
+                <Link
+                  key={child.href}
+                  href={child.href}
+                  onClick={() => setOpenCard(null)}
+                  className="flex min-h-[44px] items-center gap-3 rounded-2xl px-3 py-2.5 text-[15px] font-medium text-black active:bg-neutral-100"
+                >
+                  <span
+                    className="flex h-9 w-9 items-center justify-center rounded-xl text-base"
+                    style={{ background: `${openCard.color}1a`, color: openCard.color }}
+                  >
+                    <i className={`ti ${child.icon}`} aria-hidden="true" />
+                  </span>
+                  {child.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
