@@ -64,7 +64,7 @@ export default function CatalogoPage() {
   const [cost, setCost] = useState(0);
   const [vat, setVat] = useState(21);
   const [margin, setMargin] = useState(40);
-  const [unitsCase, setUnitsCase] = useState(1);
+  const [unitsCase, setUnitsCase] = useState<number | "">(1);
 
   const [useFinal, setUseFinal] = useState(false);
   const [finalManual, setFinalManual] = useState(0);
@@ -127,7 +127,8 @@ export default function CatalogoPage() {
     [cost, vat, margin]
   );
   const finalPrice = useFinal ? n(finalManual, 0) : calcPrice;
-  const priceCase = finalPrice * Math.max(1, n(unitsCase, 1));
+  const unitsCaseNum = Math.max(1, n(unitsCase, 1));
+  const priceCase = finalPrice * unitsCaseNum;
 
   // Reset completo (botón "Limpiar"): también borra IVA/Margen/Sucursal
   const resetAll = () => {
@@ -190,7 +191,7 @@ export default function CatalogoPage() {
           cost_net: n(cost, 0),
           vat_rate: n(vat, 21),
           markup_rate: n(margin, 0),
-          units_per_case: Math.max(1, n(unitsCase, 1)),
+          units_per_case: unitsCaseNum,
 
           use_final_price: useFinal,
           final_price: useFinal ? n(finalManual, 0) : null,
@@ -551,6 +552,7 @@ export default function CatalogoPage() {
                     className="border rounded px-3 py-2 w-full text-right"
                     value={cost}
                     onChange={(e) => setCost(n(e.target.value, 0))}
+                    onFocus={(e) => e.target.select()}
                     onKeyDown={(e) => focusNext(e, vatRef)}
                   />
                 </div>
@@ -563,6 +565,7 @@ export default function CatalogoPage() {
                     className="border rounded px-3 py-2 w-full text-right"
                     value={vat}
                     onChange={(e) => setVat(n(e.target.value, 21))}
+                    onFocus={(e) => e.target.select()}
                     onKeyDown={(e) => focusNext(e, marginRef)}
                   />
                 </div>
@@ -575,6 +578,7 @@ export default function CatalogoPage() {
                     className="border rounded px-3 py-2 w-full text-right"
                     value={margin}
                     onChange={(e) => setMargin(n(e.target.value, 0))}
+                    onFocus={(e) => e.target.select()}
                     onKeyDown={(e) => focusNext(e, unitsCaseRef)}
                   />
                 </div>
@@ -586,18 +590,23 @@ export default function CatalogoPage() {
                     type="number"
                     className="border rounded px-3 py-2 w-full text-right"
                     value={unitsCase}
-                    onChange={(e) =>
-                      setUnitsCase(Math.max(1, n(e.target.value, 1)))
-                    }
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setUnitsCase(v === "" ? "" : Math.max(1, n(v, 1)));
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    onBlur={(e) => {
+                      if (e.target.value === "") setUnitsCase(1);
+                    }}
                     onKeyDown={(e) => focusNext(e, finalPriceRef)}
                   />
                   <div className="text-xs text-gray-500 mt-1">
                     Si comprás por unidad, dejá 1. Si el proveedor vende por
                     caja/pack, poné cuántas unidades trae (ej: caja x6 → 6).
                   </div>
-                  {unitsCase > 1 && cost > 0 && (
+                  {unitsCaseNum > 1 && cost > 0 && (
                     <div className="text-xs text-gray-500 mt-1">
-                      Costo por bulto/caja: <b>{money(cost * unitsCase)}</b>
+                      Costo por bulto/caja: <b>{money(cost * unitsCaseNum)}</b>
                     </div>
                   )}
                 </div>
@@ -665,6 +674,7 @@ export default function CatalogoPage() {
                     className="border rounded px-3 py-2 w-full text-right"
                     value={initialStock}
                     onChange={(e) => setInitialStock(Math.max(0, n(e.target.value, 0)))}
+                    onFocus={(e) => e.target.select()}
                     onKeyDown={submitOnEnter}
                   />
                 </div>
