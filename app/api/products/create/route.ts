@@ -144,7 +144,8 @@ if (use_final_price) {
       if (stockStoreId === "all") {
         const { data: storeRows, error: storesErr } = await supabaseAdmin
           .from("stores")
-          .select("id");
+          .select("id")
+          .eq("active", true);
         if (storesErr || !storeRows?.length) {
           stock_warning = "No se pudieron leer las sucursales";
         } else {

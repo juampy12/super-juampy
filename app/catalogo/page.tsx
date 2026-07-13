@@ -580,7 +580,7 @@ export default function CatalogoPage() {
                 </div>
 
                 <div>
-                  <label className="text-sm text-gray-600">Unid/caja</label>
+                  <label className="text-sm text-gray-600">Unidades por bulto/caja</label>
                   <input
                     ref={unitsCaseRef}
                     type="number"
@@ -591,6 +591,15 @@ export default function CatalogoPage() {
                     }
                     onKeyDown={(e) => focusNext(e, finalPriceRef)}
                   />
+                  <div className="text-xs text-gray-500 mt-1">
+                    Si comprás por unidad, dejá 1. Si el proveedor vende por
+                    caja/pack, poné cuántas unidades trae (ej: caja x6 → 6).
+                  </div>
+                  {unitsCase > 1 && cost > 0 && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      Costo por bulto/caja: <b>{money(cost * unitsCase)}</b>
+                    </div>
+                  )}
                 </div>
 
                 <div className="md:col-span-2 flex items-center gap-2">
@@ -644,7 +653,7 @@ export default function CatalogoPage() {
                         {s.name}
                       </option>
                     ))}
-                    <option value="all">Las 3 sucursales</option>
+                    <option value="all">Todas las sucursales activas</option>
                   </select>
                 </div>
 

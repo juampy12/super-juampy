@@ -100,6 +100,7 @@ Estas no se pueden verificar por lectura de código, requieren hardware o condic
 - [ ] **Cierre de caja con venta pesable anulada en el día**: verificar visualmente en `/cierres` que la anulada aparece tachada sin distorsionar el total a depositar.
 - [ ] **Impresión**: confirmar con el equipo que no se va a imprimir tickets todavía (flujo PDF de 4 pasos, botones ocultos a propósito).
 - [ ] **Nuevo — botones de supervisor en `/catalogo` tras destrabar con PIN**: verificar que un cajero que usó el PIN de supervisor para autorizar una anulación no se quede viendo botones de alta/edición de catálogo habilitados (fricción de UI encontrada en esta auditoría, sección 2).
+- [x] **Submenú de tarjetas en `/inicio` (bottom sheet por familias de pantallas)**: commit `8d49515`, hecho y pusheado por el dueño del proyecto desde Claude Code remoto (celular) durante esta misma auditoría. Probado en dispositivo mobile real por el dueño del proyecto — funciona bien. No cubierto por los 4 agentes de esta auditoría (llegó después de iniciada), se deja registrado acá como verificado manualmente.
 
 ---
 

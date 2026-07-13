@@ -9,6 +9,7 @@ export async function GET(req: Request) {
   const { data, error } = await supabaseAdmin
     .from("stores")
     .select("id, name")
+    .eq("active", true)
     .order("name", { ascending: true });
   if (error) {
     console.error("Error leyendo stores:", error);
