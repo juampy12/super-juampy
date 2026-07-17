@@ -41,6 +41,7 @@ export default function EtiquetasPage() {
   const [loading, setLoading] = useState(false);
   const [loadingAll, setLoadingAll] = useState(false);
   const [items, setItems] = useState<LabelItem[]>([]);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   useEffect(() => {
     const emp = getPosEmployee();
@@ -104,7 +105,7 @@ export default function EtiquetasPage() {
       const res = await fetch("/api/products/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store_id: storeId, query: null, limit: 999 }),
+        body: JSON.stringify({ store_id: storeId, query: null, all: true }),
       });
       const data = await res.json();
       const rows: ProductRow[] = Array.isArray(data)
@@ -140,9 +141,16 @@ export default function EtiquetasPage() {
     setItems((prev) => prev.filter((i) => i.product.id !== id));
   }
 
-  function generatePdf() {
+  async function generatePdf() {
     const expanded = items.flatMap((item) => Array.from({ length: item.qty }, () => item.product));
-    exportLabelsPDF(expanded, `etiquetas-${new Date().toISOString().slice(0, 10)}.pdf`);
+    setGeneratingPdf(true);
+    try {
+      await exportLabelsPDF(expanded, `etiquetas-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (e: any) {
+      toast.error(e?.message || "Error generando el PDF");
+    } finally {
+      setGeneratingPdf(false);
+    }
   }
 
   const totalLabels = items.reduce((sum, i) => sum + i.qty, 0);
@@ -190,11 +198,12 @@ export default function EtiquetasPage() {
             </button>
             {items.length > 0 && (
               <button
-                className="px-5 py-2 rounded-lg bg-[#CC2020] text-white font-semibold hover:bg-[#a81a1a] flex items-center gap-2 ml-auto"
+                className="px-5 py-2 rounded-lg bg-[#CC2020] text-white font-semibold hover:bg-[#a81a1a] disabled:opacity-60 flex items-center gap-2 ml-auto"
                 onClick={generatePdf}
+                disabled={generatingPdf}
               >
                 <i className="ti ti-file-type-pdf" aria-hidden="true" />
-                Generar PDF ({totalLabels} {totalLabels === 1 ? "etiqueta" : "etiquetas"})
+                {generatingPdf ? "Generando…" : `Generar PDF (${totalLabels} ${totalLabels === 1 ? "etiqueta" : "etiquetas"})`}
               </button>
             )}
           </div>

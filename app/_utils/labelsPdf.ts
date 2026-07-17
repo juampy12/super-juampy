@@ -1,5 +1,23 @@
 import jsPDF from "jspdf";
 
+const LOGO_PATH = "/logo-super-juampy-header.png";
+const LOGO_ASPECT = 360 / 240; // logo-super-juampy-header.png
+
+async function loadLogoDataURL(): Promise<string | null> {
+  try {
+    const res = await fetch(LOGO_PATH);
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 export type LabelProduct = {
   sku: string;
   name: string;
@@ -62,7 +80,7 @@ function fitTextLines(doc: jsPDF, text: string, maxWidth: number, maxSize: numbe
   return { size, lines };
 }
 
-function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct) {
+function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo: string | null) {
   const contentW = LABEL_W - PAD * 2;
   const centerX = x + LABEL_W / 2;
 
@@ -88,7 +106,7 @@ function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct) {
       : `2DA AL ${product.offer_value}%`;
     doc.setTextColor(255, 255, 255);
     fitFontSize(doc, badgeText, contentW, 9, 6, "bold");
-    doc.text(badgeText, centerX, badgeH - 1.6, { align: "center" });
+    doc.text(badgeText, centerX, y + badgeH - 1.6, { align: "center" });
     doc.setTextColor(0, 0, 0);
     nameTop = y + badgeH + 3;
   }
@@ -126,19 +144,30 @@ function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct) {
     doc.text(priceText, centerX, priceBaseline, { align: "center" });
   }
 
-  // Footer: SKU + $/kg for weighted products
+  // Footer: logo chico + SKU a la izquierda, $/kg a la derecha si es pesable
+  const footerY = y + LABEL_H - PAD;
+  let skuX = x + PAD;
+
+  if (logo) {
+    const logoH = 3.6;
+    const logoW = logoH * LOGO_ASPECT;
+    doc.addImage(logo, "PNG", x + PAD, footerY - logoH - 0.3, logoW, logoH);
+    skuX = x + PAD + logoW + 1.3;
+  }
+
   doc.setTextColor(136, 136, 136);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
-  doc.text(`SKU ${product.sku}`, x + PAD, y + LABEL_H - PAD, { align: "left" });
+  doc.text(`SKU ${product.sku}`, skuX, footerY, { align: "left" });
   if (product.is_weighted) {
-    doc.text(`$${fmt(product.price)}/kg`, x + LABEL_W - PAD, y + LABEL_H - PAD, { align: "right" });
+    doc.text(`$${fmt(product.price)}/kg`, x + LABEL_W - PAD, footerY, { align: "right" });
   }
   doc.setTextColor(0, 0, 0);
 }
 
-export function generateLabelsPDF(products: LabelProduct[]): jsPDF {
+export async function generateLabelsPDF(products: LabelProduct[]): Promise<jsPDF> {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  const logo = await loadLogoDataURL();
 
   products.forEach((product, i) => {
     const posInPage = i % PER_PAGE;
@@ -147,13 +176,13 @@ export function generateLabelsPDF(products: LabelProduct[]): jsPDF {
     const col = posInPage % COLS;
     const x = MARGIN_X + col * LABEL_W;
     const y = MARGIN_Y + row * LABEL_H;
-    drawLabel(doc, x, y, product);
+    drawLabel(doc, x, y, product, logo);
   });
 
   return doc;
 }
 
-export function exportLabelsPDF(products: LabelProduct[], filename = "etiquetas.pdf") {
-  const doc = generateLabelsPDF(products);
+export async function exportLabelsPDF(products: LabelProduct[], filename = "etiquetas.pdf") {
+  const doc = await generateLabelsPDF(products);
   doc.save(filename);
 }
