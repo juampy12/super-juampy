@@ -8,7 +8,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const query: string | null = body.query ?? null;
-  const limit: number = Math.min(Number(body.limit ?? 200), 5000);
+  const limit: number = Math.min(Number(body.limit ?? 200), 10000);
 
   // Cajero solo puede consultar su propia sucursal
   let store_id: string = body.store_id ?? "";

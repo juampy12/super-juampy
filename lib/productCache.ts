@@ -1,7 +1,7 @@
 
 const DB_NAME = "pos_idb_v1";
 const DB_STORE = "product_cache";
-const CACHE_LIMIT = 3000;
+const CACHE_LIMIT = 10000;
 
 export type CachedProduct = {
   id: string;
