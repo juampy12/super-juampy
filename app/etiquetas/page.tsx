@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPosEmployee } from "@/lib/posSession";
+import { exportLabelsPDF } from "@/app/_utils/labelsPdf";
 import toast from "react-hot-toast";
 
 type ProductRow = {
@@ -14,6 +15,9 @@ type ProductRow = {
   has_offer: boolean;
   offer_type: string | null;
   offer_value: number | null;
+  qty_buy?: number | null;
+  qty_pay?: number | null;
+  is_weighted?: boolean | null;
   active?: boolean | null;
 };
 
@@ -26,24 +30,6 @@ type Store = { id: string; name: string };
 
 function fmt(n: number) {
   return n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function Label({ product }: { product: ProductRow }) {
-  const hasOffer = product.has_offer && product.effective_price < product.price;
-  return (
-    <div className="label-cell">
-      <div className="label-name">{product.name}</div>
-      {hasOffer ? (
-        <div className="label-price-block">
-          <span className="label-price-old">${fmt(product.price)}</span>
-          <span className="label-price-offer">${fmt(product.effective_price)}</span>
-        </div>
-      ) : (
-        <div className="label-price">${fmt(product.price)}</div>
-      )}
-      <div className="label-footer">Super Juampy</div>
-    </div>
-  );
 }
 
 export default function EtiquetasPage() {
@@ -92,6 +78,17 @@ export default function EtiquetasPage() {
       const rows: ProductRow[] = Array.isArray(data)
         ? (data as ProductRow[]).filter((r) => r.active !== false)
         : [];
+
+      // Lector de código de barras: si el texto ingresado matchea un SKU exacto, agregar directo
+      const trimmed = query.trim();
+      const exact = trimmed ? rows.find((r) => r.sku === trimmed) : undefined;
+      if (exact) {
+        addProduct(exact);
+        setQuery("");
+        setResults([]);
+        return;
+      }
+
       setResults(rows);
     } catch (e: any) {
       toast.error(e?.message || "Error buscando productos");
@@ -143,130 +140,15 @@ export default function EtiquetasPage() {
     setItems((prev) => prev.filter((i) => i.product.id !== id));
   }
 
-  function printLabels() {
-    window.print();
+  function generatePdf() {
+    const expanded = items.flatMap((item) => Array.from({ length: item.qty }, () => item.product));
+    exportLabelsPDF(expanded, `etiquetas-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
   const totalLabels = items.reduce((sum, i) => sum + i.qty, 0);
 
-  // Expand items to individual label instances for the print grid
-  const expanded = items.flatMap((item) =>
-    Array.from({ length: item.qty }, (_, k) => ({ ...item, key: `${item.product.id}-${k}` }))
-  );
-
   return (
-    <>
-      {/* ── Print styles ───────────────────────────────────────────── */}
-      <style>{`
-        @page {
-          size: A4 portrait;
-          margin: 10mm 8mm;
-        }
-
-        @media print {
-          /* HeaderNav renders as <nav> direct child of <body> */
-          body > nav { display: none !important; }
-          /* Screen-only UI (controls, search, list) */
-          .no-print { display: none !important; }
-          /* AIChat and any other fixed-positioned element (Tailwind .fixed class) */
-          .fixed { display: none !important; }
-
-          html, body {
-            background: white !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          /* Remove max-width and padding from layout wrappers */
-          body > div,
-          body > div > div {
-            max-width: none !important;
-            width: 100% !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
-          .print-area {
-            display: block !important;
-            width: 100%;
-          }
-        }
-
-        @media screen {
-          .print-area { display: none; }
-        }
-
-        /* Label grid — flex instead of grid for reliable page-break support */
-        .labels-grid {
-          display: flex;
-          flex-wrap: wrap;
-          width: 100%;
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-
-        .label-cell {
-          width: 25%;
-          box-sizing: border-box;
-          border: 1px dashed #bbb;
-          padding: 6mm 4mm;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          min-height: 52mm;
-          text-align: center;
-          background: white;
-          break-inside: avoid;
-          page-break-inside: avoid;
-        }
-
-        .label-name {
-          font-size: 13pt;
-          font-weight: 700;
-          color: #111;
-          line-height: 1.2;
-          margin-bottom: 4mm;
-          word-break: break-word;
-        }
-
-        .label-price {
-          font-size: 22pt;
-          font-weight: 900;
-          color: #111;
-          letter-spacing: -0.5px;
-        }
-
-        .label-price-block {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 1mm;
-        }
-
-        .label-price-old {
-          font-size: 13pt;
-          font-weight: 500;
-          color: #666;
-          text-decoration: line-through;
-        }
-
-        .label-price-offer {
-          font-size: 24pt;
-          font-weight: 900;
-          color: #cc2020;
-        }
-
-        .label-footer {
-          margin-top: 4mm;
-          font-size: 7pt;
-          color: #888;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-      `}</style>
-
-      {/* ── Screen UI ──────────────────────────────────────────────── */}
-      <div className="no-print max-w-7xl mx-auto px-3 py-4">
+    <div className="max-w-7xl mx-auto px-3 py-4">
         <h1 className="text-2xl font-semibold mb-4">Etiquetas de góndola</h1>
 
         {/* Controls row */}
@@ -309,10 +191,10 @@ export default function EtiquetasPage() {
             {items.length > 0 && (
               <button
                 className="px-5 py-2 rounded-lg bg-[#CC2020] text-white font-semibold hover:bg-[#a81a1a] flex items-center gap-2 ml-auto"
-                onClick={printLabels}
+                onClick={generatePdf}
               >
-                <i className="ti ti-printer" aria-hidden="true" />
-                Imprimir ({totalLabels} {totalLabels === 1 ? "etiqueta" : "etiquetas"})
+                <i className="ti ti-file-type-pdf" aria-hidden="true" />
+                Generar PDF ({totalLabels} {totalLabels === 1 ? "etiqueta" : "etiquetas"})
               </button>
             )}
           </div>
@@ -423,22 +305,12 @@ export default function EtiquetasPage() {
             </div>
             {items.length > 0 && (
               <div className="px-4 py-3 border-t bg-gray-50 text-sm text-gray-600">
-                Total: <b>{totalLabels}</b> {totalLabels === 1 ? "etiqueta" : "etiquetas"} · 4 por fila en A4
+                Total: <b>{totalLabels}</b> {totalLabels === 1 ? "etiqueta" : "etiquetas"} · 50×40mm, 28 por hoja A4
               </div>
             )}
           </div>
         </div>
 
-      </div>
-
-      {/* ── Print-only area ─────────────────────────────────────────── */}
-      <div className="print-area">
-        <div className="labels-grid">
-          {expanded.map(({ product, key }) => (
-            <Label key={key} product={product} />
-          ))}
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
