@@ -30,13 +30,15 @@ export async function exportReceiptPDF(opts: {
   amount: number;
   change: number;
   total: number;
+  customerName?: string;
+  loyalty?: { puntosGanados: number; saldo: number } | null;
 }) {
   const W = 80;
   const margin = 5;
   const headerH = 26;
   const rowsH = Math.max(1, opts.items.length) * 6 + 8;
   const totalsH = 24;
-  const footerH = 16;
+  const footerH = opts.customerName ? 26 : 16;
   const H = Math.max(100, headerH + rowsH + totalsH + footerH);
 
   const doc = new jsPDF({ unit: "mm", format: [W, H] });
@@ -94,6 +96,20 @@ export async function exportReceiptPDF(opts: {
     doc.text("Vuelto: " + money(opts.change), margin, y); y += 5;
   }
   y += 2;
+
+  if (opts.customerName) {
+    doc.setFontSize(8);
+    doc.text("Cliente: " + opts.customerName, margin, y); y += 4;
+    if (opts.loyalty && opts.loyalty.puntosGanados > 0) {
+      doc.text(
+        `Puntos ganados: +${opts.loyalty.puntosGanados} — Saldo: ${opts.loyalty.saldo}`,
+        margin,
+        y
+      );
+      y += 4;
+    }
+    y += 1;
+  }
 
   doc.setFontSize(8);
   doc.text("¡Gracias por su compra!", W / 2, y, { align: "center" });

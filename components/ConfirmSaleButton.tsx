@@ -26,16 +26,19 @@ type PaymentInfo = {
   notes?: string;
 };
 
+type LoyaltyAccrual = { puntos_ganados: number; saldo: number; vence: string | null };
+
 type Props = {
   items: ConfirmItem[];
   total: number;
   payment?: PaymentInfo;
-  onConfirmed?: (saleId?: string | null) => void;
+  onConfirmed?: (saleId?: string | null, loyalty?: LoyaltyAccrual | null) => void;
   storeId?: string | null;
   registerId?: string | null;
   storeName?: string | null;
   isOnline?: boolean;
   onQueued?: () => void;
+  loyaltyCustomerId?: string | null;
 };
 
 const METHOD_LABELS: Record<string, string> = {
@@ -48,7 +51,7 @@ const METHOD_LABELS: Record<string, string> = {
 };
 
 export default function ConfirmSaleButton({
-  items, total, payment, onConfirmed, storeId, registerId, isOnline = true, onQueued,
+  items, total, payment, onConfirmed, storeId, registerId, isOnline = true, onQueued, loyaltyCustomerId,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -107,7 +110,10 @@ export default function ConfirmSaleButton({
       if (!isOnline) {
         const { addToQueue } = await import("@/lib/offlineQueue");
         addToQueue(
-          { items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null },
+          {
+            items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null,
+            loyalty_customer_id: loyaltyCustomerId ?? undefined,
+          },
           currentKey,
         );
         idempotencyKeyRef.current = crypto.randomUUID();
@@ -127,6 +133,7 @@ export default function ConfirmSaleButton({
             items, total, payment,
             store_id: storeId, register_id: registerId,
             idempotency_key: currentKey,
+            loyalty_customer_id: loyaltyCustomerId ?? undefined,
           }),
         });
       } catch {
@@ -136,7 +143,10 @@ export default function ConfirmSaleButton({
         // devolverá la venta existente en vez de crear una nueva.
         const { addToQueue } = await import("@/lib/offlineQueue");
         addToQueue(
-          { items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null },
+          {
+            items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null,
+            loyalty_customer_id: loyaltyCustomerId ?? undefined,
+          },
           currentKey,
         );
         idempotencyKeyRef.current = crypto.randomUUID();
@@ -182,7 +192,7 @@ export default function ConfirmSaleButton({
       const json = await res.json().catch(() => ({}));
       const saleId = json?.saleId ?? null;
       idempotencyKeyRef.current = crypto.randomUUID();
-      onConfirmed?.(saleId);
+      onConfirmed?.(saleId, json?.loyalty ?? null);
     } finally {
       setLoading(false);
       inFlightRef.current = false;

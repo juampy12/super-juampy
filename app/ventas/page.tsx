@@ -108,6 +108,15 @@ type PaymentMethod =
   | "cuenta_corriente"
   | "mixto";
 
+type LoyaltyCustomer = {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  dni: string | null;
+  category: string;
+  points_available: number;
+};
+
 // ===== helpers UI (A) =====
 function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -429,6 +438,150 @@ function WeightModal({
   );
 }
 
+// ── Modal alta rápida de cliente (fidelización) ─────────────────────────────────
+
+function NewLoyaltyCustomerModal({
+  onCancel,
+  onCreated,
+}: {
+  onCancel: () => void;
+  onCreated: (customer: LoyaltyCustomer) => void;
+}) {
+  const [firstName, setFirstName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [dni, setDni] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  async function handleSubmit() {
+    if (saving) return;
+    const name = firstName.trim();
+    if (!name) {
+      setError("Ingresá el nombre");
+      return;
+    }
+    if (phone.replace(/\D/g, "").length < 10) {
+      setError("El teléfono debe tener al menos 10 dígitos");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/loyalty/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: name,
+          phone,
+          dni: dni.trim() || undefined,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+
+      if (res.status === 409 && json?.customer) {
+        // Ya existe un cliente con ese teléfono/DNI: lo seleccionamos igual.
+        onCreated(json.customer);
+        return;
+      }
+      if (!res.ok) {
+        setError(json?.error ?? "Error al crear el cliente");
+        return;
+      }
+      onCreated(json.customer);
+    } catch {
+      setError("Error de conexión al crear el cliente");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onFieldKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSubmit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel();
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div className="w-full max-w-xs rounded-2xl bg-white p-6 shadow-2xl">
+        <h2 className="mb-4 text-lg font-semibold">Nuevo cliente</h2>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-neutral-600">Nombre *</label>
+            <input
+              ref={inputRef}
+              type="text"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              onKeyDown={onFieldKeyDown}
+              className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="Nombre"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-neutral-600">Teléfono *</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              onKeyDown={onFieldKeyDown}
+              className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="11 2345 6789"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-neutral-600">DNI (opcional)</label>
+            <input
+              type="text"
+              value={dni}
+              onChange={(e) => setDni(e.target.value)}
+              onKeyDown={onFieldKeyDown}
+              className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="12345678"
+            />
+          </div>
+        </div>
+
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+
+        <div className="mt-5 flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="min-h-[44px] flex-1 rounded-xl border border-neutral-300 py-3 text-sm font-medium disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving}
+            className="min-h-[44px] flex-[2] rounded-xl py-3 text-sm font-semibold text-white disabled:opacity-60"
+            style={{ background: "#CC2020" }}
+          >
+            {saving ? "Guardando..." : "Crear cliente"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── POS Principal ─────────────────────────────────────────────────────────────
 
 export default function VentasPage() {
@@ -736,6 +889,7 @@ export default function VentasPage() {
     items: number;
     at: number;
     saleId?: string | null;
+    loyalty?: { puntos_ganados: number; saldo: number } | null;
   }>(null);
 
   const confirmLockRef = useRef(false);
@@ -747,6 +901,7 @@ export default function VentasPage() {
     change: number;
     items: number;
     saleId?: string | null;
+    loyalty?: { puntos_ganados: number; saldo: number } | null;
   }) {
     setSaleFeedback({ ...payload, at: Date.now() });
     confirmLockRef.current = true;
@@ -835,6 +990,35 @@ export default function VentasPage() {
   const [accountAmount, setAccountAmount] = useState(0);
   const [notes, setNotes] = useState("");
   const [showNotes, setShowNotes] = useState(false);
+
+  // Cliente (fidelización) — totalmente opcional, no afecta el flujo si no se usa.
+  const [loyaltyQuery, setLoyaltyQuery] = useState("");
+  const [loyaltyResults, setLoyaltyResults] = useState<LoyaltyCustomer[]>([]);
+  const [loyaltySearching, setLoyaltySearching] = useState(false);
+  const [selectedLoyaltyCustomer, setSelectedLoyaltyCustomer] = useState<LoyaltyCustomer | null>(null);
+  const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
+
+  useEffect(() => {
+    const q = loyaltyQuery.trim();
+    if (!q) {
+      setLoyaltyResults([]);
+      setLoyaltySearching(false);
+      return;
+    }
+    setLoyaltySearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/loyalty/search?q=${encodeURIComponent(q)}`);
+        const json = await res.json().catch(() => ({}));
+        setLoyaltyResults(Array.isArray(json?.customers) ? json.customers : []);
+      } catch {
+        setLoyaltyResults([]);
+      } finally {
+        setLoyaltySearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [loyaltyQuery]);
 
   // En modo rápido: fuerza métodos simples y UI simple
   useEffect(() => {
@@ -1506,6 +1690,18 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
         />
       )}
 
+      {showNewCustomerModal && (
+        <NewLoyaltyCustomerModal
+          onCancel={() => setShowNewCustomerModal(false)}
+          onCreated={(customer) => {
+            setSelectedLoyaltyCustomer(customer);
+            setShowNewCustomerModal(false);
+            setLoyaltyQuery("");
+            setLoyaltyResults([]);
+          }}
+        />
+      )}
+
       {showCancelConfirm && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
           <div className="w-full max-w-[340px] rounded-2xl bg-white p-6 shadow-2xl border">
@@ -1822,6 +2018,11 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
           {saleFeedback.method === "efectivo" && (
             <div className="text-2xl font-bold text-emerald-700">
               Vuelto: ${saleFeedback.change.toFixed(2)}
+            </div>
+          )}
+          {saleFeedback.loyalty && saleFeedback.loyalty.puntos_ganados > 0 && (
+            <div className="text-sm font-semibold" style={{ color: "#1A5FA8" }}>
+              ⭐ +{saleFeedback.loyalty.puntos_ganados} puntos — saldo: {saleFeedback.loyalty.saldo}
             </div>
           )}
         </div>
@@ -2225,6 +2426,87 @@ onKeyDown={(e) => {
             </div>
           </div>
 
+          {/* Cliente (fidelización) — opcional, no bloquea el flujo de venta */}
+          <div className="rounded-xl border bg-white p-3 shadow-sm">
+            <h2 className="font-medium mb-2">Cliente</h2>
+
+            {selectedLoyaltyCustomer ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-neutral-50 px-3 py-2">
+                <div className="text-sm">
+                  <div className="font-semibold text-neutral-900">{selectedLoyaltyCustomer.full_name}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                    <span
+                      className="inline-flex items-center rounded-full px-2 py-0.5 font-medium text-white"
+                      style={{ background: "#1A5FA8" }}
+                    >
+                      {selectedLoyaltyCustomer.category}
+                    </span>
+                    <span>{selectedLoyaltyCustomer.points_available} pts disponibles</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLoyaltyCustomer(null)}
+                  className="shrink-0 rounded border px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                >
+                  Quitar
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={loyaltyQuery}
+                    onChange={(e) => setLoyaltyQuery(e.target.value)}
+                    placeholder="Buscar por teléfono o DNI..."
+                    className="flex-1 rounded border px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewCustomerModal(true)}
+                    className="shrink-0 rounded px-3 py-2 text-sm font-medium text-white"
+                    style={{ background: "#CC2020" }}
+                  >
+                    + Nuevo
+                  </button>
+                </div>
+
+                {loyaltySearching && (
+                  <div className="text-xs text-neutral-500">Buscando...</div>
+                )}
+
+                {!loyaltySearching && loyaltyQuery.trim() && loyaltyResults.length === 0 && (
+                  <div className="text-xs text-neutral-500">Sin resultados.</div>
+                )}
+
+                {loyaltyResults.length > 0 && (
+                  <div className="max-h-48 divide-y overflow-y-auto rounded-md border">
+                    {loyaltyResults.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLoyaltyCustomer(c);
+                          setLoyaltyQuery("");
+                          setLoyaltyResults([]);
+                        }}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <span>
+                          <span className="font-medium">{c.full_name}</span>
+                          {c.phone && <span className="text-neutral-500"> · {c.phone}</span>}
+                          {c.dni && <span className="text-neutral-500"> · DNI {c.dni}</span>}
+                        </span>
+                        <span className="shrink-0 text-xs text-neutral-500">{c.points_available} pts</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Pago */}
           <div className="rounded-xl border bg-white p-3 shadow-sm">
             <div className="flex flex-wrap items-end gap-3">
@@ -2471,7 +2753,7 @@ onKeyDown={(e) => {
                     },
                     notes: notes || undefined,
                   }}
-                  onConfirmed={(saleId) => {
+                  onConfirmed={(saleId, loyalty) => {
                     showSaleFeedback({
                       total,
                       totalPaid,
@@ -2479,6 +2761,9 @@ onKeyDown={(e) => {
                       change,
                       items: totalItems,
                       saleId,
+                      loyalty: loyalty?.puntos_ganados
+                        ? { puntos_ganados: loyalty.puntos_ganados, saldo: loyalty.saldo }
+                        : null,
                     });
 
                     setItems([]);
@@ -2494,6 +2779,10 @@ onKeyDown={(e) => {
                     setNotes("");
                     setShowNotes(false);
 
+                    setSelectedLoyaltyCustomer(null);
+                    setLoyaltyQuery("");
+                    setLoyaltyResults([]);
+
                     setTimeout(() => searchInputRef.current?.focus(), 0);
                   }}
                   storeId={selectedStoreId}
@@ -2501,6 +2790,7 @@ onKeyDown={(e) => {
                   isOnline={isOnline}
                   onQueued={updatePending}
                   registerId={selectedRegisterId}
+                  loyaltyCustomerId={selectedLoyaltyCustomer?.id ?? null}
                 />
               </div>
             )}
