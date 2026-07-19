@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     // ── 4. Cargar la venta ───────────────────────────────────────
     const { data: sale, error: saleErr } = await supabaseAdmin
       .from("sales")
-      .select("id, status, store_id, register_id, total, payment")
+      .select("id, status, store_id, register_id, total, payment, loyalty_customer_id")
       .eq("id", saleId)
       .maybeSingle();
 
@@ -121,6 +121,24 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: false, error: "Venta no encontrada" }, { status: 404 });
       }
       return NextResponse.json({ ok: false, error: "Error al procesar la operación" }, { status: 500 });
+    }
+
+    // Fidelización: revierte los puntos acumulados por esta venta, si tenía cliente.
+    // Nunca hace fallar la anulación — la venta ya quedó anulada arriba.
+    if (sale.loyalty_customer_id) {
+      try {
+        const { data: reversal, error: reversalErr } = await supabaseAdmin.rpc(
+          "anular_fidelizacion",
+          { p_sale_id: saleId, p_employee_id: session.employee_id ?? null }
+        );
+        if (reversalErr) {
+          console.error("Error en anular_fidelizacion:", reversalErr);
+        } else if (!reversal?.ok) {
+          console.error("anular_fidelizacion no revirtió puntos:", reversal?.motivo ?? reversal);
+        }
+      } catch (loyaltyEx) {
+        console.error("Error inesperado revirtiendo fidelización:", loyaltyEx);
+      }
     }
 
     return NextResponse.json({ ok: true, voided_at: voidedAt });

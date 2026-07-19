@@ -545,7 +545,45 @@ export async function POST(req: Request) {
       await supabaseAdmin.from("sales").update({ register_id }).eq("id", saleId);
     }
 
-    return NextResponse.json({ ok: true, saleId });
+    // Fidelización (Fase 1 — solo acumulación): opcional, nunca hace fallar la venta.
+    // La venta ya está confirmada en este punto; un error acá se loguea y se sigue.
+    let loyalty: { puntos_ganados: number; saldo: number; vence: string | null } | null = null;
+    const rawLoyaltyCustomerId = body.loyalty_customer_id ?? body.loyaltyCustomerId ?? null;
+    const loyaltyCustomerId: string | null =
+      typeof rawLoyaltyCustomerId === "string" && UUID_RE.test(rawLoyaltyCustomerId)
+        ? rawLoyaltyCustomerId
+        : null;
+
+    if (saleId && loyaltyCustomerId) {
+      try {
+        const { error: loyaltyLinkErr } = await supabaseAdmin
+          .from("sales")
+          .update({ loyalty_customer_id: loyaltyCustomerId })
+          .eq("id", saleId);
+        if (loyaltyLinkErr) {
+          console.error("Error vinculando cliente de fidelización a la venta:", loyaltyLinkErr);
+        } else {
+          const { data: accrual, error: accrualErr } = await supabaseAdmin.rpc("acumular_puntos", {
+            p_sale_id: saleId,
+          });
+          if (accrualErr) {
+            console.error("Error en acumular_puntos:", accrualErr);
+          } else if (!accrual?.ok) {
+            console.error("acumular_puntos no acumuló puntos:", accrual?.motivo ?? accrual);
+          } else {
+            loyalty = {
+              puntos_ganados: accrual.puntos_ganados,
+              saldo: accrual.saldo,
+              vence: accrual.vence ?? null,
+            };
+          }
+        }
+      } catch (loyaltyEx) {
+        console.error("Error inesperado procesando fidelización:", loyaltyEx);
+      }
+    }
+
+    return NextResponse.json({ ok: true, saleId, loyalty });
   } catch (e: any) {
     console.error("Error inesperado en /api/pos/confirm:", e);
     return NextResponse.json({ error: "Error inesperado al registrar la venta" }, { status: 500 });

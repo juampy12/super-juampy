@@ -7,6 +7,7 @@ export type QueuedSale = {
     store_id: string;
     register_id: string | null;
     idempotency_key: string;
+    loyalty_customer_id?: string;
   };
   queuedAt: number;
   attempts: number;
