@@ -673,6 +673,9 @@ export default function VentasPage() {
     setNotes("");
     setShowNotes(false);
     setShowCancelConfirm(false);
+    setSelectedLoyaltyCustomer(null);
+    setLoyaltyQuery("");
+    setLoyaltyResults([]);
     setTimeout(() => searchInputRef.current?.focus(), 0);
   }
 
@@ -690,6 +693,9 @@ export default function VentasPage() {
     setItems([]);
     setSearch("");
     setResults([]);
+    setSelectedLoyaltyCustomer(null);
+    setLoyaltyQuery("");
+    setLoyaltyResults([]);
   }
 
   function resumeHold(hold: Hold) {

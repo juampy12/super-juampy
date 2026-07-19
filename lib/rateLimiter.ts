@@ -47,3 +47,31 @@ export function isBlocked(ip: string): boolean {
 export function resetFailures(ip: string) {
   store.delete(ip);
 }
+
+// Rate limiter genérico por ventana fija de 1 minuto, independiente del
+// store de failures de arriba (ese es para lockout tras intentos fallidos;
+// este es para limitar volumen de requests por clave, ej. employee_id).
+const RATE_WINDOW_MS = 60 * 1000;
+const rateStore = new Map<string, Record>();
+
+function cleanupRate() {
+  const now = Date.now();
+  for (const [key, record] of rateStore) {
+    if (now - record.windowStart >= RATE_WINDOW_MS) rateStore.delete(key);
+  }
+}
+
+/** true si la request está permitida; false si superó maxPerMinute para esa key. */
+export function checkRateLimit(key: string, maxPerMinute: number): boolean {
+  cleanupRate();
+  const now = Date.now();
+  const record = rateStore.get(key);
+
+  if (!record || now - record.windowStart >= RATE_WINDOW_MS) {
+    rateStore.set(key, { failures: 1, windowStart: now });
+    return true;
+  }
+
+  record.failures += 1;
+  return record.failures <= maxPerMinute;
+}

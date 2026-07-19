@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, unauthorized } from "@/lib/session";
+import { checkRateLimit } from "@/lib/rateLimiter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,9 +14,16 @@ export async function GET(req: Request) {
   const session = await getSessionFromRequest(req);
   if (!session) return unauthorized();
 
+  if (!checkRateLimit(`loyalty_search:${session.employee_id}`, 60)) {
+    return NextResponse.json(
+      { error: "Demasiadas solicitudes. Esperá un momento." },
+      { status: 429 }
+    );
+  }
+
   const url = new URL(req.url);
   const q = stripOrSyntax(url.searchParams.get("q") ?? "");
-  if (!q) return NextResponse.json({ customers: [] });
+  if (q.length < 3) return NextResponse.json({ customers: [] });
 
   // El teléfono se guarda solo con dígitos; si el cajero escribe con guiones
   // o espacios, buscamos también por la versión normalizada.

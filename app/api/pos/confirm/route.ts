@@ -534,6 +534,17 @@ export async function POST(req: Request) {
     });
 
     if (error) {
+      // El índice único uq_sales_idempotency_key protege contra dos inserts
+      // concurrentes con la misma idempotency_key (ver findExistingSale arriba,
+      // que es check-then-act y no alcanza a cubrir la ventana de carrera).
+      // Si la RPC choca contra ese índice, tratamos el 23505 como el mismo
+      // camino de dedup: la venta ya existe, se devuelve esa.
+      if (error.code === "23505" && idempotencyKey) {
+        const existingSaleId = await findExistingSale(idempotencyKey);
+        if (existingSaleId) {
+          return NextResponse.json({ ok: true, saleId: existingSaleId });
+        }
+      }
       console.error("Error en confirm_sale_with_stock:", error);
       return NextResponse.json({ error: "Error al registrar la venta" }, { status: 500 });
     }
@@ -556,26 +567,45 @@ export async function POST(req: Request) {
 
     if (saleId && loyaltyCustomerId) {
       try {
-        const { error: loyaltyLinkErr } = await supabaseAdmin
-          .from("sales")
-          .update({ loyalty_customer_id: loyaltyCustomerId })
-          .eq("id", saleId);
-        if (loyaltyLinkErr) {
-          console.error("Error vinculando cliente de fidelización a la venta:", loyaltyLinkErr);
+        // El id llega bien formado (UUID) pero puede no existir o corresponder
+        // a un cliente dado de baja — se revalida contra la tabla antes de
+        // vincular, en vez de confiar ciegamente en lo que mandó el cliente.
+        const { data: loyaltyCustomer, error: loyaltyLookupErr } = await supabaseAdmin
+          .from("loyalty_customers")
+          .select("id")
+          .eq("id", loyaltyCustomerId)
+          .eq("active", true)
+          .maybeSingle();
+
+        if (loyaltyLookupErr) {
+          console.error("Error verificando cliente de fidelización:", loyaltyLookupErr);
+        } else if (!loyaltyCustomer) {
+          console.error(
+            "acumular_puntos omitido: loyalty_customer_id no existe o está inactivo:",
+            loyaltyCustomerId
+          );
         } else {
-          const { data: accrual, error: accrualErr } = await supabaseAdmin.rpc("acumular_puntos", {
-            p_sale_id: saleId,
-          });
-          if (accrualErr) {
-            console.error("Error en acumular_puntos:", accrualErr);
-          } else if (!accrual?.ok) {
-            console.error("acumular_puntos no acumuló puntos:", accrual?.motivo ?? accrual);
+          const { error: loyaltyLinkErr } = await supabaseAdmin
+            .from("sales")
+            .update({ loyalty_customer_id: loyaltyCustomerId })
+            .eq("id", saleId);
+          if (loyaltyLinkErr) {
+            console.error("Error vinculando cliente de fidelización a la venta:", loyaltyLinkErr);
           } else {
-            loyalty = {
-              puntos_ganados: accrual.puntos_ganados,
-              saldo: accrual.saldo,
-              vence: accrual.vence ?? null,
-            };
+            const { data: accrual, error: accrualErr } = await supabaseAdmin.rpc("acumular_puntos", {
+              p_sale_id: saleId,
+            });
+            if (accrualErr) {
+              console.error("Error en acumular_puntos:", accrualErr);
+            } else if (!accrual?.ok) {
+              console.error("acumular_puntos no acumuló puntos:", accrual?.motivo ?? accrual);
+            } else {
+              loyalty = {
+                puntos_ganados: accrual.puntos_ganados,
+                saldo: accrual.saldo,
+                vence: accrual.vence ?? null,
+              };
+            }
           }
         }
       } catch (loyaltyEx) {

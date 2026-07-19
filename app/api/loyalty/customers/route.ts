@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, unauthorized } from "@/lib/session";
+import { checkRateLimit } from "@/lib/rateLimiter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +31,13 @@ export async function POST(req: Request) {
   const session = await getSessionFromRequest(req);
   if (!session) return unauthorized();
 
+  if (!checkRateLimit(`loyalty_customers:${session.employee_id}`, 20)) {
+    return NextResponse.json(
+      { error: "Demasiadas solicitudes. Esperá un momento." },
+      { status: 429 }
+    );
+  }
+
   const body = await req.json().catch(() => ({}));
 
   const first_name = String(body.first_name ?? "").trim();
@@ -46,6 +54,14 @@ export async function POST(req: Request) {
       { error: "El teléfono debe tener al menos 10 dígitos" },
       { status: 400 }
     );
+  }
+  if (
+    first_name.length > 60 ||
+    (last_name && last_name.length > 60) ||
+    (dni && dni.length > 20) ||
+    phone.length > 20
+  ) {
+    return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
   }
 
   const dupOrParts = [`phone.eq.${phone}`];
