@@ -108,6 +108,12 @@ type PaymentMethod =
   | "cuenta_corriente"
   | "mixto";
 
+// El negocio no acepta crédito ni cuenta corriente como métodos de pago (2026-07).
+// La lógica de fondo (cierres, reportes, validación del server) sigue soportando
+// estos métodos por si se reactivan o por ventas históricas — esto solo oculta
+// las opciones en el selector del cajero. Poner en `true` para reactivar.
+const MOSTRAR_CREDITO_CUENTA_CORRIENTE = false;
+
 // ===== helpers UI (A) =====
 function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -2242,9 +2248,13 @@ onKeyDown={(e) => {
 
                   {!quickMode && (
                     <>
-                      <option value="credito">Crédito</option>
+                      {MOSTRAR_CREDITO_CUENTA_CORRIENTE && (
+                        <option value="credito">Crédito</option>
+                      )}
                       <option value="mp">Mercado Pago</option>
-                      <option value="cuenta_corriente">Cuenta corriente</option>
+                      {MOSTRAR_CREDITO_CUENTA_CORRIENTE && (
+                        <option value="cuenta_corriente">Cuenta corriente</option>
+                      )}
                       <option value="mixto">Mixto (varios métodos)</option>
                     </>
                   )}
@@ -2363,16 +2373,18 @@ onKeyDown={(e) => {
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium">Crédito</label>
-                    <input
-                      type="number"
-                      className="w-full rounded-md border px-3 py-2 text-right"
-                      value={creditAmount}
-                      onChange={(e) => setCreditAmount(Number(String(e.target.value).replace(",", ".")) || 0)}
-                      placeholder="0"
-                    />
-                  </div>
+                  {MOSTRAR_CREDITO_CUENTA_CORRIENTE && (
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">Crédito</label>
+                      <input
+                        type="number"
+                        className="w-full rounded-md border px-3 py-2 text-right"
+                        value={creditAmount}
+                        onChange={(e) => setCreditAmount(Number(String(e.target.value).replace(",", ".")) || 0)}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
 
                   <div className="space-y-1">
                     <label className="text-sm font-medium">Mercado Pago</label>
@@ -2385,16 +2397,18 @@ onKeyDown={(e) => {
                     />
                   </div>
 
-                  <div className="space-y-1 md:col-span-2">
-                    <label className="text-sm font-medium">Cuenta corriente</label>
-                    <input
-                      type="number"
-                      className="w-full rounded-md border px-3 py-2 text-right"
-                      value={accountAmount}
-                      onChange={(e) => setAccountAmount(Number(String(e.target.value).replace(",", ".")) || 0)}
-                      placeholder="0"
-                    />
-                  </div>
+                  {MOSTRAR_CREDITO_CUENTA_CORRIENTE && (
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-sm font-medium">Cuenta corriente</label>
+                      <input
+                        type="number"
+                        className="w-full rounded-md border px-3 py-2 text-right"
+                        value={accountAmount}
+                        onChange={(e) => setAccountAmount(Number(String(e.target.value).replace(",", ".")) || 0)}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="text-sm">
