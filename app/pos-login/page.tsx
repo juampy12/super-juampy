@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { setPosEmployee } from "@/lib/posSession";
+import { setPosEmployee, markOfflineSession } from "@/lib/posSession";
 import { isMobileViewport } from "@/lib/useIsMobile";
+import { saveOfflineCredential, verifyOfflineCredential, setPendingReauth, isOfflineLoginLocked } from "@/lib/offlineAuth";
 import toast from "react-hot-toast";
 
 export default function PosLoginPage() {
@@ -14,14 +15,41 @@ export default function PosLoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch("/api/employee/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, pin }),
-      });
+      let res: Response;
+      try {
+        res = await fetch("/api/employee/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, pin }),
+          signal: AbortSignal.timeout(8000),
+        });
+      } catch {
+        // El fetch falló por red (sin conexión o timeout), no por credenciales
+        // inválidas — intentar el login offline de emergencia contra las
+        // credenciales guardadas en esta máquina.
+        if (isOfflineLoginLocked(code)) {
+          toast.error("Demasiados intentos. Esperá 15 minutos e intentá de nuevo.");
+          return;
+        }
+        const employee = await verifyOfflineCredential(code, pin);
+        if (!employee) {
+          toast.error("Sin conexión: solo puede entrar el último cajero que usó esta caja");
+          return;
+        }
+        setPosEmployee(employee);
+        markOfflineSession();
+        setPendingReauth(code, pin);
+        toast("Modo sin conexión — las ventas se guardarán y sincronizarán al volver internet", {
+          icon: "📵",
+          duration: 6000,
+        });
+        window.location.href = "/ventas";
+        return;
+      }
       const json = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(json?.error || "Codigo o PIN incorrecto"); return; }
       setPosEmployee(json.employee);
+      await saveOfflineCredential(code, pin, json.employee);
       // Supervisor en mobile: el POS no es su pantalla de trabajo — arranca en su panel de inicio.
       const isSupervisorOnMobile = json.employee?.role === "supervisor" && isMobileViewport();
       window.location.href = isSupervisorOnMobile ? "/inicio" : "/ventas";

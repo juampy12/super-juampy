@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import toast from "react-hot-toast";
 import ConfirmSaleButton from "@/components/ConfirmSaleButton";
 import { useRouter } from "next/navigation";
-import { getPosEmployee, type PosEmployee } from "@/lib/posSession";
+import { getPosEmployee, isOfflineSession, clearOfflineSessionFlag, logoutPos, type PosEmployee } from "@/lib/posSession";
+import { trySilentReauth } from "@/lib/offlineAuth";
 import { isMobileViewport, isStandalonePwa } from "@/lib/useIsMobile";
 import { addToQueue } from "@/lib/offlineQueue";
 import { warmCache, searchCachedProducts, mergeIntoCachedProducts, initProductCache, getCacheSavedAt } from "@/lib/productCache";
@@ -446,6 +447,7 @@ export default function VentasPage() {
   // first-render produce identical HTML, avoiding hydration mismatch (#418).
   const posEmployeeRef = useRef<PosEmployee | null>(null);
   const [posEmployee, setPosEmployee] = useState<PosEmployee | null>(null);
+  const [offlineSession, setOfflineSession] = useState(false);
 
   useEffect(() => {
     const emp = getPosEmployee();
@@ -454,6 +456,7 @@ export default function VentasPage() {
       router.replace("/pos-login");
       return;
     }
+    setOfflineSession(isOfflineSession());
     // Supervisor abriendo la PWA instalada en el celular: no hay barra de
     // direcciones en standalone, así que este /ventas solo puede ser el
     // arranque en frío por start_url, nunca una navegación manual — mandarlo
@@ -865,6 +868,20 @@ export default function VentasPage() {
       void warmCache(selectedStoreIdRef.current).then(() => {
         const sid = selectedStoreIdRef.current;
         if (sid) setCacheSyncedAt(getCacheSavedAt(sid));
+      });
+    }
+    // Sesión offline activa: al volver la conexión, re-validar silenciosamente
+    // contra el servidor (obtiene la cookie real, o cierra sesión si el
+    // empleado fue desactivado mientras tanto).
+    if (isOfflineSession()) {
+      void trySilentReauth().then((result) => {
+        if (result === "reauthenticated") {
+          clearOfflineSessionFlag();
+          setOfflineSession(false);
+        } else if (result === "deactivated") {
+          toast.error("Tu turno fue cerrado por el sistema.");
+          void logoutPos();
+        }
       });
     }
   });
@@ -1577,6 +1594,11 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          {offlineSession && (
+            <div className="rounded-lg bg-yellow-100 border border-yellow-400 px-3 py-2 text-sm font-medium text-yellow-900 flex items-center gap-1">
+              🔓 Sesión offline — las ventas se guardarán y sincronizarán al volver internet
+            </div>
+          )}
           {!isOnline && (
             <div className="rounded-lg bg-red-100 border border-red-300 px-3 py-2 text-sm font-medium text-red-800 flex items-center gap-1">
               📵 Sin conexión{cacheSyncedAt && selectedStoreId
