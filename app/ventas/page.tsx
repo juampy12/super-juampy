@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import toast from "react-hot-toast";
 import ConfirmSaleButton from "@/components/ConfirmSaleButton";
 import { useRouter } from "next/navigation";
-import { getPosEmployee, isOfflineSession, clearOfflineSessionFlag, logoutPos, type PosEmployee } from "@/lib/posSession";
+import { getPosEmployee, isOfflineSession, clearOfflineSessionFlag, logoutPos, cacheStores, getCachedStores, cacheRegisters, getCachedRegisters, type PosEmployee } from "@/lib/posSession";
 import { trySilentReauth } from "@/lib/offlineAuth";
 import { isMobileViewport, isStandalonePwa } from "@/lib/useIsMobile";
 import { addToQueue } from "@/lib/offlineQueue";
@@ -898,13 +898,22 @@ export default function VentasPage() {
       .then((r) => r.json())
       .then((j) => {
         const list = (j.stores ?? []) as Store[];
-        setStores(list);
+        if (list.length > 0) {
+          setStores(list);
+          cacheStores(list);
+        } else {
+          // Lista vacía (p. ej. 401 de una sesión offline sin cookie): usar
+          // el último listado que sí se pudo traer, para poder mostrar el
+          // nombre de la sucursal en el header aunque no haya sesión válida.
+          setStores((prev) => (prev.length ? prev : getCachedStores()));
+        }
         const defaultStore = posEmployeeRef.current?.store_id ?? list[0]?.id ?? null;
         if (!selectedStoreId) setSelectedStoreId(defaultStore);
       })
       .catch(() => {
         // Sin conexión al arrancar: usar la sucursal guardada en localStorage
         // para que el cajero pueda vender con el cache de IndexedDB.
+        setStores((prev) => (prev.length ? prev : getCachedStores()));
         const fallbackStoreId = posEmployeeRef.current?.store_id ?? null;
         if (fallbackStoreId) setSelectedStoreId((prev) => prev ?? fallbackStoreId);
         toast.error("Sin conexión. Operando con los datos guardados.", { duration: 5000 });
@@ -934,16 +943,31 @@ export default function VentasPage() {
     fetch(`/api/registers?store_id=${selectedStoreId}`)
       .then((r) => r.json())
       .then((j) => {
-        const list = (j.registers ?? []) as { id: string; name: string }[];
-        setRegisters(list);
-        const matchedRegister = posEmployeeRef.current?.register_id
-          ? list.find(r => r.id === posEmployeeRef.current!.register_id)
-          : null;
-        setSelectedRegisterId(matchedRegister?.id ?? (list.length ? list[0].id : null));
+        const fetchedList = (j.registers ?? []) as { id: string; name: string }[];
+        if (fetchedList.length) {
+          setRegisters(fetchedList);
+          cacheRegisters(selectedStoreId, fetchedList);
+          const matchedRegister = posEmployeeRef.current?.register_id
+            ? fetchedList.find(r => r.id === posEmployeeRef.current!.register_id)
+            : null;
+          setSelectedRegisterId(matchedRegister?.id ?? fetchedList[0].id);
+        } else {
+          // Lista vacía (p. ej. 401 de una sesión offline sin cookie): caer al
+          // último listado bueno para esta sucursal y, si no matchea, usar
+          // directo la caja guardada del empleado (login offline incluido).
+          const cachedList = getCachedRegisters(selectedStoreId);
+          setRegisters(cachedList);
+          const fallbackRegisterId = posEmployeeRef.current?.register_id ?? null;
+          const matchedRegister = fallbackRegisterId
+            ? cachedList.find(r => r.id === fallbackRegisterId)
+            : null;
+          setSelectedRegisterId(matchedRegister?.id ?? fallbackRegisterId ?? (cachedList.length ? cachedList[0].id : null));
+        }
       })
       .catch((e) => {
         console.error(e);
         // Sin conexión: usar la caja guardada en localStorage
+        setRegisters((prev) => (prev.length ? prev : getCachedRegisters(selectedStoreId)));
         const fallbackRegisterId = posEmployeeRef.current?.register_id ?? null;
         if (fallbackRegisterId) setSelectedRegisterId((prev) => prev ?? fallbackRegisterId);
       });
