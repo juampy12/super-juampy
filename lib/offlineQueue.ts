@@ -12,7 +12,17 @@ export type QueuedSale = {
   attempts: number;
 };
 
+// Venta que agotó los reintentos automáticos por un rechazo de negocio (4xx
+// que no es de sesión): nunca se descarta sola, queda visible acá para que
+// un humano decida — reintentar tras corregir el dato en el servidor, o
+// descartar explícitamente sabiendo que la venta no se puede recuperar.
+export type FailedSale = QueuedSale & {
+  failedAt: number;
+  lastError: string;
+};
+
 const QUEUE_KEY = "pos_offline_queue_v1";
+const FAILED_QUEUE_KEY = "failed_sales_queue_v1";
 const MAX_ATTEMPTS = 3;
 
 export function getQueue(): QueuedSale[] {
@@ -49,21 +59,56 @@ export function clearQueue() {
   localStorage.removeItem(QUEUE_KEY);
 }
 
+export function getFailedQueue(): FailedSale[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(localStorage.getItem(FAILED_QUEUE_KEY) ?? "[]"); }
+  catch { return []; }
+}
+
+function writeFailedQueue(list: FailedSale[]) {
+  localStorage.setItem(FAILED_QUEUE_KEY, JSON.stringify(list));
+}
+
+function moveToReview(sale: QueuedSale, lastError: string) {
+  writeFailedQueue([...getFailedQueue(), { ...sale, failedAt: Date.now(), lastError }]);
+}
+
+// Reintento manual desde la UI de revisión (ej. tras corregir el producto o
+// el precio en el servidor): vuelve a la cola activa con los intentos en
+// cero para que el próximo syncQueue() la procese de nuevo.
+export function retryFailedSale(id: string) {
+  const list = getFailedQueue();
+  const sale = list.find(s => s.id === id);
+  if (!sale) return;
+  writeFailedQueue(list.filter(s => s.id !== id));
+  const { failedAt, lastError, ...queued } = sale;
+  const queue = getQueue();
+  queue.push({ ...queued, attempts: 0 });
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+}
+
+// Descarte explícito por decisión humana (ej. la venta se anuló o se
+// re-cargó a mano) — a diferencia del sync automático, que nunca descarta
+// nada por su cuenta.
+export function discardFailedSale(id: string) {
+  writeFailedQueue(getFailedQueue().filter(s => s.id !== id));
+}
+
 // Mutex de módulo: impide que dos llamadas concurrentes a syncQueue procesen
 // la misma venta (ej. evento "online" disparado dos veces seguidas en móvil).
 let _syncing = false;
 
-export async function syncQueue(): Promise<{ synced: number; failed: number; abandoned: number }> {
-  if (_syncing) return { synced: 0, failed: 0, abandoned: 0 };
+export async function syncQueue(): Promise<{ synced: number; failed: number; review: number }> {
+  if (_syncing) return { synced: 0, failed: 0, review: 0 };
   _syncing = true;
 
   try {
     let queue = getQueue();
-    if (queue.length === 0) return { synced: 0, failed: 0, abandoned: 0 };
+    if (queue.length === 0) return { synced: 0, failed: 0, review: 0 };
 
     let synced = 0;
     let failed = 0;
-    let abandoned = 0;
+    let review = 0;
 
     for (const sale of [...queue]) {
       try {
@@ -84,15 +129,22 @@ export async function syncQueue(): Promise<{ synced: number; failed: number; aba
           localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
           synced++;
         } else if (res.status === 401) {
-          // Sesión expirada: error transitorio. No consume intentos.
-          // La sesión se puede renovar al re-loguearse; la venta no debe perderse.
+          // Sesión expirada o todavía sin cookie real (p. ej. ensureSession()
+          // no pudo re-autenticar y el cajero aún no reingresó su PIN):
+          // transitorio, no consume intentos. La venta no se pierde.
           failed++;
         } else if (res.status < 500) {
-          // 4xx permanente: producto inactivo, datos inválidos, etc.
+          // 4xx de negocio (producto inactivo, datos inválidos, caja/sucursal
+          // que ya no coincide con la sesión, etc.): un rechazo real del
+          // servidor, no de sesión — sync() ya esperó a ensureSession() antes
+          // de llegar acá.
+          const json = await res.json().catch(() => ({}));
+          const message = typeof json?.error === "string" ? json.error : `HTTP ${res.status}`;
           const newAttempts = sale.attempts + 1;
           if (newAttempts >= MAX_ATTEMPTS) {
             queue = queue.filter(s => s.id !== sale.id);
-            abandoned++;
+            moveToReview({ ...sale, attempts: newAttempts }, message);
+            review++;
           } else {
             queue = queue.map(s => s.id === sale.id ? { ...s, attempts: newAttempts } : s);
             failed++;
@@ -108,7 +160,7 @@ export async function syncQueue(): Promise<{ synced: number; failed: number; aba
       }
     }
 
-    return { synced, failed, abandoned };
+    return { synced, failed, review };
   } finally {
     _syncing = false;
   }

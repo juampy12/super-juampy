@@ -6,7 +6,7 @@
 // que no está disponible en el navegador vía SubtleCrypto — no hay equivalencia
 // entre ambos hashes, cada uno valida contra su propio storage.
 
-import { type PosEmployee } from "./posSession";
+import { type PosEmployee, isOfflineSession, clearOfflineSessionFlag } from "./posSession";
 
 const DB_NAME = "pos_offline_auth_v1";
 const DB_STORE = "offline_employees";
@@ -226,4 +226,37 @@ export async function trySilentReauth(): Promise<ReauthResult> {
   } catch {
     return "still_offline";
   }
+}
+
+// ── Gate proactivo de sesión ────────────────────────────────────────────────
+// Cualquier request que dependa de la cookie real (confirmar venta, cargar
+// ventas recientes, etc.) debe pasar por acá ANTES de disparar el fetch,
+// en vez de mandarlo y reaccionar recién al 401. Evita la carrera donde el
+// sync dispara contra el servidor antes de que trySilentReauth() consiga la
+// cookie. Las llamadas concurrentes comparten un único POST /api/employee/login
+// en vuelo (varias partes de la UI pueden pedir el gate al mismo tiempo al
+// reconectar).
+export type EnsureSessionResult = "ok" | "deactivated" | "offline";
+
+let ensureSessionInFlight: Promise<EnsureSessionResult> | null = null;
+
+export function ensureSession(): Promise<EnsureSessionResult> {
+  if (!isOfflineSession()) return Promise.resolve("ok");
+  if (!ensureSessionInFlight) {
+    ensureSessionInFlight = (async () => {
+      const result = await trySilentReauth();
+      if (result === "reauthenticated") {
+        clearOfflineSessionFlag();
+        return "ok";
+      }
+      if (result === "deactivated") return "deactivated";
+      // "still_offline" (no se pudo contactar al servidor) o "skipped" (no hay
+      // credenciales pendientes, ej. tras recargar la pestaña sin conexión):
+      // en ambos casos no hay cookie real todavía, el llamador debe pausar.
+      return "offline";
+    })().finally(() => {
+      ensureSessionInFlight = null;
+    });
+  }
+  return ensureSessionInFlight;
 }

@@ -4,10 +4,10 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import toast from "react-hot-toast";
 import ConfirmSaleButton from "@/components/ConfirmSaleButton";
 import { useRouter } from "next/navigation";
-import { getPosEmployee, isOfflineSession, clearOfflineSessionFlag, logoutPos, cacheStores, getCachedStores, cacheRegisters, getCachedRegisters, type PosEmployee } from "@/lib/posSession";
-import { trySilentReauth } from "@/lib/offlineAuth";
+import { getPosEmployee, isOfflineSession, logoutPos, cacheStores, getCachedStores, cacheRegisters, getCachedRegisters, type PosEmployee } from "@/lib/posSession";
+import { ensureSession } from "@/lib/offlineAuth";
 import { isMobileViewport, isStandalonePwa } from "@/lib/useIsMobile";
-import { addToQueue } from "@/lib/offlineQueue";
+import { addToQueue, getFailedQueue, retryFailedSale, discardFailedSale, type FailedSale } from "@/lib/offlineQueue";
 import { warmCache, searchCachedProducts, mergeIntoCachedProducts, initProductCache, getCacheSavedAt } from "@/lib/productCache";
 import { useOnlineSync } from "@/lib/useOnlineSync";
 import { getHolds, saveHold, removeHold, type Hold } from "@/app/ventas/lib/hold";
@@ -575,10 +575,23 @@ export default function VentasPage() {
     if (!selectedRegisterId) return;
     try {
       setRecentSalesLoading(true);
-      const res = await fetch(
+      let res = await fetch(
         `/api/sales/recent?register_id=${selectedRegisterId}`,
         { cache: "no-store" }
       );
+      // 401 con sesión offline activa: probablemente la cookie real todavía no
+      // llegó (misma carrera que el sync de ventas). Esperar a ensureSession()
+      // y reintentar una vez antes de mostrarle un error al cajero.
+      if (res.status === 401 && isOfflineSession()) {
+        const result = await ensureSession();
+        if (result === "ok") {
+          setOfflineSession(false);
+          res = await fetch(
+            `/api/sales/recent?register_id=${selectedRegisterId}`,
+            { cache: "no-store" }
+          );
+        }
+      }
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Error");
       setExpandedSaleId(null);
@@ -797,6 +810,8 @@ export default function VentasPage() {
   const [showRecentSales, setShowRecentSales] = useState(false);
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
   const [recentSalesLoading, setRecentSalesLoading] = useState(false);
+  const [showFailedSales, setShowFailedSales] = useState(false);
+  const [failedSales, setFailedSales] = useState<FailedSale[]>([]);
   const [voidTarget, setVoidTarget] = useState<RecentSale | null>(null);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
   const [saleItemsCache, setSaleItemsCache] = useState<Record<string, SaleItem[]>>({});
@@ -863,31 +878,30 @@ export default function VentasPage() {
   // store_id fijo del empleado logueado (null = supervisor, ve todas)
   const selectedStoreIdRef = useRef<string | null>(null);
   const [cacheSyncedAt, setCacheSyncedAt] = useState<number | null>(null);
-  const { isOnline, pendingCount, syncing, sync, updatePending } = useOnlineSync(() => {
-    if (selectedStoreIdRef.current) {
-      void warmCache(selectedStoreIdRef.current).then(() => {
-        const sid = selectedStoreIdRef.current;
-        if (sid) setCacheSyncedAt(getCacheSavedAt(sid));
-      });
-    }
-    // Sesión offline activa: al volver la conexión, re-validar silenciosamente
-    // contra el servidor (obtiene la cookie real, o cierra sesión si el
-    // empleado fue desactivado mientras tanto).
-    if (isOfflineSession()) {
-      void trySilentReauth().then((result) => {
-        if (result === "reauthenticated") {
-          clearOfflineSessionFlag();
-          setOfflineSession(false);
-        } else if (result === "deactivated") {
-          toast.error("Tu turno fue cerrado por el sistema.");
-          void logoutPos();
-        }
-      });
-    }
+  const { isOnline, pendingCount, syncing, sync, updatePending } = useOnlineSync({
+    onReconnect: () => {
+      if (selectedStoreIdRef.current) {
+        void warmCache(selectedStoreIdRef.current).then(() => {
+          const sid = selectedStoreIdRef.current;
+          if (sid) setCacheSyncedAt(getCacheSavedAt(sid));
+        });
+      }
+    },
+    // sync() ya corre ensureSession() antes de reintentar la cola — estos dos
+    // callbacks solo reflejan el resultado en la UI (banner + cierre de turno).
+    onReauthenticated: () => setOfflineSession(false),
+    onSessionDeactivated: () => {
+      toast.error("Tu turno fue cerrado por el sistema.");
+      void logoutPos();
+    },
   });
   const isOnlineRef = useRef(true);
   useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
   useEffect(() => { selectedStoreIdRef.current = selectedStoreId; }, [selectedStoreId]);
+  // pendingCount cambia cada vez que syncQueue() termina de procesar la cola
+  // (incluidas las ventas que pasaron a revisión) — buen proxy para refrescar
+  // la lista de ventas con error sin necesitar un callback dedicado del hook.
+  useEffect(() => { setFailedSales(getFailedQueue()); }, [pendingCount]);
   const empStoreId = posEmployee?.store_id ?? null;
   const empRegisterId = posEmployee?.register_id ?? null;
   const isSupervisorRole = (posEmployee?.role ?? "") === "supervisor";
@@ -1661,6 +1675,15 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
           >
             🧾 Últimas ventas
           </button>
+          {failedSales.length > 0 && (
+            <button
+              onClick={() => setShowFailedSales(true)}
+              className="rounded-lg border px-3 py-2 text-sm font-medium bg-red-50 border-red-300 text-red-700 hover:bg-red-100"
+              title="Ventas offline que no se pudieron sincronizar automáticamente"
+            >
+              ⚠️ Ventas con error ({failedSales.length})
+            </button>
+          )}
           {holds.length > 0 && (
             <button
               onClick={() => setShowHolds(true)}
@@ -1859,6 +1882,69 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                 </span>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showFailedSales && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between p-5 pb-3">
+              <div>
+                <h2 className="text-lg font-semibold">Ventas con error</h2>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  Se cobraron offline pero el servidor las rechazó al sincronizar. No se pierden solas — revisalas acá.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowFailedSales(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl ml-4"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 pb-3">
+              {failedSales.length === 0 ? (
+                <p className="text-sm text-neutral-500 py-6 text-center">No hay ventas pendientes de revisión.</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {failedSales.map((sale) => (
+                    <div key={sale.id} className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold">${sale.payload.total.toFixed(2)}</span>
+                        <span className="text-xs text-neutral-500">
+                          {new Date(sale.queuedAt).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-red-700">{sale.lastError}</div>
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          onClick={() => {
+                            retryFailedSale(sale.id);
+                            setFailedSales(getFailedQueue());
+                            void sync();
+                          }}
+                          className="rounded-lg bg-white border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                        >
+                          🔁 Reintentar
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (!window.confirm("¿Descartar esta venta? No se va a poder recuperar.")) return;
+                            discardFailedSale(sale.id);
+                            setFailedSales(getFailedQueue());
+                          }}
+                          className="rounded-lg border border-red-300 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+                        >
+                          ✕ Descartar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
