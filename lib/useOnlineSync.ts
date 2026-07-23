@@ -50,7 +50,7 @@ export function useOnlineSync(opts?: {
   // permite que scheduleRetry() (definido antes que sync por el orden de
   // dependencias de useCallback) siempre invoque la versión más reciente sin
   // crear un ciclo sync↔scheduleRetry en los arrays de dependencias.
-  const syncRef = useRef<() => Promise<void>>(async () => {});
+  const syncRef = useRef<(silent?: boolean) => Promise<void>>(async () => {});
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryStepRef = useRef(0);
 
@@ -67,11 +67,20 @@ export function useOnlineSync(opts?: {
     retryStepRef.current += 1;
     retryTimerRef.current = setTimeout(() => {
       retryTimerRef.current = null;
-      void syncRef.current();
+      void syncRef.current(true);
     }, RETRY_BACKOFF_MS[step]);
   }, [clearRetryTimer]);
 
-  const sync = useCallback(async () => {
+  // silent=true (heartbeat, backoff, evento "online", montaje): NO togglea el
+  // estado `syncing`. VentasPage es un componente enorme que consume
+  // isOnline/pendingCount/syncing directo (no en un hijo memoizado), así que
+  // cada toggle de `syncing` re-renderiza la página completa — con el latido
+  // de 60s y el backoff nuevos, eso pasaba a ocurrir automáticamente cada
+  // 10-60s mientras hubiera algo trabado en la cola, sintiéndose como
+  // "micro-retardos" intermitentes en toda la pantalla. Un click manual sigue
+  // mostrando "Sincronizando…" (silent=false, default); un reintento
+  // automático que no logra nada no debe mover un solo pixel.
+  const sync = useCallback(async (silent = false) => {
     if (syncing || !isOnlineRef.current) return;
 
     // Gate proactivo: si esta pestaña arrancó con un login offline, esperar a
@@ -106,7 +115,7 @@ export function useOnlineSync(opts?: {
       clearRetryTimer();
       return;
     }
-    setSyncing(true);
+    if (!silent) setSyncing(true);
     try {
       const { synced, failed, review } = await syncQueue();
       updatePending();
@@ -133,7 +142,7 @@ export function useOnlineSync(opts?: {
         clearRetryTimer();
       }
     } finally {
-      setSyncing(false);
+      if (!silent) setSyncing(false);
     }
   }, [syncing, updatePending, clearRetryTimer, scheduleRetry]);
 
@@ -147,7 +156,7 @@ export function useOnlineSync(opts?: {
 
     if (!initialSyncDone.current) {
       initialSyncDone.current = true;
-      if (online && getQueue().length > 0) void syncRef.current();
+      if (online && getQueue().length > 0) void syncRef.current(true);
     }
 
     const handleOnline = () => {
@@ -159,7 +168,7 @@ export function useOnlineSync(opts?: {
       retryStepRef.current = 0;
       retryTimerRef.current = setTimeout(() => {
         retryTimerRef.current = null;
-        void syncRef.current();
+        void syncRef.current(true);
       }, RECONNECT_DELAY_MS);
       onReconnectRef.current?.();
     };
@@ -177,7 +186,7 @@ export function useOnlineSync(opts?: {
     // evento "online" — p. ej. la pestaña quedó abierta con la cola pendiente
     // y la conexión volvió sin que el navegador emitiera el evento.
     const heartbeat = setInterval(() => {
-      if (navigator.onLine && getQueue().length > 0) void syncRef.current();
+      if (navigator.onLine && getQueue().length > 0) void syncRef.current(true);
     }, HEARTBEAT_MS);
 
     return () => {

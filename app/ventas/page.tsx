@@ -1694,7 +1694,7 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
           )}
           {isOnline && pendingCount > 0 && (
             <button
-              onClick={sync}
+              onClick={() => void sync()}
               disabled={syncing}
               className="rounded-lg bg-orange-100 border border-orange-300 px-3 py-2 text-sm font-medium text-orange-800 hover:bg-orange-200"
             >
