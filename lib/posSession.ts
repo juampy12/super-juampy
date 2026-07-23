@@ -42,6 +42,11 @@ export async function logoutPos() {
   localStorage.removeItem("sj_pos_employee");
   localStorage.removeItem("pos_role");
   localStorage.removeItem(KEY_OFFLINE_SESSION);
+  // Import dinámico: offlineAuth.ts importa de este módulo, un import estático
+  // acá crearía un ciclo. clearPersistedReauth() destruye el respaldo cifrado
+  // del re-login silencioso — no tiene sentido que sobreviva al logout.
+  const { clearPersistedReauth } = await import("./offlineAuth");
+  clearPersistedReauth();
   await fetch("/api/employee/logout", { method: "POST" }).catch(() => {});
   window.location.href = "/pos-login";
 }

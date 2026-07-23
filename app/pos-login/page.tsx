@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { setPosEmployee, markOfflineSession } from "@/lib/posSession";
 import { isMobileViewport } from "@/lib/useIsMobile";
-import { saveOfflineCredential, verifyOfflineCredential, setPendingReauth, isOfflineLoginLocked } from "@/lib/offlineAuth";
+import { saveOfflineCredential, verifyOfflineCredential, setPendingReauth, persistPendingReauth, isOfflineLoginLocked } from "@/lib/offlineAuth";
 import toast from "react-hot-toast";
 
 export default function PosLoginPage() {
@@ -39,6 +39,12 @@ export default function PosLoginPage() {
         setPosEmployee(employee);
         markOfflineSession();
         setPendingReauth(code, pin);
+        // window.location.href de abajo hace una navegación DURA: reinstancia
+        // todos los módulos JS y pierde pendingReauth (variable en memoria) de
+        // inmediato. Hay que esperar a que el respaldo cifrado quede escrito
+        // ANTES de navegar, o la sesión offline queda sin forma de reautenticar
+        // en silencio al volver la conexión.
+        await persistPendingReauth(code, pin);
         toast("Modo sin conexión — las ventas se guardarán y sincronizarán al volver internet", {
           icon: "📵",
           duration: 6000,

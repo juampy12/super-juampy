@@ -9,6 +9,7 @@ export function useOnlineSync(opts?: {
   onReconnect?: () => void;
   onReauthenticated?: () => void;
   onSessionDeactivated?: () => void;
+  onNeedsPin?: () => void;
 }) {
   const [isOnline, setIsOnline] = useState(true);
   // Ref espejo de isOnline: se actualiza síncronamente antes que el estado React,
@@ -19,9 +20,11 @@ export function useOnlineSync(opts?: {
   const onReconnectRef = useRef(opts?.onReconnect);
   const onReauthenticatedRef = useRef(opts?.onReauthenticated);
   const onDeactivatedRef = useRef(opts?.onSessionDeactivated);
+  const onNeedsPinRef = useRef(opts?.onNeedsPin);
   useEffect(() => { onReconnectRef.current = opts?.onReconnect; }, [opts?.onReconnect]);
   useEffect(() => { onReauthenticatedRef.current = opts?.onReauthenticated; }, [opts?.onReauthenticated]);
   useEffect(() => { onDeactivatedRef.current = opts?.onSessionDeactivated; }, [opts?.onSessionDeactivated]);
+  useEffect(() => { onNeedsPinRef.current = opts?.onNeedsPin; }, [opts?.onNeedsPin]);
 
   const updatePending = useCallback(() => {
     setPendingCount(getQueue().length);
@@ -47,10 +50,17 @@ export function useOnlineSync(opts?: {
       if (result === "ok") {
         onReauthenticatedRef.current?.();
       }
+      if (result === "needs_pin") {
+        // Ni la memoria ni el respaldo cifrado tienen credenciales para
+        // reintentar en silencio (TTL vencido, storage corrupto, etc.). No
+        // tiene sentido pegarle igual al servidor — pausamos y le pedimos al
+        // cajero que confirme su PIN; la cola queda intacta mientras tanto.
+        onNeedsPinRef.current?.();
+        return;
+      }
       // "offline": no se pudo re-autenticar todavía (sin red real pese al
-      // evento "online", o el cajero recargó la pestaña y se perdió el PIN en
-      // memoria). Seguimos igual: syncQueue() trata el 401 resultante como
-      // transitorio, sin consumir intentos ni perder la venta.
+      // evento "online"). Seguimos igual: syncQueue() trata el 401 resultante
+      // como transitorio, sin consumir intentos ni perder la venta.
     }
 
     const count = getQueue().length;

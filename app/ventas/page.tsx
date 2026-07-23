@@ -4,8 +4,8 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import toast from "react-hot-toast";
 import ConfirmSaleButton from "@/components/ConfirmSaleButton";
 import { useRouter } from "next/navigation";
-import { getPosEmployee, isOfflineSession, logoutPos, cacheStores, getCachedStores, cacheRegisters, getCachedRegisters, type PosEmployee } from "@/lib/posSession";
-import { ensureSession } from "@/lib/offlineAuth";
+import { getPosEmployee, isOfflineSession, clearOfflineSessionFlag, logoutPos, cacheStores, getCachedStores, cacheRegisters, getCachedRegisters, type PosEmployee } from "@/lib/posSession";
+import { ensureSession, saveOfflineCredential, clearPersistedReauth } from "@/lib/offlineAuth";
 import { isMobileViewport, isStandalonePwa } from "@/lib/useIsMobile";
 import { addToQueue, getFailedQueue, retryFailedSale, discardFailedSale, type FailedSale } from "@/lib/offlineQueue";
 import { warmCache, searchCachedProducts, mergeIntoCachedProducts, initProductCache, getCacheSavedAt } from "@/lib/productCache";
@@ -590,6 +590,11 @@ export default function VentasPage() {
             `/api/sales/recent?register_id=${selectedRegisterId}`,
             { cache: "no-store" }
           );
+        } else if (result === "needs_pin") {
+          // Sin credenciales para reintentar en silencio: mostrar el modal de
+          // PIN y dejar que el mensaje de error de abajo explique por qué
+          // todavía no se pudo cargar (el submit del modal reintenta esto).
+          setShowPinPrompt(true);
         }
       }
       const json = await res.json();
@@ -612,6 +617,40 @@ export default function VentasPage() {
       toast.error("No se pudieron cargar las ventas recientes");
     } finally {
       setRecentSalesLoading(false);
+    }
+  }
+
+  // Último recurso del gate de sesión: ni la memoria ni el respaldo cifrado
+  // de offlineAuth.ts tenían con qué reautenticar en silencio. Repite el
+  // mismo POST que hace trySilentReauth(), pero con el código+PIN que el
+  // cajero tipea ahora mismo.
+  async function submitPinPrompt(e: React.FormEvent) {
+    e.preventDefault();
+    setPinPromptLoading(true);
+    setPinPromptError(null);
+    try {
+      const res = await fetch("/api/employee/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: pinPromptCode, pin: pinPromptPin }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPinPromptError(json?.error ?? "Código o PIN incorrecto");
+        return;
+      }
+      // Cookie real conseguida: ya no hace falta ningún respaldo de re-login.
+      clearPersistedReauth();
+      clearOfflineSessionFlag();
+      setOfflineSession(false);
+      setShowPinPrompt(false);
+      setPinPromptPin("");
+      // Refresca el hash offline por si el PIN cambió desde el último login
+      // online — mantiene vivo el login de emergencia para la próxima caída.
+      void saveOfflineCredential(pinPromptCode, pinPromptPin, json.employee);
+      void sync();
+    } finally {
+      setPinPromptLoading(false);
     }
   }
 
@@ -812,6 +851,13 @@ export default function VentasPage() {
   const [recentSalesLoading, setRecentSalesLoading] = useState(false);
   const [showFailedSales, setShowFailedSales] = useState(false);
   const [failedSales, setFailedSales] = useState<FailedSale[]>([]);
+  // Último recurso cuando ensureSession() no tiene con qué reautenticar en
+  // silencio (ni memoria ni respaldo cifrado): pedirle el PIN al cajero.
+  const [showPinPrompt, setShowPinPrompt] = useState(false);
+  const [pinPromptCode, setPinPromptCode] = useState("");
+  const [pinPromptPin, setPinPromptPin] = useState("");
+  const [pinPromptLoading, setPinPromptLoading] = useState(false);
+  const [pinPromptError, setPinPromptError] = useState<string | null>(null);
   const [voidTarget, setVoidTarget] = useState<RecentSale | null>(null);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
   const [saleItemsCache, setSaleItemsCache] = useState<Record<string, SaleItem[]>>({});
@@ -887,13 +933,15 @@ export default function VentasPage() {
         });
       }
     },
-    // sync() ya corre ensureSession() antes de reintentar la cola — estos dos
-    // callbacks solo reflejan el resultado en la UI (banner + cierre de turno).
+    // sync() ya corre ensureSession() antes de reintentar la cola — estos
+    // callbacks solo reflejan el resultado en la UI (banner, cierre de turno,
+    // o el modal de PIN como último recurso).
     onReauthenticated: () => setOfflineSession(false),
     onSessionDeactivated: () => {
       toast.error("Tu turno fue cerrado por el sistema.");
       void logoutPos();
     },
+    onNeedsPin: () => setShowPinPrompt(true),
   });
   const isOnlineRef = useRef(true);
   useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
@@ -1945,6 +1993,61 @@ void handleSearch({ term: code, autoAddFirst: true, source: "scanner" });
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {showPinPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl border p-5">
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <h2 className="text-lg font-semibold">Confirmá tu PIN</h2>
+              <button
+                type="button"
+                onClick={() => setShowPinPrompt(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                title="Ahora no — seguir trabajando offline"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-neutral-600 mb-4">
+              Volvió internet pero no se pudo reconectar solo.{" "}
+              {pendingCount > 0
+                ? `Ingresá tu código y PIN para sincronizar ${pendingCount} venta${pendingCount > 1 ? "s" : ""} pendiente${pendingCount > 1 ? "s" : ""}.`
+                : "Ingresá tu código y PIN para confirmar tu sesión."}
+            </p>
+            <form onSubmit={submitPinPrompt} className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-medium text-neutral-500">Código de empleado</label>
+                <input
+                  autoFocus
+                  value={pinPromptCode}
+                  onChange={(e) => setPinPromptCode(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-neutral-500">PIN</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  value={pinPromptPin}
+                  onChange={(e) => setPinPromptPin(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm tracking-widest"
+                />
+              </div>
+              {pinPromptError && (
+                <p className="text-xs text-red-600">{pinPromptError}</p>
+              )}
+              <button
+                type="submit"
+                disabled={pinPromptLoading || !pinPromptCode || !pinPromptPin}
+                className="mt-1 rounded-lg bg-blue-600 text-white px-3 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {pinPromptLoading ? "Confirmando…" : "Confirmar y sincronizar"}
+              </button>
+            </form>
           </div>
         </div>
       )}
