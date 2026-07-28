@@ -711,6 +711,12 @@ export default function ImportarPreciosPage() {
             </button>
           </div>
 
+          <p className="text-xs text-gray-500 mb-4">
+            {margin > 0
+              ? `Margen aplicado: ${margin}% — el precio de venta se calcula como precio de lista × ${(1 + margin / 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`
+              : "Sin margen aplicado — el precio de venta es igual al precio de lista."}
+          </p>
+
           {/* ── Productos nuevos para agregar (arriba: es lo que requiere ──
               acción del supervisor; la lista de encontrados es informativa) ── */}
           {notFound.length > 0 && (
@@ -781,7 +787,9 @@ export default function ImportarPreciosPage() {
                     <th className="p-2 text-left">Nombre</th>
                     <th className="p-2 text-right text-gray-400">Precio/SI</th>
                     <th className="p-2 text-right text-gray-400">Precio/CI</th>
-                    <th className="p-2 text-right">Precio de venta</th>
+                    <th className="p-2 text-right">
+                      Precio de venta {margin > 0 ? `(costo + ${margin}%)` : "(sin margen)"}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
