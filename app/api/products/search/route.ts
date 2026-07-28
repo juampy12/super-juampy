@@ -16,6 +16,15 @@ export async function POST(req: Request) {
   const all: boolean = Boolean(body.all);
   const priceFilter: string | null = PRICE_FILTERS.has(body.price_filter) ? body.price_filter : null;
 
+  // Ventana de "actualizados recientemente" en horas (admite fracciones, ej.
+  // 0.5 = 30 min). Tope de 1 año para evitar abuso; ver p_recent_hours en
+  // sql/products_price_updated_at.sql.
+  const recentHoursRaw = Number(body.recent_hours);
+  const recentHours: number | null =
+    Number.isFinite(recentHoursRaw) && recentHoursRaw > 0 && recentHoursRaw <= 8760
+      ? recentHoursRaw
+      : null;
+
   // Cajero solo puede consultar su propia sucursal
   let store_id: string = body.store_id ?? "";
   if (!isSupervisor(session)) {
@@ -43,6 +52,7 @@ export async function POST(req: Request) {
           p_query: query || null,
           p_limit: offset + PAGE_SIZE,
           p_price_filter: priceFilter,
+          p_recent_hours: recentHours,
         })
         .range(offset, offset + PAGE_SIZE - 1);
 
@@ -62,6 +72,7 @@ export async function POST(req: Request) {
     p_query: query || null,
     p_limit: limit,
     p_price_filter: priceFilter,
+    p_recent_hours: recentHours,
   });
 
   if (error) {

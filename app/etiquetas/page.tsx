@@ -43,6 +43,12 @@ export default function EtiquetasPage() {
   const [items, setItems] = useState<LabelItem[]>([]);
   const [generatingPdf, setGeneratingPdf] = useState(false);
 
+  // "Todo el catálogo": traer todo lo que tiene precio, o solo lo que
+  // cambió de precio recientemente (para no reimprimir todo de nuevo).
+  const [catalogMode, setCatalogMode] = useState<"all" | "recent">("all");
+  const [recentValue, setRecentValue] = useState(24);
+  const [recentUnit, setRecentUnit] = useState<"hours" | "days">("hours");
+
   useEffect(() => {
     const emp = getPosEmployee();
     if (emp?.role !== "supervisor") { router.replace("/ventas"); return; }
@@ -100,12 +106,26 @@ export default function EtiquetasPage() {
 
   async function loadAllProducts() {
     if (!storeId) return;
+
+    // En modo "recientes", ventana en horas (admite fracciones) — el
+    // backend/RPC filtra por products.price_updated_at (ver
+    // sql/products_price_updated_at.sql).
+    const recentHours =
+      catalogMode === "recent"
+        ? Math.max(0.1, recentUnit === "days" ? recentValue * 24 : recentValue)
+        : null;
+
     setLoadingAll(true);
     try {
       const res = await fetch("/api/products/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store_id: storeId, query: null, all: true }),
+        body: JSON.stringify({
+          store_id: storeId,
+          query: null,
+          all: true,
+          ...(recentHours != null ? { recent_hours: recentHours } : {}),
+        }),
       });
       const data = await res.json();
       // Excluye productos sin precio cargado (price <= 0): imprimir una
@@ -113,7 +133,14 @@ export default function EtiquetasPage() {
       const rows: ProductRow[] = Array.isArray(data)
         ? (data as ProductRow[]).filter((r) => r.active !== false && Number(r.price) > 0)
         : [];
-      if (rows.length === 0) { toast("No se encontraron productos activos con precio cargado"); return; }
+      if (rows.length === 0) {
+        toast(
+          catalogMode === "recent"
+            ? "No hay productos con precio actualizado en ese rango"
+            : "No se encontraron productos activos con precio cargado"
+        );
+        return;
+      }
       setItems(rows.map((p) => ({ product: p, qty: 1 })));
       toast.success(`${rows.length} productos cargados`);
     } catch (e: any) {
@@ -188,16 +215,54 @@ export default function EtiquetasPage() {
               Buscar
             </button>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2"
               onClick={loadAllProducts}
               disabled={loadingAll || !storeId}
-              title="Carga todos los productos activos del catálogo con 1 etiqueta cada uno"
+              title={
+                catalogMode === "recent"
+                  ? "Carga los productos con precio actualizado en el rango elegido"
+                  : "Carga todos los productos activos con precio cargado, 1 etiqueta cada uno"
+              }
             >
               <i className="ti ti-stack-2" aria-hidden="true" />
               {loadingAll ? "Cargando…" : "Todo el catálogo"}
             </button>
+
+            <div className="flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1.5 text-sm">
+              <select
+                className="bg-transparent text-sm outline-none"
+                value={catalogMode}
+                onChange={(e) => setCatalogMode(e.target.value as "all" | "recent")}
+                aria-label="Rango de 'Todo el catálogo'"
+              >
+                <option value="all">Todos con precio</option>
+                <option value="recent">Actualizados recientemente</option>
+              </select>
+              {catalogMode === "recent" && (
+                <>
+                  <input
+                    type="number"
+                    min={1}
+                    className="w-14 border rounded px-1.5 py-0.5 text-sm text-right"
+                    value={recentValue}
+                    onChange={(e) => setRecentValue(Math.max(1, parseInt(e.target.value) || 1))}
+                    aria-label="Cantidad"
+                  />
+                  <select
+                    className="bg-transparent text-sm outline-none"
+                    value={recentUnit}
+                    onChange={(e) => setRecentUnit(e.target.value as "hours" | "days")}
+                    aria-label="Unidad"
+                  >
+                    <option value="hours">horas</option>
+                    <option value="days">días</option>
+                  </select>
+                </>
+              )}
+            </div>
+
             {items.length > 0 && (
               <button
                 className="px-5 py-2 rounded-lg bg-[#CC2020] text-white font-semibold hover:bg-[#a81a1a] disabled:opacity-60 flex items-center gap-2 ml-auto"

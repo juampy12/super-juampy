@@ -1,23 +1,17 @@
 -- ================================================================
--- BORRADOR — NO APLICADO. Pausado a pedido del usuario a un día del
--- lanzamiento del piloto (2026-07-28): agregar la columna ahora haría
--- que TODO el catálogo aparezca como "recién actualizado" (todos con
--- price_updated_at = hoy, por los precios que se están cargando en
--- caliente), y no se quiere tocar bulk_update_product_prices_v3
--- (el RPC que escribe price en lote) en pleno período de carga.
+-- products_price_updated_at
+-- Agrega tracking de "cuándo cambió el precio" para poder imprimir
+-- en /etiquetas SOLO lo que cambió recientemente, sin reimprimir
+-- todo el catálogo cada vez.
 --
--- Retomar DESPUÉS del piloto, cuando los cambios de precio empiecen a
--- ser esporádicos y la columna sí discrimine algo útil.
---
--- Contexto / requerimiento original: /etiquetas necesita un botón
--- "Precios actualizados recientemente" (últimos X días) para no
--- reimprimir todo el catálogo cada vez que cambian precios.
+-- Aplicar manualmente en el SQL editor de Supabase, en orden (de
+-- arriba hacia abajo, es un solo script). No requiere downtime.
 -- ================================================================
 
 -- ────────────────────────────────────────────────────────────────
 -- 1) Columna nueva en products: cuándo cambió price por última vez.
---    DEFAULT now() → los productos existentes arrancan con "hoy" (no
---    hay forma de recuperar la fecha real pasada); los nuevos la
+--    DEFAULT now() → los productos existentes arrancan con "ahora"
+--    (no hay forma de recuperar la fecha real pasada); los nuevos la
 --    traen gratis al insertar.
 -- ────────────────────────────────────────────────────────────────
 
@@ -31,7 +25,10 @@ ALTER TABLE public.products
 --    no ensuciar la fecha en guardados que no tocan price. Es el
 --    único RPC que escribe price en lote — usado por bulk-update
 --    (/products), bulk-price-import (/importar-precios) y
---    bulk-create (reactivación).
+--    bulk-create (reactivación). Cambio ADITIVO: misma firma, mismo
+--    RETURNING/count, mismo comportamiento de cost_net/vat_rate/
+--    markup_rate (COALESCE sin tocar) — no afecta imports ni
+--    guardados en curso, solo agrega el sello de fecha.
 -- ────────────────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION public.bulk_update_product_prices_v3(
@@ -70,18 +67,25 @@ GRANT  EXECUTE ON FUNCTION public.bulk_update_product_prices_v3(uuid[], numeric[
 
 
 -- ────────────────────────────────────────────────────────────────
--- 3) products_with_stock: agrega p_recent_days opcional. Reusa la
---    MISMA función que ya usan /etiquetas, /ventas y /products (con
---    p_price_filter agregado en sql/products_with_stock_price_filter.sql)
---    — así el PDF de etiquetas sigue trayendo effective_price/
---    has_offer/is_weighted sin duplicar lógica en una función nueva.
+-- 3) products_with_stock: agrega p_recent_hours opcional (numeric,
+--    admite fracciones — así /etiquetas puede pedir "últimas 24
+--    horas" o "últimos 3 días" = 72 horas con el mismo parámetro).
+--    Reusa la MISMA función que ya usan /etiquetas, /ventas y
+--    /products (con p_price_filter agregado en
+--    sql/products_with_stock_price_filter.sql) — así el PDF de
+--    etiquetas sigue trayendo effective_price/has_offer/is_weighted
+--    sin duplicar lógica en una función nueva.
 --    DEFAULT NULL: no rompe a los llamadores que no lo pasan.
 --
---    OJO: este DROP/CREATE tiene que aplicarse DESPUÉS de
---    products_with_stock_price_filter.sql (que ya agregó
---    p_price_filter) — el DROP de acá asume esa firma de 4 parámetros.
+--    Se dropean AMBAS firmas anteriores posibles (la original de 3
+--    parámetros y la de 4 con p_price_filter) para que este script
+--    sea idempotente sin importar si ya se aplicó
+--    products_with_stock_price_filter.sql — dejar dos overloads con
+--    parámetros opcionales solapados hace que Postgres/PostgREST
+--    tire "function is not unique" en llamadas ambiguas.
 -- ────────────────────────────────────────────────────────────────
 
+DROP FUNCTION IF EXISTS public.products_with_stock(uuid, text, integer);
 DROP FUNCTION IF EXISTS public.products_with_stock(uuid, text, integer, text);
 
 CREATE FUNCTION public.products_with_stock(
@@ -89,7 +93,7 @@ CREATE FUNCTION public.products_with_stock(
   p_query text DEFAULT NULL::text,
   p_limit integer DEFAULT 50,
   p_price_filter text DEFAULT NULL::text,
-  p_recent_days integer DEFAULT NULL::integer
+  p_recent_hours numeric DEFAULT NULL::numeric
 )
  RETURNS TABLE(id uuid, sku text, name text, price numeric, effective_price numeric, has_offer boolean, offer_type text, offer_value numeric, qty_buy integer, qty_pay integer, cost_net numeric, vat_rate numeric, markup_rate numeric, units_per_case integer, stock numeric, is_weighted boolean, active boolean)
  LANGUAGE sql
@@ -183,11 +187,11 @@ AS $function$
       )
     )
     AND (
-      p_recent_days IS NULL
-      OR p.price_updated_at >= now() - make_interval(days => p_recent_days)
+      p_recent_hours IS NULL
+      OR p.price_updated_at >= now() - (p_recent_hours::double precision * interval '1 hour')
     )
   ORDER BY
-    CASE WHEN p_recent_days IS NOT NULL THEN p.price_updated_at END DESC NULLS LAST,
+    CASE WHEN p_recent_hours IS NOT NULL THEN p.price_updated_at END DESC NULLS LAST,
     p.name
   LIMIT p_limit;
 $function$;
@@ -195,19 +199,3 @@ $function$;
 REVOKE ALL     ON FUNCTION public.products_with_stock FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.products_with_stock FROM anon, authenticated;
 GRANT  EXECUTE ON FUNCTION public.products_with_stock TO service_role;
-
-
--- ────────────────────────────────────────────────────────────────
--- 4) TypeScript pendiente (no incluido acá, es código no SQL):
---    app/api/products/update/route.ts tiene 2 llamadas
---    `.from("products").update({...})` directas (modo manual y modo
---    cálculo, usadas por /catalogo) que también deberían agregar
---    price_updated_at: new Date().toISOString() cuando el precio
---    cambia — es el único otro lugar que escribe products.price
---    fuera de bulk_update_product_prices_v3.
---
---    Y en app/etiquetas/page.tsx: agregar botón "Precios actualizados
---    recientemente (X días)" que llame /api/products/search con
---    price_filter existente + un nuevo campo recent_days, propagado
---    a p_recent_days en el RPC.
--- ────────────────────────────────────────────────────────────────

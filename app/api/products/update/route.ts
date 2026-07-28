@@ -22,6 +22,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Falta productId" }, { status: 400 });
     }
 
+    // Precio actual, para sellar price_updated_at solo si realmente cambia
+    // (mismo criterio que bulk_update_product_prices_v3 con IS DISTINCT FROM).
+    // Si la consulta falla, se sella igual — más seguro asumir "cambió" que
+    // dejar el sello desactualizado.
+    const { data: currentRow } = await supabaseAdmin
+      .from("products")
+      .select("price")
+      .eq("id", productId)
+      .maybeSingle();
+    const currentPrice = currentRow ? Number(currentRow.price) : null;
+
     // ✅ Modo manual SOLO si el front lo indica explícitamente
     const useFinal = body?.use_final_price === true;
 
@@ -39,9 +50,14 @@ export async function POST(req: Request) {
       }
       finalPrice = Math.round(finalPrice * 100) / 100;
 
+      const priceChanged = currentPrice === null || Math.abs(finalPrice - currentPrice) > 0.009;
+
       const { error } = await supabaseAdmin
         .from("products")
-        .update({ price: finalPrice })
+        .update({
+          price: finalPrice,
+          ...(priceChanged ? { price_updated_at: new Date().toISOString() } : {}),
+        })
         .eq("id", productId);
 
       if (error) {
@@ -74,6 +90,8 @@ export async function POST(req: Request) {
     const withVat = cost_net * (1 + vat_rate / 100);
     const finalPrice = Math.round(withVat * (1 + markup_rate / 100) * 100) / 100;
 
+    const priceChanged = currentPrice === null || Math.abs(finalPrice - currentPrice) > 0.009;
+
     const { error } = await supabaseAdmin
       .from("products")
       .update({
@@ -82,6 +100,7 @@ export async function POST(req: Request) {
         markup_rate,
         units_per_case,
         price: finalPrice,
+        ...(priceChanged ? { price_updated_at: new Date().toISOString() } : {}),
       })
       .eq("id", productId);
 
