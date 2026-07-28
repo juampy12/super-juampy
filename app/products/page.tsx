@@ -61,6 +61,17 @@ function calcIvaIncluido(finalPrice: number) {
   return Math.round((finalPrice - finalPrice / 1.21) * 100) / 100;
 }
 
+// Filtros de estado que se resuelven server-side (products_with_stock con
+// p_price_filter) en vez de sobre las filas ya cargadas — deben coincidir
+// con products_price_stats() y con sql/products_with_stock_price_filter.sql.
+const STATUS_FILTERS: Record<string, string> = {
+  manual: "manual",
+  no_cost: "no_cost",
+  no_margin: "no_margin",
+  below_cost: "below_cost",
+  review: "review",
+};
+
 function priceFlags(row: Row) {
   const cost = n(row.cost_net, 0);
   const margin = n(row.markup_rate, 0);
@@ -107,6 +118,11 @@ export default function ProductsPage() {
 
   const [dirtyById, setDirtyById] = useState<Record<string, DirtyPayload>>({});
   const dirtyCount = Object.keys(dirtyById).length;
+
+  // Filas del filtro de estado activo (Manuales/Sin costo/Sin margen/Bajo
+  // costo/Revisar), traídas COMPLETAS del servidor — no solo de la página
+  // cargada. null = ningún filtro de estado activo (usa `rows` normal).
+  const [statusRows, setStatusRows] = useState<Row[] | null>(null);
 
   // Conteos GLOBALES del catálogo (no de la página/búsqueda visible) — ver
   // sql/products_price_stats.sql. Se cargan una sola vez y se refrescan tras
@@ -212,9 +228,46 @@ export default function ProductsPage() {
     }
   }
 
+  // Trae TODOS los productos que cumplen un filtro de estado (WHERE en el
+  // servidor, paginado con `all: true`) — no solo los de la página cargada.
+  // Usa las mismas condiciones que products_price_stats, así el filtro y las
+  // tarjetas contadoras SIEMPRE coinciden.
+  async function loadStatusRows(filterKey: string, opts?: { sid?: string }) {
+    const useId = opts?.sid ?? storeId;
+    if (!useId) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/products/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: useId,
+          query: query?.trim() ? query.trim() : null,
+          price_filter: filterKey,
+          all: true,
+        }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      const list = ((data ?? []) as any[]).filter((x) => x?.active !== false) as Row[];
+      setStatusRows(list);
+    } catch (e: any) {
+      toast.error(`Error cargando filtro: ${e?.message ?? e}`);
+      setStatusRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function runNormalSearch() {
     if (!storeId) return;
     setPage(0);
+    const filterKey = STATUS_FILTERS[viewFilter];
+    if (filterKey) {
+      await loadStatusRows(filterKey);
+      return;
+    }
     setDataLimit(pageSize);
     await reload({ sid: storeId, useLimit: pageSize });
   }
@@ -226,11 +279,15 @@ export default function ProductsPage() {
 
   async function goNextPage() {
     const nextPage = page + 1;
-    const neededLimit = (nextPage + 1) * pageSize;
 
-    if (neededLimit > dataLimit) {
-      setDataLimit(neededLimit);
-      await reload({ sid: storeId, useLimit: neededLimit });
+    // Con un filtro de estado activo, statusRows ya trae TODAS las filas
+    // que matchean — paginar es solo un slice local, no hace falta pedir más.
+    if (!STATUS_FILTERS[viewFilter]) {
+      const neededLimit = (nextPage + 1) * pageSize;
+      if (neededLimit > dataLimit) {
+        setDataLimit(neededLimit);
+        await reload({ sid: storeId, useLimit: neededLimit });
+      }
     }
 
     setPage(nextPage);
@@ -252,6 +309,11 @@ export default function ProductsPage() {
   useEffect(() => {
     if (!storeId) return;
     setPage(0);
+    const filterKey = STATUS_FILTERS[viewFilter];
+    if (filterKey) {
+      loadStatusRows(filterKey, { sid: storeId });
+      return;
+    }
     setDataLimit(pageSize);
     reload({ sid: storeId, useLimit: pageSize, focusAfter: "search" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -261,12 +323,28 @@ export default function ProductsPage() {
     if (!storeId) return;
     const t = setTimeout(() => {
       setPage(0);
+      const filterKey = STATUS_FILTERS[viewFilter];
+      if (filterKey) {
+        loadStatusRows(filterKey);
+        return;
+      }
       setDataLimit(pageSize);
       reload({ sid: storeId, useLimit: pageSize });
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
+
+  // Cambiar de filtro de estado: pide la lista completa al servidor (o
+  // vuelve al comportamiento normal de rows/paginación si se desactiva).
+  useEffect(() => {
+    setPage(0);
+    setStatusRows(null);
+    if (!storeId) return;
+    const filterKey = STATUS_FILTERS[viewFilter];
+    if (filterKey) loadStatusRows(filterKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewFilter]);
 
   // Atajo "/" para saltar al buscador desde cualquier lado (mismo patrón que /ventas),
   // salvo que el foco ya esté en un input/textarea/select.
@@ -347,28 +425,25 @@ export default function ProductsPage() {
 
       await reload({ sid: storeId, useLimit: dataLimit, focusAfter: "search" });
       await loadGlobalStats();
+
+      // Un producto editado puede haber salido (o entrado) del filtro de
+      // estado activo — refrescar la lista completa, no solo la página.
+      const filterKey = STATUS_FILTERS[viewFilter];
+      if (filterKey) await loadStatusRows(filterKey, { sid: storeId });
     } finally {
       setLoading(false);
     }
   };
 
+  // Los filtros de estado (Manuales/Sin costo/Sin margen/Bajo costo/Revisar)
+  // ya vienen filtrados y completos desde el servidor en statusRows — ver
+  // loadStatusRows. "Todos" y "Con cambios" siguen operando sobre `rows`
+  // (la búsqueda/paginación normal).
   const filteredRows = useMemo(() => {
     if (viewFilter === "all") return rows;
     if (viewFilter === "changed") return rows.filter((row) => dirtyById[row.id]);
-    return rows.filter((row) => {
-      const flags = priceFlags(row);
-      if (viewFilter === "manual") return flags.manual;
-      if (viewFilter === "no_cost") return flags.noCost;
-      if (viewFilter === "no_margin") return flags.noMargin;
-      if (viewFilter === "below_cost") return flags.belowCost;
-      if (viewFilter === "review") return flags.noCost || flags.noMargin || flags.belowCost;
-      return true;
-    });
-  }, [dirtyById, rows, viewFilter]);
-
-  useEffect(() => {
-    setPage(0);
-  }, [viewFilter]);
+    return statusRows ?? [];
+  }, [dirtyById, rows, viewFilter, statusRows]);
 
   const maxPage = Math.max(0, Math.ceil(filteredRows.length / pageSize) - 1);
   const safePage = Math.min(page, maxPage);

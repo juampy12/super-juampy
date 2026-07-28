@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
 
+// Debe coincidir con las condiciones de products_price_stats() y con el
+// p_price_filter de products_with_stock (sql/products_with_stock_price_filter.sql).
+const PRICE_FILTERS = new Set(["no_cost", "no_margin", "below_cost", "manual", "review"]);
+
 export async function POST(req: Request) {
   const session = await getSessionFromRequest(req);
   if (!session) return unauthorized();
@@ -10,6 +14,7 @@ export async function POST(req: Request) {
   const query: string | null = body.query ?? null;
   const limit: number = Math.min(Number(body.limit ?? 200), 10000);
   const all: boolean = Boolean(body.all);
+  const priceFilter: string | null = PRICE_FILTERS.has(body.price_filter) ? body.price_filter : null;
 
   // Cajero solo puede consultar su propia sucursal
   let store_id: string = body.store_id ?? "";
@@ -37,6 +42,7 @@ export async function POST(req: Request) {
           p_store: store_id,
           p_query: query || null,
           p_limit: offset + PAGE_SIZE,
+          p_price_filter: priceFilter,
         })
         .range(offset, offset + PAGE_SIZE - 1);
 
@@ -55,6 +61,7 @@ export async function POST(req: Request) {
     p_store: store_id,
     p_query: query || null,
     p_limit: limit,
+    p_price_filter: priceFilter,
   });
 
   if (error) {
