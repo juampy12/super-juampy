@@ -108,6 +108,39 @@ export default function ProductsPage() {
   const [dirtyById, setDirtyById] = useState<Record<string, DirtyPayload>>({});
   const dirtyCount = Object.keys(dirtyById).length;
 
+  // Conteos GLOBALES del catálogo (no de la página/búsqueda visible) — ver
+  // sql/products_price_stats.sql. Se cargan una sola vez y se refrescan tras
+  // guardar, independientemente de paginación/sucursal/búsqueda.
+  const [globalStats, setGlobalStats] = useState({
+    total: 0,
+    manual: 0,
+    noCost: 0,
+    noMargin: 0,
+    belowCost: 0,
+  });
+
+  async function loadGlobalStats() {
+    try {
+      const res = await fetch("/api/products/stats");
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setGlobalStats({
+          total: Number(json.total ?? 0),
+          manual: Number(json.manual ?? 0),
+          noCost: Number(json.noCost ?? 0),
+          noMargin: Number(json.noMargin ?? 0),
+          belowCost: Number(json.belowCost ?? 0),
+        });
+      }
+    } catch (e) {
+      console.error("Error cargando estadísticas globales:", e);
+    }
+  }
+
+  useEffect(() => {
+    loadGlobalStats();
+  }, []);
+
   const firstInputRef = useRef<HTMLInputElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -313,24 +346,11 @@ export default function ProductsPage() {
       }
 
       await reload({ sid: storeId, useLimit: dataLimit, focusAfter: "search" });
+      await loadGlobalStats();
     } finally {
       setLoading(false);
     }
   };
-
-  const stats = useMemo(() => {
-    return rows.reduce(
-      (acc, row) => {
-        const flags = priceFlags(row);
-        if (flags.manual) acc.manual++;
-        if (flags.noCost) acc.noCost++;
-        if (flags.noMargin) acc.noMargin++;
-        if (flags.belowCost) acc.belowCost++;
-        return acc;
-      },
-      { total: rows.length, manual: 0, noCost: 0, noMargin: 0, belowCost: 0 }
-    );
-  }, [rows]);
 
   const filteredRows = useMemo(() => {
     if (viewFilter === "all") return rows;
@@ -464,28 +484,29 @@ export default function ProductsPage() {
         </span>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="mb-1 grid grid-cols-2 gap-3 md:grid-cols-5">
         <div className="rounded-2xl border bg-white p-3">
           <div className="text-xs uppercase tracking-wide text-neutral-500">Productos</div>
-          <div className="text-2xl font-semibold">{stats.total}</div>
+          <div className="text-2xl font-semibold">{globalStats.total}</div>
         </div>
         <div className="rounded-2xl border bg-white p-3">
           <div className="text-xs uppercase tracking-wide text-neutral-500">Manuales</div>
-          <div className="text-2xl font-semibold">{stats.manual}</div>
+          <div className="text-2xl font-semibold">{globalStats.manual}</div>
         </div>
         <div className="rounded-2xl border bg-white p-3">
           <div className="text-xs uppercase tracking-wide text-neutral-500">Sin costo</div>
-          <div className="text-2xl font-semibold">{stats.noCost}</div>
+          <div className="text-2xl font-semibold">{globalStats.noCost}</div>
         </div>
         <div className="rounded-2xl border bg-white p-3">
           <div className="text-xs uppercase tracking-wide text-neutral-500">Sin margen</div>
-          <div className="text-2xl font-semibold">{stats.noMargin}</div>
+          <div className="text-2xl font-semibold">{globalStats.noMargin}</div>
         </div>
         <div className="rounded-2xl border bg-white p-3">
           <div className="text-xs uppercase tracking-wide text-neutral-500">Bajo costo</div>
-          <div className="text-2xl font-semibold text-red-600">{stats.belowCost}</div>
+          <div className="text-2xl font-semibold text-red-600">{globalStats.belowCost}</div>
         </div>
       </div>
+      <p className="mb-4 text-xs text-neutral-500">Totales del catálogo completo — no cambian al paginar ni al buscar.</p>
 
       <div className="mb-4 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
         {[
