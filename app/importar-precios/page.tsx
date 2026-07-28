@@ -20,6 +20,7 @@ type ProductMatch = {
   importedPrice: number;
   finalPrice: number;
   diffPct: number;
+  sinExistencia: boolean;
 };
 
 type NotFoundItem = {
@@ -28,6 +29,7 @@ type NotFoundItem = {
   priceSI: number;
   priceCI: number;
   costNet: number;
+  sinExistencia: boolean;
 };
 
 type ApplySummary = {
@@ -49,6 +51,7 @@ type PdfParseStats = {
   skippedNoPrice: number;
   skippedNoName: number;
   skippedDupe: number;
+  sinExistencia: number;
   totalFound: number;
 };
 
@@ -248,6 +251,7 @@ export default function ImportarPreciosPage() {
         const row = skuToRow[sku];
         const sourceName = String(row["Detalle"] ?? row["detalle"] ?? "").trim();
         const importedPrice = parsePrice(row[priceCol]);
+        const sinExistencia = row["Existencia"] === "S/E";
 
         if (dbBySku[sku]) {
           const db = dbBySku[sku];
@@ -257,12 +261,12 @@ export default function ImportarPreciosPage() {
             currentPrice > 0
               ? Math.round(((finalPrice - currentPrice) / currentPrice) * 10000) / 100
               : 0;
-          matchedList.push({ sku, sourceName, dbId: db.id, dbName: db.name, currentPrice, importedPrice, finalPrice, diffPct });
+          matchedList.push({ sku, sourceName, dbId: db.id, dbName: db.name, currentPrice, importedPrice, finalPrice, diffPct, sinExistencia });
         } else {
           const priceSI = parsePrice(row["Precio/SI"] ?? row[priceCol]);
           const priceCI = parsePrice(row["Precio/CI"] ?? row[priceCol]);
           const costNet = costForNewProduct(row, priceCol);
-          notFoundList.push({ sku, name: sourceName, priceSI, priceCI, costNet });
+          notFoundList.push({ sku, name: sourceName, priceSI, priceCI, costNet, sinExistencia });
           initPrices[sku] = saleFromCost(costNet, margin);
           initNames[sku] = sourceName;
         }
@@ -499,6 +503,11 @@ export default function ImportarPreciosPage() {
                 {pdfStats && (
                   <div className="mt-2 text-xs text-gray-400 space-y-0.5">
                     <p>{pdfStats.linesWithEan} líneas con código de barras · {pdfStats.totalFound} con precio válido</p>
+                    {pdfStats.sinExistencia > 0 && (
+                      <p className="text-blue-600">
+                        {pdfStats.sinExistencia} marcadas "S/E" (Sin Existencia del proveedor) — se cargan igual
+                      </p>
+                    )}
                     {pdfStats.skippedNoPrice > 0 && (
                       <p className="text-amber-600">
                         {pdfStats.skippedNoPrice} líneas con EAN sin precio reconocido
@@ -813,7 +822,19 @@ export default function ImportarPreciosPage() {
                             className="w-4 h-4"
                           />
                         </td>
-                        <td className="p-2 font-mono text-xs text-gray-700">{nf.sku}</td>
+                        <td className="p-2 font-mono text-xs text-gray-700">
+                          <div className="flex items-center gap-1.5">
+                            {nf.sku}
+                            {nf.sinExistencia && (
+                              <span
+                                className="rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 text-[10px] font-semibold font-sans"
+                                title="El proveedor marcó esta línea como Sin Existencia (S/E) — no afecta la carga"
+                              >
+                                S/E
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-2">
                           <input
                             type="text"
@@ -881,7 +902,17 @@ export default function ImportarPreciosPage() {
                   {matched.map((m) => (
                     <tr key={m.sku} className="border-t hover:bg-gray-50">
                       <td className="p-2">
-                        <div className="font-medium">{m.dbName}</div>
+                        <div className="font-medium flex items-center gap-1.5">
+                          {m.dbName}
+                          {m.sinExistencia && (
+                            <span
+                              className="rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 text-[10px] font-semibold"
+                              title="El proveedor marcó esta línea como Sin Existencia (S/E) — no afecta la carga"
+                            >
+                              S/E
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-gray-500">{m.sku}</div>
                       </td>
                       <td className="p-2 text-gray-500 text-xs">{m.sourceName || "—"}</td>

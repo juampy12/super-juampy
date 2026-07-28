@@ -13,6 +13,9 @@ type PdfRow = {
   Detalle: string;
   "Precio/SI": number;
   "Precio/CI": number;
+  // "S/E" cuando el proveedor marcó la línea como Sin Existencia — informativo,
+  // no afecta el matching ni la carga (ver comentario en TWO_PRICES_RE).
+  Existencia: string;
 };
 
 type ParseStats = {
@@ -22,6 +25,7 @@ type ParseStats = {
   skippedNoPrice: number;
   skippedNoName: number;
   skippedDupe: number;
+  sinExistencia: number;
   totalFound: number;
 };
 
@@ -48,8 +52,14 @@ function parsePrecio(s: string): number {
 const PRICE_PAT =
   /\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}(?:,\d{3})*\.\d{2}|\d+[.,]\d{2}/;
 
+// El proveedor marca las líneas sin stock con un sufijo corto tipo "S/E"
+// (Sin Existencia) después del segundo precio — mismo formato de línea,
+// solo se agrega texto al final. Se tolera opcionalmente sin descartar
+// la línea: son productos que el negocio puede tener en góndola aunque
+// hoy el proveedor no tenga stock.
 const TWO_PRICES_RE = new RegExp(
-  `(${PRICE_PAT.source})\\s+(${PRICE_PAT.source})\\s*$`
+  `(${PRICE_PAT.source})\\s+(${PRICE_PAT.source})(?:\\s+(s\\/e|se|s\\.e\\.?))?\\s*$`,
+  "i"
 );
 
 function parsePdfRows(text: string): { rows: PdfRow[]; stats: ParseStats } {
@@ -62,6 +72,7 @@ function parsePdfRows(text: string): { rows: PdfRow[]; stats: ParseStats } {
     skippedNoPrice: 0,
     skippedNoName: 0,
     skippedDupe: 0,
+    sinExistencia: 0,
     totalFound: 0,
   };
 
@@ -105,6 +116,9 @@ function parsePdfRows(text: string): { rows: PdfRow[]; stats: ParseStats } {
 
     stats.linesWithPrices++;
 
+    const sinExistencia = Boolean(priceMatch[3]);
+    if (sinExistencia) stats.sinExistencia++;
+
     // Nombre: entre el final del EAN y el inicio de los precios
     const eanEnd = trimmed.indexOf(sku) + sku.length;
     const priceStart = trimmed.lastIndexOf(priceMatch[0]);
@@ -136,6 +150,7 @@ function parsePdfRows(text: string): { rows: PdfRow[]; stats: ParseStats } {
       Detalle: name,
       "Precio/SI": priceSI,
       "Precio/CI": priceCI,
+      Existencia: sinExistencia ? "S/E" : "",
     });
   }
 
@@ -173,7 +188,7 @@ export async function POST(req: Request) {
       `líneas=${stats.totalLines} conEAN=${stats.linesWithEan} ` +
       `conPrecios=${stats.linesWithPrices} sinPrecio=${stats.skippedNoPrice} ` +
       `sinNombre=${stats.skippedNoName} dupes=${stats.skippedDupe} ` +
-      `resultado=${rows.length}`
+      `sinExistencia=${stats.sinExistencia} resultado=${rows.length}`
     );
 
     return NextResponse.json({
