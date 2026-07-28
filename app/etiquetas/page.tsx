@@ -108,10 +108,12 @@ export default function EtiquetasPage() {
         body: JSON.stringify({ store_id: storeId, query: null, all: true }),
       });
       const data = await res.json();
+      // Excluye productos sin precio cargado (price <= 0): imprimir una
+      // etiqueta "$0" no sirve — el usuario los tenía que sacar a mano.
       const rows: ProductRow[] = Array.isArray(data)
-        ? (data as ProductRow[]).filter((r) => r.active !== false)
+        ? (data as ProductRow[]).filter((r) => r.active !== false && Number(r.price) > 0)
         : [];
-      if (rows.length === 0) { toast("No se encontraron productos activos"); return; }
+      if (rows.length === 0) { toast("No se encontraron productos activos con precio cargado"); return; }
       setItems(rows.map((p) => ({ product: p, qty: 1 })));
       toast.success(`${rows.length} productos cargados`);
     } catch (e: any) {
