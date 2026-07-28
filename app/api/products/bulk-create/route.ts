@@ -7,7 +7,13 @@ import { fetchAllRows } from "@/lib/fetchAllRows";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type NewProduct = { sku: string; name: string; price: number };
+type NewProduct = {
+  sku: string;
+  name: string;
+  price: number;
+  cost_net?: number;
+  markup_rate?: number;
+};
 
 export async function POST(req: Request) {
   try {
@@ -71,17 +77,23 @@ export async function POST(req: Request) {
     // Crear nuevos en batch
     if (toCreate.length > 0) {
       const { error } = await supabaseAdmin.from("products").insert(
-        toCreate.map((p) => ({
-          sku: p.sku,
-          name: p.name.trim(),
-          price: Math.round(p.price * 100) / 100,
-          cost_net: 0,
-          vat_rate: 21,
-          markup_rate: 0,
-          units_per_case: 1,
-          is_weighted: false,
-          active: true,
-        }))
+        toCreate.map((p) => {
+          // cost_net es el precio del importador (ya con IVA incluido, como en
+          // bulk-price-import): vat_rate=0 evita duplicar el IVA sobre el costo,
+          // y markup_rate queda el margen usado para calcular `price`.
+          const hasCost = Number.isFinite(p.cost_net) && (p.cost_net as number) >= 0;
+          return {
+            sku: p.sku,
+            name: p.name.trim(),
+            price: Math.round(p.price * 100) / 100,
+            cost_net: hasCost ? Math.round((p.cost_net as number) * 100) / 100 : 0,
+            vat_rate: hasCost ? 0 : 21,
+            markup_rate: hasCost && Number.isFinite(p.markup_rate) ? (p.markup_rate as number) : 0,
+            units_per_case: 1,
+            is_weighted: false,
+            active: true,
+          };
+        })
       );
 
       if (error) {
@@ -98,14 +110,25 @@ export async function POST(req: Request) {
     if (toUpdate.length > 0) {
       const ids = toUpdate.map((p) => resolveExistingId(p.sku)!);
       const prices = toUpdate.map((p) => Math.round(p.price * 100) / 100);
-      const nulls = ids.map(() => null);
+      // Mismo criterio que bulk-price-import: cost_net/markup_rate se mandan
+      // si el importador los tiene (vat_rate=0 porque el costo ya trae IVA);
+      // si no, van null y la función SQL conserva el costo actual sin pisarlo.
+      const costNets = toUpdate.map((p) =>
+        Number.isFinite(p.cost_net) && (p.cost_net as number) >= 0
+          ? Math.round((p.cost_net as number) * 100) / 100
+          : null
+      );
+      const vatRates = costNets.map((c) => (c !== null ? 0 : null));
+      const markupRates = toUpdate.map((p, i) =>
+        costNets[i] !== null ? (Number.isFinite(p.markup_rate) ? (p.markup_rate as number) : 0) : null
+      );
 
       const { data, error } = await supabaseAdmin.rpc("bulk_update_product_prices_v3", {
         p_ids: ids,
         p_prices: prices,
-        p_cost_nets: nulls,
-        p_markup_rates: nulls,
-        p_vat_rates: nulls,
+        p_cost_nets: costNets,
+        p_markup_rates: markupRates,
+        p_vat_rates: vatRates,
       });
 
       if (error) {

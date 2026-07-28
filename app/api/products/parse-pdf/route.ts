@@ -110,11 +110,18 @@ function parsePdfRows(text: string): { rows: PdfRow[]; stats: ParseStats } {
     const priceStart = trimmed.lastIndexOf(priceMatch[0]);
     let name = trimmed.substring(eanEnd, priceStart).trim();
 
-    // Eliminar campo Bulto en distintos formatos:
-    //   X12 · X 6 · 12 UN · 6 U · 12 UNID · 12 BULTOS
+    // Eliminar campo Bulto (última "columna" antes de los precios), en
+    // distintos formatos: CAJA X12 · X 6 · 12 UN · 6 U · 12 UNID · 12 BULTOS.
+    // Se ancla al final del texto ($) en vez de reemplazar en todo el nombre:
+    // un replace global se comía tamaños del propio producto que matchean el
+    // mismo patrón (ej. "ACEITE ... x900 cc CAJA X12" perdía el "x900").
+    // La palabra opcional antes de X<n> se limita a un whitelist de envases
+    // conocidos — sin eso, "YERBA MATE X 6" perdía "MATE" (parte del nombre).
     name = name
-      .replace(/\bX\s*\d+\b/gi, "")
-      .replace(/\b\d+\s*(?:un|u|unid|uds|bultos?|pcs?)\b/gi, "")
+      .replace(
+        /\s+(?:(?:caja|display|disp|pack|bulto|cja|exhibidor)\s+)?(?:x\s*\d+|\d+\s*(?:un|u|unid|uds|bultos?|pcs?))\s*$/i,
+        ""
+      )
       .replace(/  +/g, " ")
       .trim();
 

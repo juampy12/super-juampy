@@ -27,6 +27,7 @@ type NotFoundItem = {
   name: string;
   priceSI: number;
   priceCI: number;
+  costNet: number;
 };
 
 type ApplySummary = {
@@ -69,6 +70,21 @@ function parsePrice(v: string | number | null | undefined): number {
   if (v === null || v === undefined || v === "") return 0;
   const n = Number(String(v).replace(/[^0-9.,]/g, "").replace(",", "."));
   return Number.isFinite(n) ? n : 0;
+}
+
+// Costo de un producto NUEVO: el precio de la columna elegida por el usuario
+// (mismo criterio que para productos existentes), con Precio/CI y Precio/SI
+// como respaldo si esa columna viniera vacía para esa fila puntual.
+function costForNewProduct(row: ExcelRow, priceCol: string): number {
+  const chosen = parsePrice(row[priceCol]);
+  if (chosen > 0) return chosen;
+  const ci = parsePrice(row["Precio/CI"]);
+  if (ci > 0) return ci;
+  return parsePrice(row["Precio/SI"]);
+}
+
+function saleFromCost(costNet: number, marginPct: number): number {
+  return Math.round(costNet * (1 + marginPct / 100) * 100) / 100;
 }
 
 const PDF_HEADERS = ["Cod.Barra", "Detalle", "Precio/SI", "Precio/CI"];
@@ -245,9 +261,9 @@ export default function ImportarPreciosPage() {
         } else {
           const priceSI = parsePrice(row["Precio/SI"] ?? row[priceCol]);
           const priceCI = parsePrice(row["Precio/CI"] ?? row[priceCol]);
-          const defaultPrice = priceCI > 0 ? priceCI : priceSI > 0 ? priceSI : importedPrice;
-          notFoundList.push({ sku, name: sourceName, priceSI, priceCI });
-          initPrices[sku] = defaultPrice;
+          const costNet = costForNewProduct(row, priceCol);
+          notFoundList.push({ sku, name: sourceName, priceSI, priceCI, costNet });
+          initPrices[sku] = saleFromCost(costNet, margin);
           initNames[sku] = sourceName;
         }
       }
@@ -340,11 +356,16 @@ export default function ImportarPreciosPage() {
     setLoading(true);
     setLoadingMsg("Agregando productos...");
     try {
-      const products = Array.from(selectedNew).map((sku) => ({
-        sku,
-        name: (newProductNames[sku] ?? notFound.find((nf) => nf.sku === sku)?.name ?? "").trim(),
-        price: newProductPrices[sku] ?? 0,
-      })).filter((p) => p.name && p.price > 0);
+      const products = Array.from(selectedNew).map((sku) => {
+        const nf = notFound.find((n) => n.sku === sku);
+        return {
+          sku,
+          name: (newProductNames[sku] ?? nf?.name ?? "").trim(),
+          price: newProductPrices[sku] ?? 0,
+          cost_net: nf?.costNet ?? 0,
+          markup_rate: margin,
+        };
+      }).filter((p) => p.name && p.price > 0);
 
       if (products.length === 0) {
         alert("Completá el nombre y precio de todos los productos seleccionados.");
@@ -408,6 +429,11 @@ export default function ImportarPreciosPage() {
           return { ...m, finalPrice, diffPct };
         })
       );
+      setNewProductPrices((prev) => {
+        const next = { ...prev };
+        for (const nf of notFound) next[nf.sku] = saleFromCost(nf.costNet, val);
+        return next;
+      });
     }
   }
 
@@ -583,9 +609,18 @@ export default function ImportarPreciosPage() {
                 {matched.length} encontrados en el sistema
               </span>
               <span className="text-gray-300">·</span>
-              <span className="bg-blue-100 text-blue-800 rounded-full px-3 py-1 font-semibold">
-                {notFound.length} nuevos no cargados
-              </span>
+              {notFound.length > 0 ? (
+                <a
+                  href="#productos-nuevos"
+                  className="bg-blue-100 text-blue-800 rounded-full px-3 py-1 font-semibold hover:bg-blue-200 underline decoration-dotted"
+                >
+                  {notFound.length} nuevos no cargados ↓
+                </a>
+              ) : (
+                <span className="bg-blue-100 text-blue-800 rounded-full px-3 py-1 font-semibold">
+                  {notFound.length} nuevos no cargados
+                </span>
+              )}
             </div>
           </div>
 
@@ -615,6 +650,26 @@ export default function ImportarPreciosPage() {
                       return { ...m, importedPrice, finalPrice, diffPct };
                     })
                   );
+                  setNotFound((prev) =>
+                    prev.map((nf) => {
+                      const row = rows.find(
+                        (r) => String(r[detected.skuCol!] ?? "").trim() === nf.sku
+                      );
+                      const costNet = row ? costForNewProduct(row, col) : nf.costNet;
+                      return { ...nf, costNet };
+                    })
+                  );
+                  setNewProductPrices((prev) => {
+                    const next = { ...prev };
+                    for (const nf of notFound) {
+                      const row = rows.find(
+                        (r) => String(r[detected.skuCol!] ?? "").trim() === nf.sku
+                      );
+                      const costNet = row ? costForNewProduct(row, col) : nf.costNet;
+                      next[nf.sku] = saleFromCost(costNet, margin);
+                    }
+                    return next;
+                  });
                 }}
               >
                 {headers.map((h) => (
@@ -656,53 +711,10 @@ export default function ImportarPreciosPage() {
             </button>
           </div>
 
-          {/* Matched products */}
-          {matched.length > 0 && (
-            <div className="border rounded bg-white overflow-auto mb-6">
-              <div className="bg-gray-50 px-4 py-2 border-b text-sm font-medium text-gray-700">
-                Productos encontrados en la base de datos ({matched.length})
-              </div>
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-600">
-                  <tr>
-                    <th className="p-2 text-left">Producto (DB)</th>
-                    <th className="p-2 text-left">Nombre en {fileType === "pdf" ? "PDF" : "archivo"}</th>
-                    <th className="p-2 text-right">Precio actual</th>
-                    <th className="p-2 text-right">Precio importado</th>
-                    {margin > 0 && <th className="p-2 text-right">Precio final (+{margin}%)</th>}
-                    <th className="p-2 text-right">Diferencia</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matched.map((m) => (
-                    <tr key={m.sku} className="border-t hover:bg-gray-50">
-                      <td className="p-2">
-                        <div className="font-medium">{m.dbName}</div>
-                        <div className="text-xs text-gray-500">{m.sku}</div>
-                      </td>
-                      <td className="p-2 text-gray-500 text-xs">{m.sourceName || "—"}</td>
-                      <td className="p-2 text-right">${fmt(m.currentPrice)}</td>
-                      <td className="p-2 text-right">${fmt(m.importedPrice)}</td>
-                      {margin > 0 && (
-                        <td className="p-2 text-right font-semibold">${fmt(m.finalPrice)}</td>
-                      )}
-                      <td
-                        className={`p-2 text-right font-semibold ${
-                          m.diffPct > 0 ? "text-red-600" : m.diffPct < 0 ? "text-emerald-600" : "text-gray-400"
-                        }`}
-                      >
-                        {m.diffPct > 0 ? "+" : ""}{m.diffPct}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* ── Productos nuevos para agregar ───────────────────────────── */}
+          {/* ── Productos nuevos para agregar (arriba: es lo que requiere ──
+              acción del supervisor; la lista de encontrados es informativa) ── */}
           {notFound.length > 0 && (
-            <div className="border rounded bg-white overflow-hidden">
+            <div id="productos-nuevos" className="border rounded bg-white overflow-hidden mb-6 scroll-mt-4">
               {/* Header con toggle de expandir/colapsar */}
               <div className="bg-blue-50 border-b px-4 py-3">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -837,6 +849,50 @@ export default function ImportarPreciosPage() {
               </table>
                 </>
               )}
+            </div>
+          )}
+
+          {/* Matched products */}
+          {matched.length > 0 && (
+            <div className="border rounded bg-white overflow-auto mb-6">
+              <div className="bg-gray-50 px-4 py-2 border-b text-sm font-medium text-gray-700">
+                Productos encontrados en la base de datos ({matched.length})
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-600">
+                  <tr>
+                    <th className="p-2 text-left">Producto (DB)</th>
+                    <th className="p-2 text-left">Nombre en {fileType === "pdf" ? "PDF" : "archivo"}</th>
+                    <th className="p-2 text-right">Precio actual</th>
+                    <th className="p-2 text-right">Precio importado</th>
+                    {margin > 0 && <th className="p-2 text-right">Precio final (+{margin}%)</th>}
+                    <th className="p-2 text-right">Diferencia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {matched.map((m) => (
+                    <tr key={m.sku} className="border-t hover:bg-gray-50">
+                      <td className="p-2">
+                        <div className="font-medium">{m.dbName}</div>
+                        <div className="text-xs text-gray-500">{m.sku}</div>
+                      </td>
+                      <td className="p-2 text-gray-500 text-xs">{m.sourceName || "—"}</td>
+                      <td className="p-2 text-right">${fmt(m.currentPrice)}</td>
+                      <td className="p-2 text-right">${fmt(m.importedPrice)}</td>
+                      {margin > 0 && (
+                        <td className="p-2 text-right font-semibold">${fmt(m.finalPrice)}</td>
+                      )}
+                      <td
+                        className={`p-2 text-right font-semibold ${
+                          m.diffPct > 0 ? "text-red-600" : m.diffPct < 0 ? "text-emerald-600" : "text-gray-400"
+                        }`}
+                      >
+                        {m.diffPct > 0 ? "+" : ""}{m.diffPct}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 
