@@ -114,7 +114,6 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(false);
 
   const [page, setPage] = useState<number>(0);
-  const [dataLimit, setDataLimit] = useState<number>(pageSize);
 
   const [dirtyById, setDirtyById] = useState<Record<string, DirtyPayload>>({});
   const dirtyCount = Object.keys(dirtyById).length;
@@ -186,11 +185,10 @@ export default function ProductsPage() {
   // Buscar/escanear ya NO descarta cambios pendientes: dirtyById solo se
   // limpia tras un guardado exitoso o si el usuario confirma el cambio de
   // sucursal (ver <select> de sucursal más abajo).
-  async function reload(opts?: { sid?: string; useLimit?: number; focusAfter?: "search" | "cost" }) {
+  async function reload(opts?: { sid?: string; focusAfter?: "search" | "cost" }) {
     const useId = opts?.sid ?? storeId;
     if (!useId) return;
 
-    const useLimit = opts?.useLimit ?? dataLimit;
     const focusAfter = opts?.focusAfter ?? "cost";
 
     setLoading(true);
@@ -201,7 +199,7 @@ export default function ProductsPage() {
         body: JSON.stringify({
           store_id: useId,
           query: query?.trim() ? query.trim() : null,
-          limit: useLimit,
+          all: true,
         }),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -268,8 +266,7 @@ export default function ProductsPage() {
       await loadStatusRows(filterKey);
       return;
     }
-    setDataLimit(pageSize);
-    await reload({ sid: storeId, useLimit: pageSize });
+    await reload({ sid: storeId });
   }
 
   async function goPrevPage() {
@@ -278,19 +275,9 @@ export default function ProductsPage() {
   }
 
   async function goNextPage() {
-    const nextPage = page + 1;
-
-    // Con un filtro de estado activo, statusRows ya trae TODAS las filas
-    // que matchean — paginar es solo un slice local, no hace falta pedir más.
-    if (!STATUS_FILTERS[viewFilter]) {
-      const neededLimit = (nextPage + 1) * pageSize;
-      if (neededLimit > dataLimit) {
-        setDataLimit(neededLimit);
-        await reload({ sid: storeId, useLimit: neededLimit });
-      }
-    }
-
-    setPage(nextPage);
+    // rows/statusRows ya traen el set COMPLETO (all:true) — paginar es
+    // solo un slice local, no hace falta pedir más al backend.
+    setPage((p) => p + 1);
     setTimeout(() => firstInputRef.current?.focus(), 50);
   }
 
@@ -314,8 +301,7 @@ export default function ProductsPage() {
       loadStatusRows(filterKey, { sid: storeId });
       return;
     }
-    setDataLimit(pageSize);
-    reload({ sid: storeId, useLimit: pageSize, focusAfter: "search" });
+    reload({ sid: storeId, focusAfter: "search" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
@@ -328,8 +314,7 @@ export default function ProductsPage() {
         loadStatusRows(filterKey);
         return;
       }
-      setDataLimit(pageSize);
-      reload({ sid: storeId, useLimit: pageSize, focusAfter: "search" });
+      reload({ sid: storeId, focusAfter: "search" });
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -423,7 +408,7 @@ export default function ProductsPage() {
         toast.success(`${savedCount} cambio${savedCount === 1 ? "" : "s"} guardado${savedCount === 1 ? "" : "s"}`);
       }
 
-      await reload({ sid: storeId, useLimit: dataLimit, focusAfter: "search" });
+      await reload({ sid: storeId, focusAfter: "search" });
       await loadGlobalStats();
 
       // Un producto editado puede haber salido (o entrado) del filtro de

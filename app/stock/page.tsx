@@ -31,15 +31,9 @@ export default function StockPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // paginación
+  // paginación (client-side: rows trae el set completo, all:true)
   const pageSize = 200;
   const [page, setPage] = useState<number>(0);
-
-  // cuántas filas “pedimos” al backend (crece al avanzar páginas)
-  const [dataLimit, setDataLimit] = useState<number>(pageSize);
-
-  // si hay más resultados en el backend
-  const [hasMore, setHasMore] = useState<boolean>(false);
 
   // cambios: product_id -> stock nuevo (string para permitir vacío)
   const [newStockById, setNewStockById] = useState<Record<string, string>>({});
@@ -119,27 +113,25 @@ export default function StockPage() {
    * - default: reemplaza rows y limpia cambios (seguro)
    * - keepEdits=true: NO pide confirmación y NO limpia cambios (para paginar sin perder lo tipeado)
    *
-   * Importante paginación:
-   * - pedimos p_limit = useLimit + 1 para saber si hay más (hasMore)
+   * Trae el set COMPLETO (all:true, ya arreglado en la ruta para paginar de
+   * verdad más allá de 1000) — el paginado de a pageSize es un slice local.
    *
    * storeOverride: permite buscar contra una sucursal específica (snapshot)
    */
   async function search(opts?: {
     forceQuery?: string | null;
-    useLimit?: number;
     keepEdits?: boolean;
     storeOverride?: string;
-  }): Promise<{ count: number; hasMore: boolean }> {
+  }): Promise<{ count: number }> {
     const effectiveStoreId = (opts?.storeOverride ?? storeId) || "";
-    if (!effectiveStoreId) return { count: 0, hasMore: false };
+    if (!effectiveStoreId) return { count: 0 };
 
     const keepEdits = opts?.keepEdits ?? false;
-    const useLimit = opts?.useLimit ?? dataLimit;
     const forceQuery = opts?.forceQuery ?? undefined;
 
     if (!keepEdits) {
       if (!confirmDiscardIfNeeded("Buscar/recargar", effectiveStoreId)) {
-        return { count: rows.length, hasMore };
+        return { count: rows.length };
       }
     }
 
@@ -150,20 +142,17 @@ export default function StockPage() {
     try {
       const q = forceQuery !== undefined ? forceQuery : query?.trim() ? query.trim() : null;
 
-      // pedimos 1 más para detectar si hay más páginas
-      const askLimit = useLimit + 1;
-
       const res = await fetch("/api/products/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store_id: effectiveStoreId, query: q, limit: askLimit }),
+        body: JSON.stringify({ store_id: effectiveStoreId, query: q, all: true }),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
 
       const data = (await res.json()) as any[];
 
       // ✅ si esta respuesta no es la última, ignorar (evita pisadas)
-      if (mySeq !== searchSeq.current) return { count: rows.length, hasMore };
+      if (mySeq !== searchSeq.current) return { count: rows.length };
 
       const mappedAll: Row[] = data.map((x) => ({
         id: x.id,
@@ -182,14 +171,7 @@ export default function StockPage() {
       // ocultar desactivados
       const filtered = mappedAll.filter((r) => r.active !== false);
 
-      // hasMore: si (después de filtrar) sobran filas respecto a useLimit
-      const nextHasMore = filtered.length > useLimit;
-
-      // guardamos solo hasta useLimit
-      const finalRows = filtered.slice(0, useLimit);
-
-      setHasMore(nextHasMore);
-      setRows(finalRows);
+      setRows(filtered);
 
       if (!keepEdits) setNewStockById({});
       if (!keepEdits) setDbCheckById({}); // ✅ limpiamos checks al recargar (evita confusión)
@@ -199,12 +181,12 @@ export default function StockPage() {
         firstInputRef.current?.focus();
       }, 50);
 
-      return { count: finalRows.length, hasMore: nextHasMore };
+      return { count: filtered.length };
     } catch (e: any) {
       if (mySeq === searchSeq.current) {
         alert(`Error buscando productos: ${e?.message ?? e}`);
       }
-      return { count: rows.length, hasMore };
+      return { count: rows.length };
     } finally {
       if (mySeq === searchSeq.current) setLoading(false);
     }
@@ -216,23 +198,10 @@ export default function StockPage() {
   }
 
   async function goNextPage() {
+    // rows ya trae el set COMPLETO (all:true) — paginar es solo un slice
+    // local, no hace falta pedir más al backend.
     const nextPage = page + 1;
-    const neededLimit = (nextPage + 1) * pageSize;
-
-    // si ya sabemos que no hay más y la próxima página quedaría vacía, no avanzar
-    if (!hasMore && nextPage * pageSize >= rows.length) return;
-
-    // si necesitamos pedir más al backend, subimos dataLimit y recargamos sin perder lo tipeado
-    if (neededLimit > dataLimit) {
-      setDataLimit(neededLimit);
-      const result = await search({ useLimit: neededLimit, keepEdits: true });
-
-      // si igual no hay suficientes para mostrar la próxima página, no avanzar
-      if (nextPage * pageSize >= result.count) return;
-    } else {
-      // aunque no aumente el límite, si la próxima página no existe, no avanzar
-      if (nextPage * pageSize >= rows.length) return;
-    }
+    if (nextPage * pageSize >= rows.length) return;
 
     setPage(nextPage);
     setTimeout(() => firstInputRef.current?.focus(), 50);
@@ -240,16 +209,8 @@ export default function StockPage() {
 
   async function runSearchSmart() {
     const t = query.trim();
-    const looksLikeSku = /^\d{6,}$/.test(t);
-
     setPage(0);
-    if (looksLikeSku) {
-      setDataLimit(20);
-      await search({ forceQuery: t, useLimit: 20 });
-    } else {
-      setDataLimit(pageSize);
-      await search({ useLimit: pageSize });
-    }
+    await search({ forceQuery: t || null });
   }
 
   function setRowNewStock(productId: string, value: string) {
@@ -356,9 +317,8 @@ export default function StockPage() {
 
       // refrescar desde backend (pero con snapshot de sucursal, por seguridad)
       setPage(0);
-      setDataLimit(pageSize);
       await new Promise(r => setTimeout(r, 800));
-      await search({ useLimit: pageSize, keepEdits: false, storeOverride: storeIdSnap });
+      await search({ keepEdits: false, storeOverride: storeIdSnap });
 
       alert(`Stock guardado correctamente ✅\nSucursal: ${storeNameSnap}`);
     } catch (e: any) {
@@ -382,21 +342,18 @@ export default function StockPage() {
 
     // limpiar “mezcla visual”
     setRows([]);
-    setHasMore(false);
     setPage(0);
-    setDataLimit(pageSize);
     setDbCheckById({});
 
     // cargar
-    void search({ useLimit: pageSize, storeOverride: storeId });
+    void search({ storeOverride: storeId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
   const canGoNext = useMemo(() => {
     if (loading || saving) return false;
-    if (hasMore) return true;
     return (page + 1) * pageSize < rows.length;
-  }, [loading, saving, hasMore, page, rows.length]);
+  }, [loading, saving, page, rows.length]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 overflow-x-hidden p-3 sm:p-4">
@@ -419,7 +376,7 @@ export default function StockPage() {
         <div className="flex flex-wrap gap-2 items-center">
           <button
             className="px-3 py-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50"
-            onClick={() => search({ useLimit: dataLimit })}
+            onClick={() => search()}
             disabled={loading || saving || !storeId}
           >
             Recargar
@@ -496,7 +453,6 @@ export default function StockPage() {
           ) : (
             <>
               Productos: <b>{rows.length.toLocaleString("es-AR")}</b> (activos)
-              {hasMore ? <span>+</span> : null}
             </>
           )}
           {changesCount > 0 && (
