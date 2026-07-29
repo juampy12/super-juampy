@@ -329,7 +329,7 @@ export default function ProductsPage() {
         return;
       }
       setDataLimit(pageSize);
-      reload({ sid: storeId, useLimit: pageSize });
+      reload({ sid: storeId, useLimit: pageSize, focusAfter: "search" });
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
