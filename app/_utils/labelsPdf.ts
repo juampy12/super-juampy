@@ -33,14 +33,14 @@ export type LabelProduct = {
 
 const PAGE_W = 210;
 const PAGE_H = 297;
-const LABEL_W = 50;
-const LABEL_H = 40;
+const LABEL_W = 46;
+const LABEL_H = 36;
 const COLS = 4;
-const ROWS = 7;
+const ROWS = 8;
 const PER_PAGE = COLS * ROWS;
 const MARGIN_X = (PAGE_W - COLS * LABEL_W) / 2;
 const MARGIN_Y = (PAGE_H - ROWS * LABEL_H) / 2;
-const PAD = 2.5;
+const PAD = 2;
 
 function fmt(n: number) {
   return n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -95,71 +95,72 @@ function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo
   const hasQtyPromo = !!qtyPromo;
   const hasPriceOffer = product.has_offer && !hasQtyPromo && product.effective_price < product.price;
 
-  let nameTop = y + PAD + 1.5;
+  let nameTop = y + PAD + 1;
 
   if (hasQtyPromo) {
-    const badgeH = 5;
+    const badgeH = 4;
     doc.setFillColor(20, 20, 20);
     doc.rect(x, y, LABEL_W, badgeH, "F");
     const badgeText = product.offer_type === "nxm"
       ? `${product.qty_buy}X${product.qty_pay}`
       : `2DA AL ${product.offer_value}%`;
     doc.setTextColor(255, 255, 255);
-    fitFontSize(doc, badgeText, contentW, 9, 6, "bold");
-    doc.text(badgeText, centerX, y + badgeH - 1.6, { align: "center" });
+    fitFontSize(doc, badgeText, contentW, 7, 5, "bold");
+    doc.text(badgeText, centerX, y + badgeH - 1.1, { align: "center" });
     doc.setTextColor(0, 0, 0);
-    nameTop = y + badgeH + 3;
+    nameTop = y + badgeH + 2.3;
   }
 
-  // Product name (up to 2 lines, shrink-to-fit)
+  // Product name (up to 2 lines, shrink-to-fit) — protagonista secundario
   doc.setTextColor(17, 17, 17);
-  const { size: nameSize, lines: nameLines } = fitTextLines(doc, product.name, contentW, 10.5, 7, 2, "bold");
-  const nameLineH = nameSize * 0.42;
+  const { size: nameSize, lines: nameLines } = fitTextLines(doc, product.name, contentW, 11, 7.5, 2, "bold");
+  const nameLineH = nameSize * 0.4;
   nameLines.forEach((line, i) => {
     doc.text(line, centerX, nameTop + nameSize * 0.32 + i * nameLineH, { align: "center" });
   });
 
-  // Price block, anchored to a fixed baseline regardless of name length
-  const priceBaseline = y + LABEL_H - 11;
+  // Price block, anchored to a fixed baseline regardless of name length — el protagonista
+  const priceBaseline = y + LABEL_H - 7;
 
   if (hasPriceOffer) {
-    doc.setTextColor(100, 100, 100);
+    doc.setTextColor(110, 110, 110);
     doc.setFont("helvetica", "normal");
     const oldText = `$${fmt(product.price)}`;
-    fitFontSize(doc, oldText, contentW, 9, 6, "normal");
-    doc.text(oldText, centerX, priceBaseline - 6, { align: "center" });
+    fitFontSize(doc, oldText, contentW, 7, 5, "normal");
+    doc.text(oldText, centerX, priceBaseline - 5.6, { align: "center" });
     const oldW = doc.getTextWidth(oldText);
     doc.setDrawColor(120, 120, 120);
     doc.setLineWidth(0.25);
-    doc.line(centerX - oldW / 2, priceBaseline - 7.3, centerX + oldW / 2, priceBaseline - 7.3);
+    doc.line(centerX - oldW / 2, priceBaseline - 6.7, centerX + oldW / 2, priceBaseline - 6.7);
 
     doc.setTextColor(204, 32, 32);
     const newText = `$${fmt(product.effective_price)}`;
-    fitFontSize(doc, newText, contentW, 20, 12, "bold");
+    fitFontSize(doc, newText, contentW, 22, 13, "bold");
     doc.text(newText, centerX, priceBaseline, { align: "center" });
   } else {
     doc.setTextColor(17, 17, 17);
     const priceText = `$${fmt(product.price)}`;
-    fitFontSize(doc, priceText, contentW, 20, 12, "bold");
+    fitFontSize(doc, priceText, contentW, 22, 13, "bold");
     doc.text(priceText, centerX, priceBaseline, { align: "center" });
   }
 
   // Footer: logo chico + SKU a la izquierda, $/kg a la derecha si es pesable
-  const footerY = y + LABEL_H - PAD;
+  const footerY = y + LABEL_H - PAD + 0.3;
   let skuX = x + PAD;
 
   if (logo) {
-    const logoH = 3.6;
+    const logoH = 2.8;
     const logoW = logoH * LOGO_ASPECT;
-    doc.addImage(logo, "PNG", x + PAD, footerY - logoH - 0.3, logoW, logoH);
-    skuX = x + PAD + logoW + 1.3;
+    doc.addImage(logo, "PNG", x + PAD, footerY - logoH - 0.2, logoW, logoH);
+    skuX = x + PAD + logoW + 1;
   }
 
   doc.setTextColor(136, 136, 136);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.5);
+  fitFontSize(doc, `SKU ${product.sku}`, contentW * 0.55, 5.5, 4, "normal");
   doc.text(`SKU ${product.sku}`, skuX, footerY, { align: "left" });
   if (product.is_weighted) {
+    fitFontSize(doc, `$${fmt(product.price)}/kg`, contentW * 0.4, 5.5, 4, "normal");
     doc.text(`$${fmt(product.price)}/kg`, x + LABEL_W - PAD, footerY, { align: "right" });
   }
   doc.setTextColor(0, 0, 0);
