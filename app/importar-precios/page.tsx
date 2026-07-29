@@ -114,6 +114,7 @@ export default function ImportarPreciosPage() {
   const [priceCol, setPriceCol] = useState("");
   const [margin, setMargin] = useState(0);
   const [saveCost, setSaveCost] = useState(false);
+  const [updateNames, setUpdateNames] = useState(false);
 
   const [matched, setMatched] = useState<ProductMatch[]>([]);
   const [notFound, setNotFound] = useState<NotFoundItem[]>([]);
@@ -319,6 +320,7 @@ export default function ImportarPreciosPage() {
           productId: m.dbId,
           price: m.finalPrice,
           ...(saveCost ? { cost_net: m.importedPrice, markup_rate: margin } : {}),
+          ...(updateNames && m.sourceName.trim() ? { name: m.sourceName.trim() } : {}),
         }));
         const res = await fetch("/api/products/bulk-price-import", {
           method: "POST",
@@ -406,6 +408,7 @@ export default function ImportarPreciosPage() {
     setPriceCol("");
     setMargin(0);
     setSaveCost(false);
+    setUpdateNames(false);
     setMatched([]);
     setNotFound([]);
     setSelectedNew(new Set());
@@ -711,6 +714,16 @@ export default function ImportarPreciosPage() {
               Guardar también como costo
             </label>
 
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none pb-2">
+              <input
+                type="checkbox"
+                checked={updateNames}
+                onChange={(e) => setUpdateNames(e.target.checked)}
+                className="w-4 h-4"
+              />
+              Actualizar también el nombre desde la lista
+            </label>
+
             <button
               onClick={applyPrices}
               disabled={loading || matched.length === 0}
@@ -719,6 +732,14 @@ export default function ImportarPreciosPage() {
               {loading ? loadingMsg : `Aplicar precios a existentes (${matched.length})`}
             </button>
           </div>
+
+          {updateNames && (
+            <p className="text-xs text-amber-600 mb-2">
+              "Actualizar también el nombre" está activo: al aplicar, el nombre de cada producto
+              encontrado se va a pisar con el "Nombre en {fileType === "pdf" ? "PDF" : "archivo"}"
+              de la tabla de abajo (solo si esa columna no viene vacía para esa fila).
+            </p>
+          )}
 
           <p className="text-xs text-gray-500 mb-4">
             {margin > 0

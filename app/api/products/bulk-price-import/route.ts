@@ -5,7 +5,7 @@ import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type PriceUpdate = { productId: string; price: number; cost_net?: number; markup_rate?: number };
+type PriceUpdate = { productId: string; price: number; cost_net?: number; markup_rate?: number; name?: string };
 
 // Tope por request: el cliente ya divide en lotes (ver importar-precios/page.tsx),
 // esto es una segunda barrera por si alguien llama el endpoint directo con un
@@ -37,6 +37,7 @@ export async function POST(req: Request) {
     const costNets: (number | null)[] = [];
     const markupRates: (number | null)[] = [];
     const vatRates: (number | null)[] = [];
+    const names: (string | null)[] = [];
     const errors: string[] = [];
 
     for (const item of updates) {
@@ -67,11 +68,17 @@ export async function POST(req: Request) {
         }
       }
 
+      // name es opcional por item — solo viene cuando el checkbox "Actualizar
+      // también el nombre desde la lista" está tildado en /importar-precios.
+      // Vacío/undefined = null = la función SQL conserva el nombre actual.
+      const name = typeof item.name === "string" && item.name.trim() ? item.name.trim() : null;
+
       ids.push(item.productId);
       prices.push(price);
       costNets.push(costNet);
       markupRates.push(markupRate);
       vatRates.push(vatRate);
+      names.push(name);
     }
 
     // Un solo UPDATE ... FROM unnest() para todo el lote en vez de N updates
@@ -84,6 +91,7 @@ export async function POST(req: Request) {
         p_cost_nets: costNets,
         p_markup_rates: markupRates,
         p_vat_rates: vatRates,
+        p_names: names,
       });
 
       if (error) {
