@@ -49,11 +49,11 @@ export async function POST(req: Request) {
       const { data, error } = await supabaseAdmin
         .rpc("products_with_stock", {
           p_store: store_id,
-          p_query: query || null,
+          p_query: query || undefined,
           p_limit: offset + PAGE_SIZE,
-          p_price_filter: priceFilter,
-          p_recent_hours: recentHours,
-        })
+          p_price_filter: priceFilter ?? undefined,
+          p_recent_hours: recentHours ?? undefined,
+        }, { get: true })
         .range(offset, offset + PAGE_SIZE - 1);
 
       if (error) {
