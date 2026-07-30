@@ -27,6 +27,7 @@ type LabelItem = {
 };
 
 type Store = { id: string; name: string };
+type Supplier = { id: string; name: string };
 
 function fmt(n: number) {
   return n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -37,6 +38,11 @@ export default function EtiquetasPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [storeId, setStoreId] = useState("");
   const [query, setQuery] = useState("");
+
+  // Filtro por proveedor para "Todo el catálogo" — mismo criterio que
+  // /products: "" = Todos, "none" = sin proveedor, o el supplier_id.
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierId, setSupplierId] = useState("");
   const [results, setResults] = useState<ProductRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingAll, setLoadingAll] = useState(false);
@@ -54,6 +60,13 @@ export default function EtiquetasPage() {
     if (emp?.role !== "supervisor") { router.replace("/ventas"); return; }
     loadStores(emp.store_id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/suppliers")
+      .then((r) => r.json())
+      .then((j) => { if (Array.isArray(j?.suppliers)) setSuppliers(j.suppliers); })
+      .catch(() => {});
   }, []);
 
   async function loadStores(preferredStoreId: string | null) {
@@ -125,6 +138,7 @@ export default function EtiquetasPage() {
           query: null,
           all: true,
           ...(recentHours != null ? { recent_hours: recentHours } : {}),
+          ...(supplierId ? { supplier_id: supplierId } : {}),
         }),
       });
       const data = await res.json();
@@ -133,16 +147,20 @@ export default function EtiquetasPage() {
       const rows: ProductRow[] = Array.isArray(data)
         ? (data as ProductRow[]).filter((r) => r.active !== false && Number(r.price) > 0)
         : [];
+      const supplierLabel =
+        supplierId === "none" ? "sin proveedor" : suppliers.find((s) => s.id === supplierId)?.name;
+      const supplierSuffix = supplierLabel ? ` de ${supplierLabel}` : "";
+
       if (rows.length === 0) {
         toast(
           catalogMode === "recent"
-            ? "No hay productos con precio actualizado en ese rango"
-            : "No se encontraron productos activos con precio cargado"
+            ? `No hay productos${supplierSuffix} con precio actualizado en ese rango`
+            : `No se encontraron productos activos${supplierSuffix} con precio cargado`
         );
         return;
       }
       setItems(rows.map((p) => ({ product: p, qty: 1 })));
-      toast.success(`${rows.length} productos cargados`);
+      toast.success(`${rows.length} productos${supplierSuffix} cargados`);
     } catch (e: any) {
       toast.error(e?.message || "Error cargando catálogo");
     } finally {
@@ -197,6 +215,19 @@ export default function EtiquetasPage() {
           >
             {stores.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <select
+            className="border rounded-lg px-3 py-2 w-full sm:w-auto sm:self-start"
+            value={supplierId}
+            onChange={(e) => setSupplierId(e.target.value)}
+            title="Filtra 'Todo el catálogo' por proveedor"
+            aria-label="Proveedor"
+          >
+            <option value="">Proveedor: Todos</option>
+            <option value="none">Proveedor: Sin proveedor</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>Proveedor: {s.name}</option>
             ))}
           </select>
           <div className="flex gap-2">
