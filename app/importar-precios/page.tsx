@@ -36,7 +36,10 @@ type ApplySummary = {
   updated: number;
   notFound: number;
   errors: string[];
+  supplierAssigned?: number;
 };
+
+type Supplier = { id: string; name: string };
 
 type AddSummary = {
   created: number;
@@ -127,6 +130,14 @@ export default function ImportarPreciosPage() {
 
   const [applySummary, setApplySummary] = useState<ApplySummary | null>(null);
 
+  // Proveedor de esta importación — opcional, no se resetea al cargar
+  // un archivo nuevo (solo al arrancar una importación desde cero con
+  // "Nueva importación") para no tener que reescribirlo entre lotes
+  // sucesivos del mismo proveedor.
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierName, setSupplierName] = useState("");
+  const [assignSummary, setAssignSummary] = useState<{ updated: number } | null>(null);
+
   // Diagnóstico del parser PDF
   const [pdfStats, setPdfStats] = useState<PdfParseStats | null>(null);
 
@@ -140,6 +151,73 @@ export default function ImportarPreciosPage() {
     if (emp?.role !== "supervisor") router.replace("/ventas");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    fetch("/api/suppliers")
+      .then((r) => r.json())
+      .then((j) => { if (Array.isArray(j?.suppliers)) setSuppliers(j.suppliers); })
+      .catch(() => {});
+  }, []);
+
+  // Resuelve el nombre tipeado en el combobox a un supplier_id: si ya
+  // existe (comparación case-insensitive) usa ese id, si no lo crea.
+  // Devuelve null si el campo está vacío (= no asignar proveedor).
+  async function resolveSupplierId(): Promise<string | null> {
+    const name = supplierName.trim();
+    if (!name) return null;
+
+    const existing = suppliers.find((s) => s.name.toLowerCase() === name.toLowerCase());
+    if (existing) return existing.id;
+
+    const res = await fetch("/api/suppliers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Error creando proveedor");
+
+    setSuppliers((prev) => [...prev, json.supplier].sort((a, b) => a.name.localeCompare(b.name)));
+    return json.supplier.id as string;
+  }
+
+  // Asigna supplier_id en lotes vía /api/products/assign-supplier —
+  // no toca precio/costo/margen, independiente de bulk-price-import.
+  async function assignSupplierToIds(ids: string[], supplierId: string | null): Promise<number> {
+    let total = 0;
+    for (let i = 0; i < ids.length; i += APPLY_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + APPLY_CHUNK_SIZE);
+      const res = await fetch("/api/products/assign-supplier", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productIds: chunk, supplier_id: supplierId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error ?? `Error HTTP ${res.status}`);
+      total += json.updated ?? 0;
+    }
+    return total;
+  }
+
+  async function assignSupplierOnly() {
+    if (matched.length === 0) return;
+    const name = supplierName.trim();
+    if (!name) { alert("Elegí o escribí un proveedor primero."); return; }
+    if (!window.confirm(`¿Asignar proveedor "${name}" a ${matched.length} productos SIN tocar precios?`)) return;
+
+    setLoading(true);
+    setLoadingMsg("Asignando proveedor...");
+    try {
+      const supplierId = await resolveSupplierId();
+      const updated = await assignSupplierToIds(matched.map((m) => m.dbId), supplierId);
+      setAssignSummary({ updated });
+    } catch (e: any) {
+      alert(`Error asignando proveedor: ${e?.message ?? e}`);
+    } finally {
+      setLoading(false);
+      setLoadingMsg("");
+    }
+  }
 
   function loadRows(parsed: ExcelRow[], hdrs: string[], type: "excel" | "pdf") {
     const det = detectColumns(hdrs);
@@ -155,6 +233,7 @@ export default function ImportarPreciosPage() {
     setNewProductNames({});
     setAddSummary(null);
     setApplySummary(null);
+    setAssignSummary(null);
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -282,6 +361,7 @@ export default function ImportarPreciosPage() {
       setNewProductNames(initNames);
       setAddSummary(null);
       setApplySummary(null);
+      setAssignSummary(null);
       setIsNewExpanded(true);
       setStep("preview");
     } catch (e: any) {
@@ -294,7 +374,11 @@ export default function ImportarPreciosPage() {
 
   async function applyPrices() {
     if (matched.length === 0) return;
-    if (!window.confirm(`¿Aplicar precios a ${matched.length} productos?`)) return;
+    const supplierName_ = supplierName.trim();
+    const confirmMsg = supplierName_
+      ? `¿Aplicar precios a ${matched.length} productos y asignarles el proveedor "${supplierName_}"?`
+      : `¿Aplicar precios a ${matched.length} productos?`;
+    if (!window.confirm(confirmMsg)) return;
 
     const chunks: ProductMatch[][] = [];
     for (let i = 0; i < matched.length; i += APPLY_CHUNK_SIZE) {
@@ -349,9 +433,23 @@ export default function ImportarPreciosPage() {
       }
     }
 
+    // Si hay proveedor tipeado, se asigna a todos los "encontrados" de esta
+    // importación como paso independiente — no afecta el resultado de
+    // precios de arriba, y corre aunque algún lote de precio haya fallado.
+    let supplierAssigned: number | undefined;
+    if (supplierName.trim()) {
+      setLoadingMsg("Asignando proveedor...");
+      try {
+        const supplierId = await resolveSupplierId();
+        supplierAssigned = await assignSupplierToIds(matched.map((m) => m.dbId), supplierId);
+      } catch (e: any) {
+        allErrors.push(`Proveedor: ${e?.message ?? e}`);
+      }
+    }
+
     setLoading(false);
     setLoadingMsg("");
-    setApplySummary({ updated: totalUpdated, notFound: notFound.length, errors: allErrors });
+    setApplySummary({ updated: totalUpdated, notFound: notFound.length, errors: allErrors, supplierAssigned });
     setStep("done");
   }
 
@@ -378,10 +476,12 @@ export default function ImportarPreciosPage() {
         return;
       }
 
+      const supplierId = await resolveSupplierId();
+
       const res = await fetch("/api/products/bulk-create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ products }),
+        body: JSON.stringify({ products, supplier_id: supplierId }),
       });
       const json = await res.json().catch(() => ({}));
       if (!json?.ok) { alert(`Error: ${json?.error ?? "desconocido"}`); return; }
@@ -416,6 +516,8 @@ export default function ImportarPreciosPage() {
     setNewProductNames({});
     setAddSummary(null);
     setApplySummary(null);
+    setAssignSummary(null);
+    setSupplierName("");
     setTotalInFile(0);
     setPdfStats(null);
     setIsNewExpanded(true);
@@ -704,6 +806,25 @@ export default function ImportarPreciosPage() {
               />
             </div>
 
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Proveedor (opcional)
+              </label>
+              <input
+                type="text"
+                list="suppliers-datalist"
+                value={supplierName}
+                onChange={(e) => setSupplierName(e.target.value)}
+                placeholder="Sin proveedor"
+                className="border rounded px-3 py-2 w-48 text-sm"
+              />
+              <datalist id="suppliers-datalist">
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.name} />
+                ))}
+              </datalist>
+            </div>
+
             <label className="flex items-center gap-2 text-sm cursor-pointer select-none pb-2">
               <input
                 type="checkbox"
@@ -731,7 +852,22 @@ export default function ImportarPreciosPage() {
             >
               {loading ? loadingMsg : `Aplicar precios a existentes (${matched.length})`}
             </button>
+
+            <button
+              onClick={assignSupplierOnly}
+              disabled={loading || matched.length === 0 || !supplierName.trim()}
+              title={!supplierName.trim() ? "Elegí o escribí un proveedor primero" : undefined}
+              className="bg-white border border-blue-700 text-blue-700 rounded px-5 py-2 font-medium disabled:opacity-50"
+            >
+              {loading ? loadingMsg : `Asignar proveedor sin tocar precios (${matched.length})`}
+            </button>
           </div>
+
+          {assignSummary && (
+            <p className="text-xs text-blue-700 mb-2">
+              ✅ Proveedor asignado a {assignSummary.updated} producto(s) — los precios no se modificaron.
+            </p>
+          )}
 
           {updateNames && (
             <p className="text-xs text-amber-600 mb-2">
@@ -979,6 +1115,12 @@ export default function ImportarPreciosPage() {
               <span className="text-gray-600">No encontrados (sin cambios)</span>
               <span className="font-bold text-amber-600 text-lg">{applySummary.notFound}</span>
             </div>
+            {applySummary.supplierAssigned !== undefined && (
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-gray-600">Proveedor asignado</span>
+                <span className="font-bold text-blue-700 text-lg">{applySummary.supplierAssigned}</span>
+              </div>
+            )}
             {addSummary && (addSummary.created > 0 || addSummary.updated > 0) && (
               <div className="flex justify-between items-center py-2 border-b">
                 <span className="text-gray-600">Productos nuevos agregados</span>

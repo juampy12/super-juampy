@@ -23,6 +23,9 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const products: NewProduct[] = body?.products ?? [];
+    // Proveedor de toda esta importación (opcional) — mismo criterio para
+    // los que se crean como para los que ya existían y se reactivan.
+    const supplierId: string | null = typeof body?.supplier_id === "string" ? body.supplier_id : null;
 
     if (!Array.isArray(products) || products.length === 0) {
       return NextResponse.json({ ok: false, error: "Sin productos" }, { status: 400 });
@@ -92,6 +95,7 @@ export async function POST(req: Request) {
             units_per_case: 1,
             is_weighted: false,
             active: true,
+            ...(supplierId ? { supplier_id: supplierId } : {}),
           };
         })
       );
@@ -137,7 +141,7 @@ export async function POST(req: Request) {
         updated = data ?? 0;
         const { error: reactivateErr } = await supabaseAdmin
           .from("products")
-          .update({ active: true })
+          .update({ active: true, ...(supplierId ? { supplier_id: supplierId } : {}) })
           .in("id", ids);
         if (reactivateErr) {
           errors.push(`Error reactivando productos: ${reactivateErr.message}`);
