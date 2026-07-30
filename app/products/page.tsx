@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import toast from "react-hot-toast";
 
 type Store = { id: string; name: string };
+type Supplier = { id: string; name: string };
 
 type Row = {
   id: string;
@@ -110,6 +112,12 @@ export default function ProductsPage() {
   const [query, setQuery] = useState("");
   const [viewFilter, setViewFilter] = useState("all");
 
+  // Filtro por proveedor — "" = Todos, "none" = sin proveedor asignado,
+  // cualquier otro valor = supplier_id. Eje ortogonal a viewFilter: se
+  // combina con búsqueda y con los filtros de estado, no los reemplaza.
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierId, setSupplierId] = useState("");
+
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -200,6 +208,7 @@ export default function ProductsPage() {
           store_id: useId,
           query: query?.trim() ? query.trim() : null,
           all: true,
+          ...(supplierId ? { supplier_id: supplierId } : {}),
         }),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -244,6 +253,7 @@ export default function ProductsPage() {
           query: query?.trim() ? query.trim() : null,
           price_filter: filterKey,
           all: true,
+          ...(supplierId ? { supplier_id: supplierId } : {}),
         }),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -292,6 +302,28 @@ export default function ProductsPage() {
       .catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    fetch("/api/suppliers")
+      .then((r) => r.json())
+      .then((j) => { if (Array.isArray(j?.suppliers)) setSuppliers(j.suppliers); })
+      .catch(console.error);
+  }, []);
+
+  // Cambiar de proveedor: recarga con el mismo criterio de vista activo
+  // (filtro de estado o "Todos"/búsqueda normal) — se combina con lo que
+  // ya esté elegido, no lo pisa.
+  useEffect(() => {
+    setPage(0);
+    if (!storeId) return;
+    const filterKey = STATUS_FILTERS[viewFilter];
+    if (filterKey) {
+      loadStatusRows(filterKey);
+    } else {
+      reload({ sid: storeId });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supplierId]);
 
   useEffect(() => {
     if (!storeId) return;
@@ -434,9 +466,17 @@ export default function ProductsPage() {
   const safePage = Math.min(page, maxPage);
   const pageRows = filteredRows.slice(safePage * pageSize, (safePage + 1) * pageSize);
 
+  const selectedSupplierLabel =
+    supplierId === "none" ? "Sin proveedor" : suppliers.find((s) => s.id === supplierId)?.name ?? null;
+
   return (
     <div className="mx-auto max-w-6xl p-3 sm:p-4">
-      <h1 className="text-2xl font-semibold mb-4">Precios</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-semibold">Precios</h1>
+        <Link href="/proveedores" className="text-sm text-blue-700 underline">
+          Administrar proveedores →
+        </Link>
+      </div>
 
       <p className="mb-4 max-w-3xl text-sm text-neutral-600">
         Los precios son únicos para todas las sucursales. El precio sugerido es solo una referencia calculada con
@@ -465,6 +505,23 @@ export default function ProductsPage() {
             }}
           >
             {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex w-full flex-col gap-1 lg:w-auto">
+          <label className="text-xs text-neutral-500">Proveedor</label>
+          <select
+            className="w-full border rounded px-3 py-3 sm:py-2 lg:w-auto"
+            value={supplierId}
+            onChange={(e) => setSupplierId(e.target.value)}
+          >
+            <option value="">Todos</option>
+            <option value="none">Sin proveedor</option>
+            {suppliers.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
@@ -541,6 +598,7 @@ export default function ProductsPage() {
         <span className="text-sm text-gray-600 sm:self-center">
           Mostrando {filteredRows.length === 0 ? 0 : safePage * pageSize + 1}–
           {Math.min((safePage + 1) * pageSize, filteredRows.length)} de {filteredRows.length} visibles
+          {selectedSupplierLabel && ` · Proveedor: ${selectedSupplierLabel} (${filteredRows.length})`}
         </span>
       </div>
 

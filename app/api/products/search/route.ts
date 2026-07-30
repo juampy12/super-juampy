@@ -25,6 +25,10 @@ export async function POST(req: Request) {
       ? recentHoursRaw
       : null;
 
+  // p_supplier_id en products_with_stock es TEXT: null = sin filtro,
+  // "none" = sin proveedor asignado, cualquier otro string = ese supplier_id.
+  const supplierId: string | null = typeof body.supplier_id === "string" && body.supplier_id ? body.supplier_id : null;
+
   // Cajero solo puede consultar su propia sucursal
   let store_id: string = body.store_id ?? "";
   if (!isSupervisor(session)) {
@@ -53,6 +57,7 @@ export async function POST(req: Request) {
           p_limit: offset + PAGE_SIZE,
           p_price_filter: priceFilter ?? undefined,
           p_recent_hours: recentHours ?? undefined,
+          p_supplier_id: supplierId ?? undefined,
         }, { get: true })
         .range(offset, offset + PAGE_SIZE - 1);
 
@@ -73,6 +78,7 @@ export async function POST(req: Request) {
     p_limit: limit,
     p_price_filter: priceFilter,
     p_recent_hours: recentHours,
+    p_supplier_id: supplierId,
   });
 
   if (error) {
