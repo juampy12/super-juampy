@@ -21,6 +21,10 @@ type ProductMatch = {
   finalPrice: number;
   diffPct: number;
   sinExistencia: boolean;
+  rawBulkPrice: number;
+  detectedUnits: number | null;
+  unitsResolved: number | null;
+  unitsUnresolved: boolean;
 };
 
 type NotFoundItem = {
@@ -30,6 +34,10 @@ type NotFoundItem = {
   priceCI: number;
   costNet: number;
   sinExistencia: boolean;
+  rawBulkPrice: number;
+  detectedUnits: number | null;
+  unitsResolved: number | null;
+  unitsUnresolved: boolean;
 };
 
 type ApplySummary = {
@@ -37,6 +45,7 @@ type ApplySummary = {
   notFound: number;
   errors: string[];
   supplierAssigned?: number;
+  unitsSkipped?: number;
 };
 
 type Supplier = { id: string; name: string };
@@ -76,6 +85,60 @@ function parsePrice(v: string | number | null | undefined): number {
   if (v === null || v === undefined || v === "") return 0;
   const n = Number(String(v).replace(/[^0-9.,]/g, "").replace(",", "."));
   return Number.isFinite(n) ? n : 0;
+}
+
+// Detecta "X 24U" / "X24U" / "x 12 u" en la descripción del proveedor.
+// Ancla en la X seguida de U (no en el número solo) para no confundir
+// la cantidad de unidades con un peso ("35GR") u otro número suelto.
+// Si hay 0 o más de 1 match, NO adivina — devuelve null (fila "sin detectar").
+const UNIT_COUNT_RE = /\bX\s*(\d{1,3})\s*U\b/gi;
+
+function detectUnitsPerCase(description: string): number | null {
+  const matches = [...description.matchAll(UNIT_COUNT_RE)];
+  if (matches.length !== 1) return null;
+  const n = Number(matches[0][1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function applyIva(cost: number, ivaMode: "incluido" | "sumar21"): number {
+  return ivaMode === "sumar21" ? Math.round(cost * 1.21 * 100) / 100 : cost;
+}
+
+type UnitDerivation = {
+  detectedUnits: number | null;
+  unitsResolved: number | null;
+  unitsUnresolved: boolean;
+  effectiveCost: number;
+};
+
+// Combina las dos opciones de "precio por bulto": divide por las unidades
+// (detectadas en la descripción o corregidas a mano) y después suma IVA si
+// corresponde. Si dividir está activo y no hay unidades resueltas, NUNCA
+// devuelve una división dudosa: unitsUnresolved queda en true y effectiveCost
+// cae de vuelta al precio de lista sin dividir (solo cosmético — esa fila
+// se excluye de "Aplicar precios" más abajo).
+function deriveUnitPricing(
+  rawPrice: number,
+  description: string,
+  divideByUnits: boolean,
+  ivaMode: "incluido" | "sumar21",
+  override: number | null
+): UnitDerivation {
+  if (!divideByUnits) {
+    return { detectedUnits: null, unitsResolved: null, unitsUnresolved: false, effectiveCost: applyIva(rawPrice, ivaMode) };
+  }
+  const detectedUnits = detectUnitsPerCase(description);
+  const resolved = override ?? detectedUnits;
+  const unitsUnresolved = !resolved || resolved <= 0;
+  const effectiveCost = unitsUnresolved
+    ? applyIva(rawPrice, ivaMode)
+    : applyIva(rawPrice / (resolved as number), ivaMode);
+  return {
+    detectedUnits,
+    unitsResolved: unitsUnresolved ? null : resolved,
+    unitsUnresolved,
+    effectiveCost,
+  };
 }
 
 // Costo de un producto NUEVO: el precio de la columna elegida por el usuario
@@ -118,6 +181,14 @@ export default function ImportarPreciosPage() {
   const [margin, setMargin] = useState(0);
   const [saveCost, setSaveCost] = useState(false);
   const [updateNames, setUpdateNames] = useState(false);
+
+  // "Precio por bulto": el precio de la lista viene por bulto/caja, no por
+  // unidad, y la cantidad de unidades está en la descripción (ej. "X 24U").
+  // ivaMode indica si ese precio de lista ya trae IVA o hay que sumarlo.
+  const [divideByUnits, setDivideByUnits] = useState(false);
+  const [ivaMode, setIvaMode] = useState<"incluido" | "sumar21">("incluido");
+  // Correcciones manuales por SKU cuando no se detectan las unidades solas.
+  const [unitOverrides, setUnitOverrides] = useState<Record<string, number>>({});
 
   const [matched, setMatched] = useState<ProductMatch[]>([]);
   const [notFound, setNotFound] = useState<NotFoundItem[]>([]);
@@ -234,6 +305,80 @@ export default function ImportarPreciosPage() {
     setAddSummary(null);
     setApplySummary(null);
     setAssignSummary(null);
+    setUnitOverrides({});
+  }
+
+  // Recalcula unidades/costo unitario/costo final para todas las filas ya
+  // construidas (matched + notFound) sin volver a golpear la base de datos —
+  // se usa cuando se togglea "Precio por bulto", el modo de IVA, o se corrige
+  // a mano la cantidad de unidades de una fila puntual.
+  function recomputeUnitFields(
+    divide: boolean,
+    iva: "incluido" | "sumar21",
+    overrides: Record<string, number>
+  ) {
+    setMatched((prev) =>
+      prev.map((m) => {
+        const deriv = deriveUnitPricing(m.rawBulkPrice, m.sourceName, divide, iva, overrides[m.sku] ?? null);
+        const finalPrice = Math.round(deriv.effectiveCost * (1 + margin / 100) * 100) / 100;
+        const diffPct =
+          m.currentPrice > 0
+            ? Math.round(((finalPrice - m.currentPrice) / m.currentPrice) * 10000) / 100
+            : 0;
+        return {
+          ...m,
+          importedPrice: deriv.effectiveCost,
+          finalPrice,
+          diffPct,
+          detectedUnits: deriv.detectedUnits,
+          unitsResolved: deriv.unitsResolved,
+          unitsUnresolved: deriv.unitsUnresolved,
+        };
+      })
+    );
+    setNotFound((prev) => {
+      const next = prev.map((nf) => {
+        const deriv = deriveUnitPricing(nf.rawBulkPrice, nf.name, divide, iva, overrides[nf.sku] ?? null);
+        return {
+          ...nf,
+          costNet: deriv.effectiveCost,
+          detectedUnits: deriv.detectedUnits,
+          unitsResolved: deriv.unitsResolved,
+          unitsUnresolved: deriv.unitsUnresolved,
+        };
+      });
+      setNewProductPrices((prevPrices) => {
+        const nextPrices = { ...prevPrices };
+        for (const nf of next) nextPrices[nf.sku] = saleFromCost(nf.costNet, margin);
+        return nextPrices;
+      });
+      return next;
+    });
+  }
+
+  function handleDivideByUnitsChange(checked: boolean) {
+    setDivideByUnits(checked);
+    if (checked) setSaveCost(true); // el costo por unidad es el objetivo de esta opción
+    if (step === "preview") recomputeUnitFields(checked, ivaMode, unitOverrides);
+  }
+
+  function handleIvaModeChange(mode: "incluido" | "sumar21") {
+    setIvaMode(mode);
+    if (step === "preview") recomputeUnitFields(divideByUnits, mode, unitOverrides);
+  }
+
+  function handleUnitOverrideChange(sku: string, raw: string) {
+    const trimmed = raw.trim();
+    const next = { ...unitOverrides };
+    if (!trimmed) {
+      delete next[sku];
+    } else {
+      const n = Number(trimmed);
+      if (Number.isFinite(n) && n > 0) next[sku] = Math.round(n);
+      else delete next[sku];
+    }
+    setUnitOverrides(next);
+    recomputeUnitFields(divideByUnits, ivaMode, next);
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -330,23 +475,39 @@ export default function ImportarPreciosPage() {
       for (const sku of skus) {
         const row = skuToRow[sku];
         const sourceName = String(row["Detalle"] ?? row["detalle"] ?? "").trim();
-        const importedPrice = parsePrice(row[priceCol]);
+        const rawBulkPrice = parsePrice(row[priceCol]);
         const sinExistencia = row["Existencia"] === "S/E";
 
         if (dbBySku[sku]) {
           const db = dbBySku[sku];
+          const deriv = deriveUnitPricing(rawBulkPrice, sourceName, divideByUnits, ivaMode, unitOverrides[sku] ?? null);
+          const importedPrice = deriv.effectiveCost;
           const finalPrice = Math.round(importedPrice * (1 + margin / 100) * 100) / 100;
           const currentPrice = db.price ?? 0;
           const diffPct =
             currentPrice > 0
               ? Math.round(((finalPrice - currentPrice) / currentPrice) * 10000) / 100
               : 0;
-          matchedList.push({ sku, sourceName, dbId: db.id, dbName: db.name, currentPrice, importedPrice, finalPrice, diffPct, sinExistencia });
+          matchedList.push({
+            sku, sourceName, dbId: db.id, dbName: db.name, currentPrice, importedPrice, finalPrice, diffPct, sinExistencia,
+            rawBulkPrice,
+            detectedUnits: deriv.detectedUnits,
+            unitsResolved: deriv.unitsResolved,
+            unitsUnresolved: deriv.unitsUnresolved,
+          });
         } else {
           const priceSI = parsePrice(row["Precio/SI"] ?? row[priceCol]);
           const priceCI = parsePrice(row["Precio/CI"] ?? row[priceCol]);
-          const costNet = costForNewProduct(row, priceCol);
-          notFoundList.push({ sku, name: sourceName, priceSI, priceCI, costNet, sinExistencia });
+          const rawCost = costForNewProduct(row, priceCol);
+          const deriv = deriveUnitPricing(rawCost, sourceName, divideByUnits, ivaMode, unitOverrides[sku] ?? null);
+          const costNet = deriv.effectiveCost;
+          notFoundList.push({
+            sku, name: sourceName, priceSI, priceCI, costNet, sinExistencia,
+            rawBulkPrice: rawCost,
+            detectedUnits: deriv.detectedUnits,
+            unitsResolved: deriv.unitsResolved,
+            unitsUnresolved: deriv.unitsUnresolved,
+          });
           initPrices[sku] = saleFromCost(costNet, margin);
           initNames[sku] = sourceName;
         }
@@ -374,15 +535,30 @@ export default function ImportarPreciosPage() {
 
   async function applyPrices() {
     if (matched.length === 0) return;
+
+    // "Precio por bulto" activo: nunca aplicamos una división dudosa — las
+    // filas sin unidades resueltas quedan afuera de esta tanda (se avisa
+    // antes de confirmar y en el resumen final).
+    const applicable = divideByUnits ? matched.filter((m) => !m.unitsUnresolved) : matched;
+    const skippedByUnits = matched.length - applicable.length;
+    if (applicable.length === 0) {
+      alert("Ningún producto tiene unidades resueltas — corregí las unidades en la vista previa antes de aplicar.");
+      return;
+    }
+
     const supplierName_ = supplierName.trim();
-    const confirmMsg = supplierName_
-      ? `¿Aplicar precios a ${matched.length} productos y asignarles el proveedor "${supplierName_}"?`
-      : `¿Aplicar precios a ${matched.length} productos?`;
+    const confirmMsg =
+      (supplierName_
+        ? `¿Aplicar precios a ${applicable.length} productos y asignarles el proveedor "${supplierName_}"?`
+        : `¿Aplicar precios a ${applicable.length} productos?`) +
+      (skippedByUnits > 0
+        ? `\n\n⚠️ ${skippedByUnits} producto(s) sin unidades detectadas quedan AFUERA de esta tanda.`
+        : "");
     if (!window.confirm(confirmMsg)) return;
 
     const chunks: ProductMatch[][] = [];
-    for (let i = 0; i < matched.length; i += APPLY_CHUNK_SIZE) {
-      chunks.push(matched.slice(i, i + APPLY_CHUNK_SIZE));
+    for (let i = 0; i < applicable.length; i += APPLY_CHUNK_SIZE) {
+      chunks.push(applicable.slice(i, i + APPLY_CHUNK_SIZE));
     }
 
     setLoading(true);
@@ -393,7 +569,7 @@ export default function ImportarPreciosPage() {
       const chunk = chunks[i];
       setLoadingMsg(
         chunks.length > 1
-          ? `Aplicando ${totalUpdated} de ${matched.length}...`
+          ? `Aplicando ${totalUpdated} de ${applicable.length}...`
           : "Aplicando precios..."
       );
 
@@ -405,6 +581,7 @@ export default function ImportarPreciosPage() {
           price: m.finalPrice,
           ...(saveCost ? { cost_net: m.importedPrice, markup_rate: margin } : {}),
           ...(updateNames && m.sourceName.trim() ? { name: m.sourceName.trim() } : {}),
+          ...(divideByUnits && m.unitsResolved ? { units_per_case: m.unitsResolved } : {}),
         }));
         const res = await fetch("/api/products/bulk-price-import", {
           method: "POST",
@@ -424,7 +601,7 @@ export default function ImportarPreciosPage() {
           `Lote ${i + 1}/${chunks.length} (${chunk.length} productos): ${reason}`
         );
         alert(
-          `Se aplicaron ${totalUpdated} de ${matched.length} precios antes de que fallara el lote ${i + 1}/${chunks.length}: ${reason}.\n\n` +
+          `Se aplicaron ${totalUpdated} de ${applicable.length} precios antes de que fallara el lote ${i + 1}/${chunks.length}: ${reason}.\n\n` +
           `Los precios ya aplicados quedan guardados — podés reintentar la importación para completar el resto.`
         );
         break;
@@ -449,7 +626,13 @@ export default function ImportarPreciosPage() {
 
     setLoading(false);
     setLoadingMsg("");
-    setApplySummary({ updated: totalUpdated, notFound: notFound.length, errors: allErrors, supplierAssigned });
+    setApplySummary({
+      updated: totalUpdated,
+      notFound: notFound.length,
+      errors: allErrors,
+      supplierAssigned,
+      unitsSkipped: skippedByUnits > 0 ? skippedByUnits : undefined,
+    });
     setStep("done");
   }
 
@@ -460,7 +643,15 @@ export default function ImportarPreciosPage() {
     setLoading(true);
     setLoadingMsg("Agregando productos...");
     try {
-      const products = Array.from(selectedNew).map((sku) => {
+      // Con "Precio por bulto" activo, nunca agregamos un producto nuevo con
+      // una división dudosa — mismo criterio que en la tabla de encontrados.
+      const eligibleSkus = Array.from(selectedNew).filter((sku) => {
+        if (!divideByUnits) return true;
+        const nf = notFound.find((n) => n.sku === sku);
+        return !nf?.unitsUnresolved;
+      });
+
+      const products = eligibleSkus.map((sku) => {
         const nf = notFound.find((n) => n.sku === sku);
         return {
           sku,
@@ -518,6 +709,9 @@ export default function ImportarPreciosPage() {
     setApplySummary(null);
     setAssignSummary(null);
     setSupplierName("");
+    setDivideByUnits(false);
+    setIvaMode("incluido");
+    setUnitOverrides({});
     setTotalInFile(0);
     setPdfStats(null);
     setIsNewExpanded(true);
@@ -549,9 +743,22 @@ export default function ImportarPreciosPage() {
   const fmt = (n: number) =>
     n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  // Con "Precio por bulto" activo, las filas sin unidades resueltas no se
+  // pueden seleccionar para agregar — mismo criterio de "nunca aplicar una
+  // división dudosa" que en la tabla de encontrados.
+  const selectableNotFound = divideByUnits ? notFound.filter((nf) => !nf.unitsUnresolved) : notFound;
   const allNewSelected =
-    notFound.length > 0 && selectedNew.size === notFound.length;
+    selectableNotFound.length > 0 && selectedNew.size === selectableNotFound.length;
   const someNewSelected = selectedNew.size > 0 && !allNewSelected;
+
+  // Solo tiene sentido contar esto con "Precio por bulto" activo — combina
+  // matched + notFound porque ambas tablas se ven afectadas por la división.
+  const unitsResolvedCount =
+    matched.filter((m) => !m.unitsUnresolved).length + notFound.filter((n) => !n.unitsUnresolved).length;
+  const unitsUnresolvedCount =
+    matched.filter((m) => m.unitsUnresolved).length + notFound.filter((n) => n.unitsUnresolved).length;
+  const applicableMatched = divideByUnits ? matched.filter((m) => !m.unitsUnresolved) : matched;
+  const excludedMatchedCount = matched.length - applicableMatched.length;
 
   return (
     <div className="mx-auto max-w-5xl p-4">
@@ -674,6 +881,40 @@ export default function ImportarPreciosPage() {
                 </p>
               )}
 
+              <div className="border-t pt-4 space-y-3">
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={divideByUnits}
+                    onChange={(e) => handleDivideByUnitsChange(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  Precio por bulto — dividir por unidades
+                </label>
+                {divideByUnits && (
+                  <p className="text-xs text-gray-500">
+                    La columna de precio elegida arriba trae el precio del bulto/caja, no de la
+                    unidad. Se detectan las unidades en la descripción (patrón "X 24U", "X12U",
+                    etc.) y se calcula costo unitario = precio bulto ÷ unidades. Las filas donde no
+                    se puede detectar quedan marcadas en la vista previa para corregir a mano.
+                  </p>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    El precio de la lista es
+                  </label>
+                  <select
+                    className="border rounded px-3 py-2 w-full"
+                    value={ivaMode}
+                    onChange={(e) => handleIvaModeChange(e.target.value as "incluido" | "sumar21")}
+                  >
+                    <option value="incluido">Con IVA incluido</option>
+                    <option value="sumar21">Sin IVA — sumar 21%</option>
+                  </select>
+                </div>
+              </div>
+
               <button
                 onClick={buildPreview}
                 disabled={loading || !detected.skuCol || !priceCol}
@@ -735,6 +976,19 @@ export default function ImportarPreciosPage() {
                   {notFound.length} nuevos no cargados
                 </span>
               )}
+              {divideByUnits && (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <span className="bg-gray-100 rounded-full px-3 py-1 font-semibold text-gray-700">
+                    {unitsResolvedCount} con unidades detectadas
+                  </span>
+                  {unitsUnresolvedCount > 0 && (
+                    <span className="bg-red-100 text-red-800 rounded-full px-3 py-1 font-semibold">
+                      {unitsUnresolvedCount} sin detectar (revisar)
+                    </span>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -755,13 +1009,18 @@ export default function ImportarPreciosPage() {
                       const row = rows.find(
                         (r) => String(r[detected.skuCol!] ?? "").trim() === m.sku
                       );
-                      const importedPrice = row ? parsePrice(row[col]) : m.importedPrice;
+                      const rawBulkPrice = row ? parsePrice(row[col]) : m.rawBulkPrice;
+                      const deriv = deriveUnitPricing(rawBulkPrice, m.sourceName, divideByUnits, ivaMode, unitOverrides[m.sku] ?? null);
+                      const importedPrice = deriv.effectiveCost;
                       const finalPrice = Math.round(importedPrice * (1 + margin / 100) * 100) / 100;
                       const diffPct =
                         m.currentPrice > 0
                           ? Math.round(((finalPrice - m.currentPrice) / m.currentPrice) * 10000) / 100
                           : 0;
-                      return { ...m, importedPrice, finalPrice, diffPct };
+                      return {
+                        ...m, importedPrice, finalPrice, diffPct, rawBulkPrice,
+                        detectedUnits: deriv.detectedUnits, unitsResolved: deriv.unitsResolved, unitsUnresolved: deriv.unitsUnresolved,
+                      };
                     })
                   );
                   setNotFound((prev) =>
@@ -769,8 +1028,12 @@ export default function ImportarPreciosPage() {
                       const row = rows.find(
                         (r) => String(r[detected.skuCol!] ?? "").trim() === nf.sku
                       );
-                      const costNet = row ? costForNewProduct(row, col) : nf.costNet;
-                      return { ...nf, costNet };
+                      const rawBulkPrice = row ? costForNewProduct(row, col) : nf.rawBulkPrice;
+                      const deriv = deriveUnitPricing(rawBulkPrice, nf.name, divideByUnits, ivaMode, unitOverrides[nf.sku] ?? null);
+                      return {
+                        ...nf, costNet: deriv.effectiveCost, rawBulkPrice,
+                        detectedUnits: deriv.detectedUnits, unitsResolved: deriv.unitsResolved, unitsUnresolved: deriv.unitsUnresolved,
+                      };
                     })
                   );
                   setNewProductPrices((prev) => {
@@ -779,8 +1042,9 @@ export default function ImportarPreciosPage() {
                       const row = rows.find(
                         (r) => String(r[detected.skuCol!] ?? "").trim() === nf.sku
                       );
-                      const costNet = row ? costForNewProduct(row, col) : nf.costNet;
-                      next[nf.sku] = saleFromCost(costNet, margin);
+                      const rawBulkPrice = row ? costForNewProduct(row, col) : nf.rawBulkPrice;
+                      const deriv = deriveUnitPricing(rawBulkPrice, nf.name, divideByUnits, ivaMode, unitOverrides[nf.sku] ?? null);
+                      next[nf.sku] = saleFromCost(deriv.effectiveCost, margin);
                     }
                     return next;
                   });
@@ -845,12 +1109,42 @@ export default function ImportarPreciosPage() {
               Actualizar también el nombre desde la lista
             </label>
 
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none pb-2">
+              <input
+                type="checkbox"
+                checked={divideByUnits}
+                onChange={(e) => handleDivideByUnitsChange(e.target.checked)}
+                className="w-4 h-4"
+              />
+              Precio por bulto — dividir por unidades
+            </label>
+
+            {divideByUnits && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Precio de lista
+                </label>
+                <select
+                  className="border rounded px-3 py-2 text-sm"
+                  value={ivaMode}
+                  onChange={(e) => handleIvaModeChange(e.target.value as "incluido" | "sumar21")}
+                >
+                  <option value="incluido">Con IVA incluido</option>
+                  <option value="sumar21">Sin IVA — sumar 21%</option>
+                </select>
+              </div>
+            )}
+
             <button
               onClick={applyPrices}
-              disabled={loading || matched.length === 0}
+              disabled={loading || applicableMatched.length === 0}
               className="bg-emerald-700 text-white rounded px-5 py-2 font-medium disabled:opacity-50"
             >
-              {loading ? loadingMsg : `Aplicar precios a existentes (${matched.length})`}
+              {loading
+                ? loadingMsg
+                : `Aplicar precios a existentes (${applicableMatched.length}${
+                    excludedMatchedCount > 0 ? ` · ${excludedMatchedCount} sin unidades` : ""
+                  })`}
             </button>
 
             <button
@@ -874,6 +1168,13 @@ export default function ImportarPreciosPage() {
               "Actualizar también el nombre" está activo: al aplicar, el nombre de cada producto
               encontrado se va a pisar con el "Nombre en {fileType === "pdf" ? "PDF" : "archivo"}"
               de la tabla de abajo (solo si esa columna no viene vacía para esa fila).
+            </p>
+          )}
+
+          {divideByUnits && excludedMatchedCount > 0 && (
+            <p className="text-xs text-red-700 mb-2 font-medium">
+              ⚠️ {excludedMatchedCount} producto(s) sin unidades detectadas — no se van a aplicar
+              hasta que corrijas la columna "Unidades" en la tabla de abajo (o los cargues aparte).
             </p>
           )}
 
@@ -906,7 +1207,7 @@ export default function ImportarPreciosPage() {
                           ref={(el) => { if (el) el.indeterminate = someNewSelected; }}
                           onChange={(e) => {
                             setSelectedNew(
-                              e.target.checked ? new Set(notFound.map((nf) => nf.sku)) : new Set()
+                              e.target.checked ? new Set(selectableNotFound.map((nf) => nf.sku)) : new Set()
                             );
                           }}
                           className="w-4 h-4"
@@ -951,8 +1252,11 @@ export default function ImportarPreciosPage() {
                     <th className="p-2 w-8"></th>
                     <th className="p-2 text-left">Código de barras</th>
                     <th className="p-2 text-left">Nombre</th>
-                    <th className="p-2 text-right text-gray-400">Precio/SI</th>
-                    <th className="p-2 text-right text-gray-400">Precio/CI</th>
+                    {!divideByUnits && <th className="p-2 text-right text-gray-400">Precio/SI</th>}
+                    {!divideByUnits && <th className="p-2 text-right text-gray-400">Precio/CI</th>}
+                    {divideByUnits && <th className="p-2 text-right text-gray-400">Precio bulto</th>}
+                    {divideByUnits && <th className="p-2 text-center">Unidades</th>}
+                    {divideByUnits && <th className="p-2 text-right text-gray-400">Costo unitario</th>}
                     <th className="p-2 text-right">
                       Precio de venta {margin > 0 ? `(costo + ${margin}%)` : "(sin margen)"}
                     </th>
@@ -961,15 +1265,20 @@ export default function ImportarPreciosPage() {
                 <tbody>
                   {notFound.map((nf) => {
                     const isSelected = selectedNew.has(nf.sku);
+                    const disabledForUnits = divideByUnits && nf.unitsUnresolved;
                     return (
                       <tr
                         key={nf.sku}
-                        className={`border-t ${isSelected ? "bg-blue-50" : "hover:bg-gray-50"}`}
+                        className={`border-t ${
+                          disabledForUnits ? "bg-red-50" : isSelected ? "bg-blue-50" : "hover:bg-gray-50"
+                        }`}
                       >
                         <td className="p-2 text-center">
                           <input
                             type="checkbox"
                             checked={isSelected}
+                            disabled={disabledForUnits}
+                            title={disabledForUnits ? "Corregí las unidades para poder agregarlo" : undefined}
                             onChange={(e) => {
                               const next = new Set(selectedNew);
                               if (e.target.checked) next.add(nf.sku);
@@ -1003,12 +1312,40 @@ export default function ImportarPreciosPage() {
                             placeholder="Nombre del producto"
                           />
                         </td>
-                        <td className="p-2 text-right text-gray-400 text-xs">
-                          {nf.priceSI > 0 ? `$${fmt(nf.priceSI)}` : "—"}
-                        </td>
-                        <td className="p-2 text-right text-gray-400 text-xs">
-                          {nf.priceCI > 0 ? `$${fmt(nf.priceCI)}` : "—"}
-                        </td>
+                        {!divideByUnits && (
+                          <td className="p-2 text-right text-gray-400 text-xs">
+                            {nf.priceSI > 0 ? `$${fmt(nf.priceSI)}` : "—"}
+                          </td>
+                        )}
+                        {!divideByUnits && (
+                          <td className="p-2 text-right text-gray-400 text-xs">
+                            {nf.priceCI > 0 ? `$${fmt(nf.priceCI)}` : "—"}
+                          </td>
+                        )}
+                        {divideByUnits && (
+                          <td className="p-2 text-right text-gray-400 text-xs">${fmt(nf.rawBulkPrice)}</td>
+                        )}
+                        {divideByUnits && (
+                          <td className="p-2 text-center">
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={unitOverrides[nf.sku] ?? nf.detectedUnits ?? ""}
+                              onChange={(e) => handleUnitOverrideChange(nf.sku, e.target.value)}
+                              placeholder="?"
+                              className={`border rounded px-2 py-1 w-16 text-center text-sm ${
+                                nf.unitsUnresolved ? "border-red-500 text-red-700 bg-white" : ""
+                              }`}
+                            />
+                            {nf.unitsUnresolved && (
+                              <div className="text-[10px] text-red-600 mt-0.5">sin detectar</div>
+                            )}
+                          </td>
+                        )}
+                        {divideByUnits && (
+                          <td className="p-2 text-right text-gray-400 text-xs">${fmt(nf.costNet)}</td>
+                        )}
                         <td className="p-2 text-right">
                           <input
                             type="number"
@@ -1050,14 +1387,16 @@ export default function ImportarPreciosPage() {
                     <th className="p-2 text-left">Producto (DB)</th>
                     <th className="p-2 text-left">Nombre en {fileType === "pdf" ? "PDF" : "archivo"}</th>
                     <th className="p-2 text-right">Precio actual</th>
-                    <th className="p-2 text-right">Precio importado</th>
+                    {divideByUnits && <th className="p-2 text-right text-gray-400">Precio bulto</th>}
+                    {divideByUnits && <th className="p-2 text-center">Unidades</th>}
+                    <th className="p-2 text-right">{divideByUnits ? "Costo unitario" : "Precio importado"}</th>
                     {margin > 0 && <th className="p-2 text-right">Precio final (+{margin}%)</th>}
                     <th className="p-2 text-right">Diferencia</th>
                   </tr>
                 </thead>
                 <tbody>
                   {matched.map((m) => (
-                    <tr key={m.sku} className="border-t hover:bg-gray-50">
+                    <tr key={m.sku} className={`border-t hover:bg-gray-50 ${m.unitsUnresolved ? "bg-red-50" : ""}`}>
                       <td className="p-2">
                         <div className="font-medium flex items-center gap-1.5">
                           {m.dbName}
@@ -1074,6 +1413,27 @@ export default function ImportarPreciosPage() {
                       </td>
                       <td className="p-2 text-gray-500 text-xs">{m.sourceName || "—"}</td>
                       <td className="p-2 text-right">${fmt(m.currentPrice)}</td>
+                      {divideByUnits && (
+                        <td className="p-2 text-right text-gray-400 text-xs">${fmt(m.rawBulkPrice)}</td>
+                      )}
+                      {divideByUnits && (
+                        <td className="p-2 text-center">
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={unitOverrides[m.sku] ?? m.detectedUnits ?? ""}
+                            onChange={(e) => handleUnitOverrideChange(m.sku, e.target.value)}
+                            placeholder="?"
+                            className={`border rounded px-2 py-1 w-16 text-center text-sm ${
+                              m.unitsUnresolved ? "border-red-500 text-red-700 bg-white" : ""
+                            }`}
+                          />
+                          {m.unitsUnresolved && (
+                            <div className="text-[10px] text-red-600 mt-0.5">sin detectar</div>
+                          )}
+                        </td>
+                      )}
                       <td className="p-2 text-right">${fmt(m.importedPrice)}</td>
                       {margin > 0 && (
                         <td className="p-2 text-right font-semibold">${fmt(m.finalPrice)}</td>
@@ -1119,6 +1479,12 @@ export default function ImportarPreciosPage() {
               <div className="flex justify-between items-center py-2 border-b">
                 <span className="text-gray-600">Proveedor asignado</span>
                 <span className="font-bold text-blue-700 text-lg">{applySummary.supplierAssigned}</span>
+              </div>
+            )}
+            {applySummary.unitsSkipped !== undefined && (
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-gray-600">Sin unidades detectadas (no aplicados)</span>
+                <span className="font-bold text-red-600 text-lg">{applySummary.unitsSkipped}</span>
               </div>
             )}
             {addSummary && (addSummary.created > 0 || addSummary.updated > 0) && (

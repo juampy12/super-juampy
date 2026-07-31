@@ -5,7 +5,14 @@ import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type PriceUpdate = { productId: string; price: number; cost_net?: number; markup_rate?: number; name?: string };
+type PriceUpdate = {
+  productId: string;
+  price: number;
+  cost_net?: number;
+  markup_rate?: number;
+  name?: string;
+  units_per_case?: number;
+};
 
 // Tope por request: el cliente ya divide en lotes (ver importar-precios/page.tsx),
 // esto es una segunda barrera por si alguien llama el endpoint directo con un
@@ -38,6 +45,7 @@ export async function POST(req: Request) {
     const markupRates: (number | null)[] = [];
     const vatRates: (number | null)[] = [];
     const names: (string | null)[] = [];
+    const unitsPerCase: (number | null)[] = [];
     const errors: string[] = [];
 
     for (const item of updates) {
@@ -73,12 +81,20 @@ export async function POST(req: Request) {
       // Vacío/undefined = null = la función SQL conserva el nombre actual.
       const name = typeof item.name === "string" && item.name.trim() ? item.name.trim() : null;
 
+      // units_per_case es opcional por item — solo viene cuando "Precio por
+      // bulto" está tildado y esa fila tiene unidades resueltas (detectadas o
+      // corregidas a mano). undefined/inválido = null = no tocar la columna.
+      const parsedUnits = Number(item.units_per_case);
+      const unitsPerCaseItem =
+        Number.isFinite(parsedUnits) && parsedUnits > 0 ? Math.round(parsedUnits) : null;
+
       ids.push(item.productId);
       prices.push(price);
       costNets.push(costNet);
       markupRates.push(markupRate);
       vatRates.push(vatRate);
       names.push(name);
+      unitsPerCase.push(unitsPerCaseItem);
     }
 
     // Un solo UPDATE ... FROM unnest() para todo el lote en vez de N updates
@@ -92,6 +108,7 @@ export async function POST(req: Request) {
         p_markup_rates: markupRates,
         p_vat_rates: vatRates,
         p_names: names,
+        p_units_per_case: unitsPerCase,
       });
 
       if (error) {
