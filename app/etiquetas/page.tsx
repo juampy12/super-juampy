@@ -147,9 +147,7 @@ export default function EtiquetasPage() {
       const rows: ProductRow[] = Array.isArray(data)
         ? (data as ProductRow[]).filter((r) => r.active !== false && Number(r.price) > 0)
         : [];
-      const supplierLabel =
-        supplierId === "none" ? "sin proveedor" : suppliers.find((s) => s.id === supplierId)?.name;
-      const supplierSuffix = supplierLabel ? ` de ${supplierLabel}` : "";
+      const supplierSuffix = supplierScopeLabel ? ` de ${supplierScopeLabel}` : "";
 
       if (rows.length === 0) {
         toast(
@@ -202,71 +200,58 @@ export default function EtiquetasPage() {
 
   const totalLabels = items.reduce((sum, i) => sum + i.qty, 0);
 
+  // Etiqueta del botón de generación masiva — deja explícito a QUÉ alcance
+  // (proveedor / todo el catálogo) y bajo qué modo va a traer TODOS los
+  // productos que cumplan (sin el límite de 40 del buscador de al lado).
+  const supplierScopeLabel =
+    supplierId === "none" ? "sin proveedor" : suppliers.find((s) => s.id === supplierId)?.name ?? null;
+  const bulkScopeText = supplierScopeLabel ? supplierScopeLabel : "todo el catálogo";
+  const bulkModeText = catalogMode === "recent" ? "actualizados recientemente" : "con precio";
+
   return (
     <div className="max-w-7xl mx-auto px-3 py-4">
         <h1 className="text-2xl font-semibold mb-4">Etiquetas de góndola</h1>
 
-        {/* Controls row */}
-        <div className="flex flex-col gap-2 mb-4">
-          <select
-            className="border rounded-lg px-3 py-2 w-full sm:w-auto sm:self-start"
-            value={storeId}
-            onChange={(e) => setStoreId(e.target.value)}
-          >
-            {stores.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-          <select
-            className="border rounded-lg px-3 py-2 w-full sm:w-auto sm:self-start"
-            value={supplierId}
-            onChange={(e) => setSupplierId(e.target.value)}
-            title="Filtra 'Todo el catálogo' por proveedor"
-            aria-label="Proveedor"
-          >
-            <option value="">Proveedor: Todos</option>
-            <option value="none">Proveedor: Sin proveedor</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>Proveedor: {s.name}</option>
-            ))}
-          </select>
-          <div className="flex gap-2">
-            <input
-              className="border rounded-lg px-3 py-2 flex-1 min-w-0"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar por nombre o SKU"
-              onKeyDown={(e) => { if (e.key === "Enter") searchProducts(); }}
-            />
-            <button
-              className="px-4 py-2 rounded-lg bg-black text-white hover:bg-black/80 disabled:opacity-60 shrink-0"
-              onClick={searchProducts}
-              disabled={loading || !storeId}
-            >
-              Buscar
-            </button>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2"
-              onClick={loadAllProducts}
-              disabled={loadingAll || !storeId}
-              title={
-                catalogMode === "recent"
-                  ? "Carga los productos con precio actualizado en el rango elegido"
-                  : "Carga todos los productos activos con precio cargado, 1 etiqueta cada uno"
-              }
-            >
-              <i className="ti ti-stack-2" aria-hidden="true" />
-              {loadingAll ? "Cargando…" : "Todo el catálogo"}
-            </button>
+        <select
+          className="border rounded-lg px-3 py-2 w-full sm:w-auto sm:self-start mb-4"
+          value={storeId}
+          onChange={(e) => setStoreId(e.target.value)}
+          aria-label="Sucursal"
+        >
+          {stores.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
 
-            <div className="flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1.5 text-sm">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+          {/* Generación masiva: TODO el catálogo o TODO un proveedor, sin
+              límite de resultados — separado del buscador de al lado, que
+              siempre tiene un tope de 40 (a propósito, para agregar de a
+              uno) y NO respeta este filtro de proveedor/modo. */}
+          <div className="rounded-xl border-2 border-blue-200 bg-blue-50/60 p-3 space-y-2">
+            <div className="text-sm font-semibold text-blue-900">
+              Generar etiquetas de todo el catálogo o de un proveedor
+            </div>
+
+            <select
+              className="border rounded-lg px-3 py-2 w-full bg-white"
+              value={supplierId}
+              onChange={(e) => setSupplierId(e.target.value)}
+              aria-label="Proveedor"
+            >
+              <option value="">Proveedor: Todos</option>
+              <option value="none">Proveedor: Sin proveedor</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>Proveedor: {s.name}</option>
+              ))}
+            </select>
+
+            <div className="flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1.5 text-sm w-full">
               <select
                 className="bg-transparent text-sm outline-none"
                 value={catalogMode}
                 onChange={(e) => setCatalogMode(e.target.value as "all" | "recent")}
-                aria-label="Rango de 'Todo el catálogo'"
+                aria-label="Rango"
               >
                 <option value="all">Todos con precio</option>
                 <option value="recent">Actualizados recientemente</option>
@@ -294,25 +279,64 @@ export default function EtiquetasPage() {
               )}
             </div>
 
-            {items.length > 0 && (
+            <button
+              className="w-full px-4 py-2.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60 flex items-center justify-center gap-2"
+              onClick={loadAllProducts}
+              disabled={loadingAll || !storeId}
+              title="Trae TODOS los productos que cumplan el filtro (sin límite de 40) y arma una etiqueta por cada uno"
+            >
+              <i className="ti ti-stack-2" aria-hidden="true" />
+              {loadingAll ? "Cargando…" : `Generar etiquetas de ${bulkScopeText} (${bulkModeText})`}
+            </button>
+          </div>
+
+          {/* Agregar productos sueltos: buscador de a uno, capado a 40 */}
+          <div className="rounded-xl border bg-white p-3 space-y-2">
+            <div className="text-sm font-semibold">Agregar productos sueltos</div>
+            <div className="flex gap-2">
+              <input
+                className="border rounded-lg px-3 py-2 flex-1 min-w-0"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar por nombre o SKU"
+                onKeyDown={(e) => { if (e.key === "Enter") searchProducts(); }}
+              />
               <button
-                className="px-5 py-2 rounded-lg bg-[#CC2020] text-white font-semibold hover:bg-[#a81a1a] disabled:opacity-60 flex items-center gap-2 ml-auto"
-                onClick={generatePdf}
-                disabled={generatingPdf}
+                className="px-4 py-2 rounded-lg bg-black text-white hover:bg-black/80 disabled:opacity-60 shrink-0"
+                onClick={searchProducts}
+                disabled={loading || !storeId}
               >
-                <i className="ti ti-file-type-pdf" aria-hidden="true" />
-                {generatingPdf ? "Generando…" : `Generar PDF (${totalLabels} ${totalLabels === 1 ? "etiqueta" : "etiquetas"})`}
+                Buscar
               </button>
-            )}
+            </div>
+            <p className="text-xs text-gray-500">
+              Muestra hasta 40 resultados para agregar de a uno — no usa el filtro de proveedor de la izquierda.
+            </p>
           </div>
         </div>
+
+        {items.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3">
+            <div className="text-sm text-red-900">
+              <b>{totalLabels}</b> {totalLabels === 1 ? "etiqueta lista" : "etiquetas listas"} para imprimir
+            </div>
+            <button
+              className="px-5 py-2 rounded-lg bg-[#CC2020] text-white font-semibold hover:bg-[#a81a1a] disabled:opacity-60 flex items-center gap-2"
+              onClick={generatePdf}
+              disabled={generatingPdf}
+            >
+              <i className="ti ti-file-type-pdf" aria-hidden="true" />
+              {generatingPdf ? "Generando…" : `Generar PDF (${totalLabels} ${totalLabels === 1 ? "etiqueta" : "etiquetas"})`}
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Search results */}
           <div className="border rounded-xl bg-white overflow-hidden">
             <div className="px-4 py-3 text-sm font-semibold bg-gray-50 border-b">
-              Resultados ({results.length})
-              <span className="text-xs font-normal text-gray-500 ml-2">— clic para agregar</span>
+              Resultados ({results.length}{results.length === 40 ? "+" : ""})
+              <span className="text-xs font-normal text-gray-500 ml-2">— clic para agregar, máx. 40</span>
             </div>
             <div className="max-h-[480px] overflow-auto divide-y">
               {results.length === 0 ? (
