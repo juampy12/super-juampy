@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import toast from "react-hot-toast";
 import { getPosEmployee } from "@/lib/posSession";
 
@@ -129,6 +130,9 @@ export default function ProveedoresPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-4">
+      <Link href="/products" className="mb-2 inline-block text-sm text-gray-600 underline">
+        ← Volver
+      </Link>
       <h1 className="text-2xl font-semibold mb-1">Proveedores</h1>
       <p className="text-gray-500 text-sm mb-6">
         Administrá los proveedores usados en /importar-precios y en el filtro de /products.
