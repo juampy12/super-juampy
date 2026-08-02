@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Store = { id: string; name: string };
+type Supplier = { id: string; name: string };
 
 type Row = {
   id: string;
@@ -26,6 +27,12 @@ export default function StockPage() {
 
   // único buscador (sirve para nombre o SKU)
   const [query, setQuery] = useState<string>("");
+
+  // Filtro por proveedor — "" = Todos, "none" = sin proveedor asignado,
+  // cualquier otro valor = supplier_id. Se combina con búsqueda/sucursal,
+  // igual que en /products (products_with_stock ya acepta p_supplier_id).
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierId, setSupplierId] = useState<string>("");
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
@@ -145,7 +152,12 @@ export default function StockPage() {
       const res = await fetch("/api/products/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store_id: effectiveStoreId, query: q, all: true }),
+        body: JSON.stringify({
+          store_id: effectiveStoreId,
+          query: q,
+          all: true,
+          ...(supplierId ? { supplier_id: supplierId } : {}),
+        }),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
 
@@ -333,6 +345,13 @@ export default function StockPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    fetch("/api/suppliers")
+      .then((r) => r.json())
+      .then((j) => { if (Array.isArray(j?.suppliers)) setSuppliers(j.suppliers); })
+      .catch(console.error);
+  }, []);
+
   // ✅ Al cambiar sucursal: limpiar UI vieja y recargar seguro
   useEffect(() => {
     if (!storeId) return;
@@ -349,6 +368,17 @@ export default function StockPage() {
     void search({ storeOverride: storeId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
+
+  // Cambiar de proveedor: recarga con el mismo criterio (búsqueda actual) —
+  // se combina con lo que ya esté elegido, no lo pisa. No pide confirmación
+  // de descarte porque, a diferencia de cambiar de sucursal, no cambia el
+  // contexto de guardado.
+  useEffect(() => {
+    if (!storeId) return;
+    setPage(0);
+    void search({ keepEdits: true, storeOverride: storeId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supplierId]);
 
   const canGoNext = useMemo(() => {
     if (loading || saving) return false;
@@ -392,7 +422,7 @@ export default function StockPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="p-3 rounded-xl border bg-white space-y-2">
           <div className="text-sm font-medium">Sucursal</div>
           <select
@@ -416,6 +446,28 @@ export default function StockPage() {
 
           <div className="text-xs text-gray-500">
             Tip: antes de guardar, mirá que diga <b>“Sucursal actual”</b> arriba.
+          </div>
+        </div>
+
+        <div className="p-3 rounded-xl border bg-white space-y-2">
+          <div className="text-sm font-medium">Proveedor</div>
+          <select
+            className="w-full border rounded-lg px-3 py-2"
+            value={supplierId}
+            onChange={(e) => setSupplierId(e.target.value)}
+            disabled={saving}
+          >
+            <option value="">Todos</option>
+            <option value="none">Sin proveedor</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+
+          <div className="text-xs text-gray-500">
+            Se combina con la búsqueda y la sucursal elegida.
           </div>
         </div>
 
