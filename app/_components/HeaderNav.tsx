@@ -23,7 +23,6 @@ export const supervisorGroups: NavGroup[] = [
       { href: '/catalogo', label: 'Catálogo', icon: 'ti-stack' },
       { href: '/ofertas', label: 'Ofertas', icon: 'ti-rosette-discount' },
       { href: '/stock-bajo', label: 'Stock bajo', icon: 'ti-alert-triangle' },
-      { href: '/minimos', label: 'Mínimos', icon: 'ti-list-check' },
     ],
   },
   {

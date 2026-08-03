@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 type Store = { id: string; name: string };
 type ProductRow = { id: string; sku: string | null; name: string };
@@ -187,7 +188,10 @@ useEffect(() => {
   // (No auto-cargamos para que no sea pesado)
   return (
     <div className="space-y-4 overflow-x-hidden p-4 sm:p-6">
-      <div>
+      <div className="space-y-3">
+        <Link href="/stock-bajo" className="inline-block text-sm text-gray-600 underline">
+          ← Volver a stock bajo
+        </Link>
         <h1 className="text-2xl font-semibold">Stock mínimo</h1>
         <p className="text-sm text-neutral-600">
           Configurá el mínimo por producto y sucursal para que aparezca en “Stock bajo”.
