@@ -42,6 +42,7 @@ type SaleItem = {
   qty_buy?: number | null;
   qty_pay?: number | null;
   promo_pct?: number | null;
+  source?: string | null;
 };
 
 type Register = { id: string; name: string };
@@ -549,6 +550,11 @@ export default function SalesHistorialPage() {
                                       2DA AL {item.promo_pct}%
                                     </span>
                                   ) : null}
+                                  {item.source === "scale_barcode" && (
+                                    <span className="ml-1.5 inline-flex items-center rounded-full bg-teal-100 px-1.5 py-0.5 text-[9px] font-semibold text-teal-800">
+                                      BALANZA
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="mt-1 flex justify-between gap-2 text-neutral-600">
                                   <span>Cant. {item.quantity}</span>
@@ -683,6 +689,11 @@ export default function SalesHistorialPage() {
                                             2DA AL {item.promo_pct}%
                                           </span>
                                         ) : null}
+                                        {item.source === "scale_barcode" && (
+                                          <span className="ml-1.5 inline-flex items-center rounded-full bg-teal-100 px-1.5 py-0.5 text-[9px] font-semibold text-teal-800">
+                                            BALANZA
+                                          </span>
+                                        )}
                                       </td>
                                       <td className="py-0.5 pr-4 text-right">{item.quantity}</td>
                                       <td className="py-0.5 pr-4 text-right">{formatMoney(item.unit_price)}</td>

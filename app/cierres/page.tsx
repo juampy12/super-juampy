@@ -47,6 +47,7 @@ type SaleItem = {
   name: string;
   quantity: number;
   unit_price: number;
+  source?: string | null;
 };
 
 type MetaInfo = {
@@ -823,7 +824,14 @@ export default function CashClosurePage() {
                                 <tbody>
                                   {items.map((item, idx) => (
                                     <tr key={`${item.product_id}-${idx}`}>
-                                      <td className="py-0.5 pr-6">{item.name}</td>
+                                      <td className="py-0.5 pr-6">
+                                        {item.name}
+                                        {item.source === "scale_barcode" && (
+                                          <span className="ml-1.5 inline-flex items-center rounded-full bg-teal-100 px-1.5 py-0.5 text-[9px] font-semibold text-teal-800">
+                                            BALANZA
+                                          </span>
+                                        )}
+                                      </td>
                                       <td className="py-0.5 pr-6 text-right">{item.quantity}</td>
                                       <td className="py-0.5 pr-6 text-right">{formatMoney(item.unit_price)}</td>
                                       <td className="py-0.5 text-right">{formatMoney(item.quantity * item.unit_price)}</td>
