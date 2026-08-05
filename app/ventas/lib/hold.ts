@@ -5,6 +5,7 @@ export type HoldItem = {
   qty: number;
   unit_price: number;
   is_weighted?: boolean;
+  is_balanza?: boolean; // ítem de balanza (precio embebido en la etiqueta) — debe sobrevivir a guardar/retomar
 };
 
 export type Hold = {

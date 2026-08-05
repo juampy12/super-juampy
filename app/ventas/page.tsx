@@ -541,6 +541,7 @@ export default function VentasPage() {
       qty: it.qty,
       unit_price: it.unit_price,
       is_weighted: it.is_weighted,
+      is_balanza: it.is_balanza,
     })), total, selectedRegisterId);
     setHolds(getHolds(selectedRegisterId));
     setItems([]);
@@ -560,6 +561,7 @@ export default function VentasPage() {
       unit_price: it.unit_price,
       base_unit_price: it.unit_price,
       is_weighted: it.is_weighted ?? false,
+      is_balanza: it.is_balanza ?? false,
     })));
     removeHold(hold.id);
     setHolds(getHolds(selectedRegisterId));
