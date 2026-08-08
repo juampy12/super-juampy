@@ -31,7 +31,6 @@ type NotFoundItem = {
   sku: string;
   name: string;
   priceSI: number;
-  priceCI: number;
   costNet: number;
   sinExistencia: boolean;
   rawBulkPrice: number;
@@ -497,12 +496,11 @@ export default function ImportarPreciosPage() {
           });
         } else {
           const priceSI = parsePrice(row["Precio/SI"] ?? row[priceCol]);
-          const priceCI = parsePrice(row["Precio/CI"] ?? row[priceCol]);
           const rawCost = costForNewProduct(row, priceCol);
           const deriv = deriveUnitPricing(rawCost, sourceName, divideByUnits, ivaMode, unitOverrides[sku] ?? null);
           const costNet = deriv.effectiveCost;
           notFoundList.push({
-            sku, name: sourceName, priceSI, priceCI, costNet, sinExistencia,
+            sku, name: sourceName, priceSI, costNet, sinExistencia,
             rawBulkPrice: rawCost,
             detectedUnits: deriv.detectedUnits,
             unitsResolved: deriv.unitsResolved,
@@ -1319,7 +1317,7 @@ export default function ImportarPreciosPage() {
                         )}
                         {!divideByUnits && (
                           <td className="p-2 text-right text-gray-400 text-xs">
-                            {nf.priceCI > 0 ? `$${fmt(nf.priceCI)}` : "—"}
+                            {nf.costNet > 0 ? `$${fmt(nf.costNet)}` : "—"}
                           </td>
                         )}
                         {divideByUnits && (
