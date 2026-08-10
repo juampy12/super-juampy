@@ -30,7 +30,6 @@ type ProductMatch = {
 type NotFoundItem = {
   sku: string;
   name: string;
-  priceSI: number;
   costNet: number;
   sinExistencia: boolean;
   rawBulkPrice: number;
@@ -537,12 +536,11 @@ export default function ImportarPreciosPage() {
             unitsUnresolved: deriv.unitsUnresolved,
           });
         } else {
-          const priceSI = parsePrice(row["Precio/SI"] ?? row[priceCol]);
           const rawCost = costForNewProduct(row, priceCol);
           const deriv = deriveUnitPricing(rawCost, sourceName, divideByUnits, ivaMode, unitOverrides[sku] ?? null);
           const costNet = deriv.effectiveCost;
           notFoundList.push({
-            sku, name: sourceName, priceSI, costNet, sinExistencia,
+            sku, name: sourceName, costNet, sinExistencia,
             rawBulkPrice: rawCost,
             detectedUnits: deriv.detectedUnits,
             unitsResolved: deriv.unitsResolved,
@@ -1353,7 +1351,6 @@ export default function ImportarPreciosPage() {
                     <th className="p-2 w-8"></th>
                     <th className="p-2 text-left">Código de barras</th>
                     <th className="p-2 text-left">Nombre</th>
-                    {!divideByUnits && <th className="p-2 text-right text-gray-400">Precio/SI</th>}
                     {!divideByUnits && <th className="p-2 text-right text-gray-400">Costo</th>}
                     {divideByUnits && <th className="p-2 text-right text-gray-400">Precio bulto</th>}
                     {divideByUnits && <th className="p-2 text-center">Unidades</th>}
@@ -1415,11 +1412,6 @@ export default function ImportarPreciosPage() {
                             placeholder="Nombre del producto"
                           />
                         </td>
-                        {!divideByUnits && (
-                          <td className="p-2 text-right text-gray-400 text-xs">
-                            {nf.priceSI > 0 ? `$${fmt(nf.priceSI)}` : "—"}
-                          </td>
-                        )}
                         {!divideByUnits && (
                           <td className="p-2 text-right text-gray-400 text-xs">
                             {nf.costNet > 0 ? `$${fmt(nf.costNet)}` : "—"}
