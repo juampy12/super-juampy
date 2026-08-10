@@ -180,6 +180,14 @@ function resolveNewProductPrice(
   return fixed > 0 ? fixed : saleFromCost(costNet, marginPct);
 }
 
+// Margen implícito de un precio de venta fijo respecto al costo — para que
+// el markup_rate guardado sea coherente con el precio real del proveedor
+// (no 0 ni el margen global, que no tienen relación con un precio ya fijado).
+function impliedMarkupRate(price: number, costNet: number): number {
+  if (costNet <= 0) return 0;
+  return Math.round((price / costNet - 1) * 100 * 100) / 100;
+}
+
 const PDF_HEADERS = ["Cod.Barra", "Detalle", "Precio/SI", "Precio/CI"];
 
 // Aplicar precios en lotes: cada request hace un solo UPDATE en lote server-side,
@@ -685,12 +693,16 @@ export default function ImportarPreciosPage() {
 
       const products = eligibleSkus.map((sku) => {
         const nf = notFound.find((n) => n.sku === sku);
+        const price = newProductPrices[sku] ?? 0;
+        const costNet = nf?.costNet ?? 0;
+        const row = findRowBySku(rows, detected.skuCol, sku);
+        const hasFixedPrice = fixedSalePriceFromRow(row, salePriceCol) > 0;
         return {
           sku,
           name: (newProductNames[sku] ?? nf?.name ?? "").trim(),
-          price: newProductPrices[sku] ?? 0,
-          cost_net: nf?.costNet ?? 0,
-          markup_rate: margin,
+          price,
+          cost_net: costNet,
+          markup_rate: hasFixedPrice ? impliedMarkupRate(price, costNet) : margin,
         };
       }).filter((p) => p.name && p.price > 0);
 
@@ -1342,7 +1354,7 @@ export default function ImportarPreciosPage() {
                     <th className="p-2 text-left">Código de barras</th>
                     <th className="p-2 text-left">Nombre</th>
                     {!divideByUnits && <th className="p-2 text-right text-gray-400">Precio/SI</th>}
-                    {!divideByUnits && <th className="p-2 text-right text-gray-400">Precio/CI</th>}
+                    {!divideByUnits && <th className="p-2 text-right text-gray-400">Costo</th>}
                     {divideByUnits && <th className="p-2 text-right text-gray-400">Precio bulto</th>}
                     {divideByUnits && <th className="p-2 text-center">Unidades</th>}
                     {divideByUnits && <th className="p-2 text-right text-gray-400">Costo unitario</th>}
