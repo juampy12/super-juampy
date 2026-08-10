@@ -155,6 +155,31 @@ function saleFromCost(costNet: number, marginPct: number): number {
   return Math.round(costNet * (1 + marginPct / 100) * 100) / 100;
 }
 
+function findRowBySku(rows: ExcelRow[], skuCol: string | null, sku: string): ExcelRow | undefined {
+  if (!skuCol) return undefined;
+  return rows.find((r) => String(r[skuCol] ?? "").trim() === sku);
+}
+
+// Precio de venta fijo tomado de la columna elegida por el usuario (ej. el
+// "precio sugerido" de un proveedor) — 0 si no hay columna elegida o la
+// fila no trae valor ahí.
+function fixedSalePriceFromRow(row: ExcelRow | undefined, salePriceCol: string): number {
+  if (!salePriceCol || !row) return 0;
+  return parsePrice(row[salePriceCol]);
+}
+
+// Precio de venta para un producto nuevo: el fijo del Excel si existe,
+// si no el cálculo de siempre (costo × margen).
+function resolveNewProductPrice(
+  row: ExcelRow | undefined,
+  salePriceCol: string,
+  costNet: number,
+  marginPct: number
+): number {
+  const fixed = fixedSalePriceFromRow(row, salePriceCol);
+  return fixed > 0 ? fixed : saleFromCost(costNet, marginPct);
+}
+
 const PDF_HEADERS = ["Cod.Barra", "Detalle", "Precio/SI", "Precio/CI"];
 
 // Aplicar precios en lotes: cada request hace un solo UPDATE en lote server-side,
@@ -180,6 +205,12 @@ export default function ImportarPreciosPage() {
   const [margin, setMargin] = useState(0);
   const [saveCost, setSaveCost] = useState(false);
   const [updateNames, setUpdateNames] = useState(false);
+
+  // Columna opcional del Excel con el precio de venta ya fijado (ej. el
+  // "precio sugerido" de un proveedor) — si está elegida y la fila trae un
+  // valor > 0, se usa tal cual para productos nuevos en vez de calcular
+  // costo × margen. "" = ninguna, comportamiento de siempre.
+  const [salePriceCol, setSalePriceCol] = useState("");
 
   // "Precio por bulto": el precio de la lista viene por bulto/caja, no por
   // unidad, y la cantidad de unidades está en la descripción (ej. "X 24U").
@@ -348,7 +379,10 @@ export default function ImportarPreciosPage() {
       });
       setNewProductPrices((prevPrices) => {
         const nextPrices = { ...prevPrices };
-        for (const nf of next) nextPrices[nf.sku] = saleFromCost(nf.costNet, margin);
+        for (const nf of next) {
+          const row = findRowBySku(rows, detected.skuCol, nf.sku);
+          nextPrices[nf.sku] = resolveNewProductPrice(row, salePriceCol, nf.costNet, margin);
+        }
         return nextPrices;
       });
       return next;
@@ -506,7 +540,7 @@ export default function ImportarPreciosPage() {
             unitsResolved: deriv.unitsResolved,
             unitsUnresolved: deriv.unitsUnresolved,
           });
-          initPrices[sku] = saleFromCost(costNet, margin);
+          initPrices[sku] = resolveNewProductPrice(row, salePriceCol, costNet, margin);
           initNames[sku] = sourceName;
         }
       }
@@ -695,6 +729,7 @@ export default function ImportarPreciosPage() {
     setRows([]);
     setDetected({ skuCol: null, priceCols: [] });
     setPriceCol("");
+    setSalePriceCol("");
     setMargin(0);
     setSaveCost(false);
     setUpdateNames(false);
@@ -732,7 +767,24 @@ export default function ImportarPreciosPage() {
       );
       setNewProductPrices((prev) => {
         const next = { ...prev };
-        for (const nf of notFound) next[nf.sku] = saleFromCost(nf.costNet, val);
+        for (const nf of notFound) {
+          const row = findRowBySku(rows, detected.skuCol, nf.sku);
+          next[nf.sku] = resolveNewProductPrice(row, salePriceCol, nf.costNet, val);
+        }
+        return next;
+      });
+    }
+  }
+
+  function handleSalePriceColChange(col: string) {
+    setSalePriceCol(col);
+    if (step === "preview") {
+      setNewProductPrices((prev) => {
+        const next = { ...prev };
+        for (const nf of notFound) {
+          const row = findRowBySku(rows, detected.skuCol, nf.sku);
+          next[nf.sku] = resolveNewProductPrice(row, col, nf.costNet, margin);
+        }
         return next;
       });
     }
@@ -842,6 +894,29 @@ export default function ImportarPreciosPage() {
                     <option key={h} value={h}>{h}</option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Columna de precio de venta fijo (opcional, solo para productos nuevos)
+                </label>
+                <select
+                  className="border rounded px-3 py-2 w-full"
+                  value={salePriceCol}
+                  onChange={(e) => setSalePriceCol(e.target.value)}
+                >
+                  <option value="">Ninguna — calcular con margen</option>
+                  {headers.map((h) => (
+                    <option key={h} value={h}>{h}</option>
+                  ))}
+                </select>
+                {salePriceCol && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Los productos nuevos con valor en "{salePriceCol}" van a usar ese precio tal
+                    cual (no se calcula con margen). Sigue siendo editable fila por fila en la
+                    vista previa.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1042,7 +1117,7 @@ export default function ImportarPreciosPage() {
                       );
                       const rawBulkPrice = row ? costForNewProduct(row, col) : nf.rawBulkPrice;
                       const deriv = deriveUnitPricing(rawBulkPrice, nf.name, divideByUnits, ivaMode, unitOverrides[nf.sku] ?? null);
-                      next[nf.sku] = saleFromCost(deriv.effectiveCost, margin);
+                      next[nf.sku] = resolveNewProductPrice(row, salePriceCol, deriv.effectiveCost, margin);
                     }
                     return next;
                   });
@@ -1066,6 +1141,22 @@ export default function ImportarPreciosPage() {
                 value={margin}
                 onChange={(e) => handleMarginChange(Number(e.target.value))}
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Precio de venta fijo (nuevos)
+              </label>
+              <select
+                className="border rounded px-3 py-2 text-sm"
+                value={salePriceCol}
+                onChange={(e) => handleSalePriceColChange(e.target.value)}
+              >
+                <option value="">Ninguna — calcular con margen</option>
+                {headers.map((h) => (
+                  <option key={h} value={h}>{h}</option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -1264,6 +1355,8 @@ export default function ImportarPreciosPage() {
                   {notFound.map((nf) => {
                     const isSelected = selectedNew.has(nf.sku);
                     const disabledForUnits = divideByUnits && nf.unitsUnresolved;
+                    const salePriceRow = salePriceCol ? findRowBySku(rows, detected.skuCol, nf.sku) : undefined;
+                    const hasFixedSalePrice = fixedSalePriceFromRow(salePriceRow, salePriceCol) > 0;
                     return (
                       <tr
                         key={nf.sku}
@@ -1356,12 +1449,18 @@ export default function ImportarPreciosPage() {
                                 [nf.sku]: Number(e.target.value),
                               }))
                             }
+                            title={hasFixedSalePrice ? `Precio fijo tomado de "${salePriceCol}"` : undefined}
                             className={`border rounded px-2 py-1 w-28 text-right text-sm ${
                               isSelected && (newProductPrices[nf.sku] ?? 0) <= 0
                                 ? "border-red-400"
+                                : hasFixedSalePrice
+                                ? "border-emerald-400"
                                 : ""
                             }`}
                           />
+                          {hasFixedSalePrice && (
+                            <div className="text-[10px] text-emerald-600 mt-0.5">fijo del archivo</div>
+                          )}
                         </td>
                       </tr>
                     );
