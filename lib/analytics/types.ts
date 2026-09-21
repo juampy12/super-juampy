@@ -41,6 +41,12 @@ export interface ZoneDwellRow {
   dwell_seconds: number;
 }
 
+/** Permanencia total del día en una zona (suma de analytics_zone_dwell). */
+export interface ZoneSeconds {
+  zone: string;
+  seconds: number;
+}
+
 export interface Store {
   id: string;
   name: string;

@@ -6,7 +6,7 @@ import { ensureSession } from "@/lib/offlineAuth";
  * disparar un fetch autenticado sin haber esperado la cookie real al reconectar).
  */
 export async function getAnalytics<T>(
-  resource: "counts" | "heatmap" | "health",
+  resource: "counts" | "heatmap" | "health" | "zones",
   storeId: string,
   signal?: AbortSignal,
   extraParams?: Record<string, string | number>

@@ -1,5 +1,5 @@
 import { getAnalytics } from "./api";
-import type { CountRow, HeatmapRow, HealthRow, HourlyPoint } from "./types";
+import type { CountRow, HeatmapRow, HealthRow, HourlyPoint, ZoneSeconds } from "./types";
 
 // Las lecturas van por /api/analytics/* (servidor, solo supervisores): el POS no
 // usa Supabase Auth, así que el navegador no puede leer analytics_* directo (RLS).
@@ -42,6 +42,12 @@ export async function fetchLatestHealth(
 ): Promise<HealthRow | null> {
   const { health } = await getAnalytics<{ health: HealthRow | null }>("health", storeId, signal);
   return health;
+}
+
+/** Permanencia del día por zona, de mayor a menor. */
+export async function fetchZones(storeId: string, signal?: AbortSignal): Promise<ZoneSeconds[]> {
+  const { zones } = await getAnalytics<{ zones: ZoneSeconds[] }>("zones", storeId, signal);
+  return zones;
 }
 
 /**

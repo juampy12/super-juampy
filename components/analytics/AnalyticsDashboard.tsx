@@ -4,12 +4,14 @@ import { useMemo, useState } from "react";
 import { useRealtimeCounts } from "@/lib/analytics/useRealtimeCounts";
 import { useLatestHeatmap } from "@/lib/analytics/useLatestHeatmap";
 import { useDeviceStatus } from "@/lib/analytics/useDeviceStatus";
+import { useZones } from "@/lib/analytics/useZones";
 import { toHourly } from "@/lib/analytics/queries";
 import type { Store } from "@/lib/analytics/types";
 import { KpiCards } from "./KpiCards";
 import { HourlyTrafficChart } from "./HourlyTrafficChart";
 import { HeatmapCanvas } from "./HeatmapCanvas";
 import { StorePicker } from "./StorePicker";
+import { TopZones } from "./TopZones";
 
 interface Props {
   stores: Store[];
@@ -26,6 +28,7 @@ export function AnalyticsDashboard({ stores, backgroundByStore }: Props) {
   const { rows, latest, loading, error } = useRealtimeCounts(storeId);
   const { heatmap } = useLatestHeatmap(storeId);
   const device = useDeviceStatus(storeId);
+  const { zones, loading: zonesLoading, error: zonesError } = useZones(storeId);
 
   const hourly = useMemo(() => toHourly(rows), [rows]);
 
@@ -55,6 +58,8 @@ export function AnalyticsDashboard({ stores, backgroundByStore }: Props) {
         <HourlyTrafficChart data={hourly} />
         <HeatmapCanvas heatmap={heatmap} backgroundUrl={backgroundByStore?.[storeId]} />
       </div>
+
+      <TopZones zones={zones} loading={zonesLoading} error={zonesError} />
 
       <style jsx>{`
         .dash {
