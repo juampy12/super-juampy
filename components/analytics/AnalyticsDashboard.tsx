@@ -1,0 +1,134 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRealtimeCounts } from "@/lib/analytics/useRealtimeCounts";
+import { useLatestHeatmap } from "@/lib/analytics/useLatestHeatmap";
+import { useDeviceStatus } from "@/lib/analytics/useDeviceStatus";
+import { toHourly } from "@/lib/analytics/queries";
+import type { Store } from "@/lib/analytics/types";
+import { KpiCards } from "./KpiCards";
+import { HourlyTrafficChart } from "./HourlyTrafficChart";
+import { HeatmapCanvas } from "./HeatmapCanvas";
+import { StorePicker } from "./StorePicker";
+
+interface Props {
+  stores: Store[];
+  /** Plano/frame de fondo por local para el heatmap (opcional). */
+  backgroundByStore?: Record<string, string>;
+}
+
+/**
+ * Panel de analítica de clientes para el POS.
+ * Se actualiza en tiempo real a medida que el motor de visión escribe métricas.
+ */
+export function AnalyticsDashboard({ stores, backgroundByStore }: Props) {
+  const [storeId, setStoreId] = useState(stores[0]?.id ?? "");
+  const { rows, latest, loading, error } = useRealtimeCounts(storeId);
+  const { heatmap } = useLatestHeatmap(storeId);
+  const device = useDeviceStatus(storeId);
+
+  const hourly = useMemo(() => toHourly(rows), [rows]);
+
+  return (
+    <div className="dash">
+      <header className="dash-head">
+        <div>
+          <h1>Analítica de clientes</h1>
+          <p className="privacy">
+            Datos anónimos · no se guarda video ni se identifica a nadie
+          </p>
+        </div>
+        <div className="head-right">
+          <StorePicker stores={stores} value={storeId} onChange={setStoreId} />
+          <span className={`live ${device.online ? "on" : ""}`}>
+            <i /> {device.online ? `En vivo · ${device.fps.toFixed(0)} fps` : "Sin señal"}
+          </span>
+        </div>
+      </header>
+
+      {error ? <div className="error">No pude cargar los datos: {error}</div> : null}
+      {loading ? <div className="skeleton">Cargando…</div> : null}
+
+      <KpiCards latest={latest} hourly={hourly} />
+
+      <div className="grid">
+        <HourlyTrafficChart data={hourly} />
+        <HeatmapCanvas heatmap={heatmap} backgroundUrl={backgroundByStore?.[storeId]} />
+      </div>
+
+      <style jsx>{`
+        .dash {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          max-width: 1100px;
+          margin: 0 auto;
+          padding: 24px 16px;
+        }
+        .dash-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+        h1 {
+          margin: 0;
+          font-size: 22px;
+          color: var(--fg, #111827);
+          padding-left: 10px;
+          border-left: 4px solid #cc2020;
+        }
+        .privacy {
+          margin: 4px 0 0;
+          font-size: 12px;
+          color: var(--muted, #6b7280);
+        }
+        .head-right {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+        .live {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          color: var(--muted, #6b7280);
+        }
+        .live i {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #9ca3af;
+        }
+        .live.on i {
+          background: #A8C62A;
+          box-shadow: 0 0 0 3px rgba(168, 198, 42, 0.35);
+        }
+        .grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+        @media (max-width: 860px) {
+          .grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        .error {
+          background: #fdf1f1;
+          color: #CC2020;
+          border: 1px solid #f3c4c4;
+          border-radius: 10px;
+          padding: 12px 14px;
+          font-size: 14px;
+        }
+        .skeleton {
+          color: var(--muted, #6b7280);
+          font-size: 14px;
+        }
+      `}</style>
+    </div>
+  );
+}
