@@ -1,37 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { fetchLatestHealth } from "@/lib/analytics/queries";
+import { useCallback } from "react";
+import { fetchHealthSummary } from "@/lib/analytics/queries";
 import { usePolling } from "@/lib/analytics/usePolling";
 
-const STALE_MS = 60_000; // sin latido por 60s => sin señal
-
 /**
- * Estado del motor de visión de un local a partir del heartbeat
- * (/api/analytics/health, polling cada 15s).
- * online = último latido reciente y status "online".
+ * Estado del motor de visión de un local a partir de /api/analytics/health
+ * (polling cada 15s). Multi-cámara: el servidor ya decide "online" por cámara
+ * con la antigüedad calculada de su lado (ver STALE_SECONDS en la ruta), acá
+ * solo se agrega para mostrar "N de M cámaras en línea".
  */
 export function useDeviceStatus(storeId: string): {
   online: boolean;
-  fps: number;
-  lastSeen: string | null;
+  onlineCount: number;
+  totalCount: number;
 } {
-  const fetcher = useCallback((signal: AbortSignal) => fetchLatestHealth(storeId, signal), [storeId]);
-  const { data: health } = usePolling(storeId, fetcher);
-  const [now, setNow] = useState(() => Date.now());
-
-  // Reevalúa "reciente" cada 15s aunque un poll falle o esté pausado.
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 15_000);
-    return () => clearInterval(t);
-  }, []);
-
-  const fresh = !!health && now - new Date(health.ts).getTime() < STALE_MS;
-  const online = fresh && health?.status === "online";
+  const fetcher = useCallback((signal: AbortSignal) => fetchHealthSummary(storeId, signal), [storeId]);
+  const { data } = usePolling(storeId, fetcher);
 
   return {
-    online: !!online,
-    fps: health?.fps ?? 0,
-    lastSeen: health?.ts ?? null,
+    online: (data?.onlineCount ?? 0) > 0,
+    onlineCount: data?.onlineCount ?? 0,
+    totalCount: data?.totalCount ?? 0,
   };
 }

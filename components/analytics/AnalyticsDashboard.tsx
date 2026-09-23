@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRealtimeCounts } from "@/lib/analytics/useRealtimeCounts";
+import { useTodayCounts } from "@/lib/analytics/useTodayCounts";
 import { useLatestHeatmap } from "@/lib/analytics/useLatestHeatmap";
 import { useDeviceStatus } from "@/lib/analytics/useDeviceStatus";
 import { useZones } from "@/lib/analytics/useZones";
@@ -12,25 +12,27 @@ import { HourlyTrafficChart } from "./HourlyTrafficChart";
 import { HeatmapCanvas } from "./HeatmapCanvas";
 import { StorePicker } from "./StorePicker";
 import { TopZones } from "./TopZones";
+import { ErrorRetry } from "./ErrorRetry";
 
 interface Props {
   stores: Store[];
-  /** Plano/frame de fondo por local para el heatmap (opcional). */
-  backgroundByStore?: Record<string, string>;
 }
 
 /**
  * Panel de analítica de clientes para el POS.
- * Se actualiza en tiempo real a medida que el motor de visión escribe métricas.
+ * Se actualiza por polling a medida que el motor de visión escribe métricas.
  */
-export function AnalyticsDashboard({ stores, backgroundByStore }: Props) {
+export function AnalyticsDashboard({ stores }: Props) {
   const [storeId, setStoreId] = useState(stores[0]?.id ?? "");
-  const { rows, latest, loading, error } = useRealtimeCounts(storeId);
-  const { heatmap } = useLatestHeatmap(storeId);
+  const { rows, latest, loading, error, refetch, latestAgeSeconds } = useTodayCounts(storeId);
+  const { heatmap, ageSeconds: heatmapAge } = useLatestHeatmap(storeId);
   const device = useDeviceStatus(storeId);
-  const { zones, loading: zonesLoading, error: zonesError } = useZones(storeId);
+  const { zones, loading: zonesLoading, error: zonesError, refetch: refetchZones } = useZones(storeId);
 
   const hourly = useMemo(() => toHourly(rows), [rows]);
+
+  const deviceLabel =
+    device.totalCount === 0 ? "Sin señal" : `${device.onlineCount} de ${device.totalCount} cámaras en línea`;
 
   return (
     <div className="dash">
@@ -44,22 +46,22 @@ export function AnalyticsDashboard({ stores, backgroundByStore }: Props) {
         <div className="head-right">
           <StorePicker stores={stores} value={storeId} onChange={setStoreId} />
           <span className={`live ${device.online ? "on" : ""}`}>
-            <i /> {device.online ? `En vivo · ${device.fps.toFixed(0)} fps` : "Sin señal"}
+            <i /> {deviceLabel}
           </span>
         </div>
       </header>
 
-      {error ? <div className="error">No pude cargar los datos: {error}</div> : null}
+      {error ? <ErrorRetry message={error} onRetry={refetch} /> : null}
       {loading ? <div className="skeleton">Cargando…</div> : null}
 
-      <KpiCards latest={latest} hourly={hourly} />
+      <KpiCards latest={latest} hourly={hourly} loading={loading} latestAgeSeconds={latestAgeSeconds} />
 
       <div className="grid">
         <HourlyTrafficChart data={hourly} />
-        <HeatmapCanvas heatmap={heatmap} backgroundUrl={backgroundByStore?.[storeId]} />
+        <HeatmapCanvas heatmap={heatmap} ageSeconds={heatmapAge} />
       </div>
 
-      <TopZones zones={zones} loading={zonesLoading} error={zonesError} />
+      <TopZones zones={zones} loading={zonesLoading} error={zonesError} onRetry={refetchZones} />
 
       <style jsx>{`
         .dash {
@@ -120,14 +122,6 @@ export function AnalyticsDashboard({ stores, backgroundByStore }: Props) {
           .grid {
             grid-template-columns: 1fr;
           }
-        }
-        .error {
-          background: #fdf1f1;
-          color: #CC2020;
-          border: 1px solid #f3c4c4;
-          border-radius: 10px;
-          padding: 12px 14px;
-          font-size: 14px;
         }
         .skeleton {
           color: var(--muted, #6b7280);

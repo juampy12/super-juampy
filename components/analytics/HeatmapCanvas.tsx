@@ -1,22 +1,30 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { HeatmapRow } from "@/lib/analytics/types";
+import { isValidHeatmap } from "@/lib/analytics/validateHeatmap";
+import { formatAge } from "@/lib/analytics/formatAge";
 
 interface Props {
   heatmap: HeatmapRow | null;
   /** Imagen de fondo opcional: un plano del local o un frame de la cámara. */
   backgroundUrl?: string;
   height?: number;
+  /** Antigüedad en vivo de `heatmap`, calculada por el servidor. */
+  ageSeconds?: number | null;
 }
 
 /**
  * Dibuja la grilla de calor (0..1) sobre un canvas con una rampa térmica y
  * suavizado bilineal. La grilla es baja resolución (ej. 64x48): el canvas la
- * escala e interpola para que se vea continua.
+ * escala e interpola para que se vea continua. Si la grilla no tiene la forma
+ * esperada (cols/rows fuera de rango, o no coincide con el tamaño real) no se
+ * dibuja: mejor un aviso que un canvas roto o datos engañosos.
  */
-export function HeatmapCanvas({ heatmap, backgroundUrl, height = 300 }: Props) {
+export function HeatmapCanvas({ heatmap, backgroundUrl, height = 300, ageSeconds = null }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const valid = useMemo(() => (heatmap && isValidHeatmap(heatmap) ? heatmap : null), [heatmap]);
+  const corrupt = !!heatmap && !valid;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -38,9 +46,9 @@ export function HeatmapCanvas({ heatmap, backgroundUrl, height = 300 }: Props) {
         ctx.fillRect(0, 0, W, H);
       }
 
-      if (!heatmap) return;
+      if (!valid) return;
 
-      const { grid, cols, rows } = heatmap;
+      const { grid, cols, rows } = valid;
       // Render en un canvas chico y luego escalado con suavizado.
       const small = document.createElement("canvas");
       small.width = cols;
@@ -77,17 +85,24 @@ export function HeatmapCanvas({ heatmap, backgroundUrl, height = 300 }: Props) {
     } else {
       draw();
     }
-  }, [heatmap, backgroundUrl]);
+  }, [valid, backgroundUrl]);
 
   return (
     <div className="card">
-      <h3>Mapa de calor de circulación</h3>
+      <div className="head">
+        <h3>Mapa de calor de circulación</h3>
+        {valid && ageSeconds != null ? <span className="age">actualizado {formatAge(ageSeconds)}</span> : null}
+      </div>
       <canvas ref={canvasRef} width={800} height={height} className="hm" />
-      <p className="legend">
-        <span className="dot cold" /> Menos tránsito
-        <span className="bar" />
-        <span className="dot hot" /> Más tránsito
-      </p>
+      {corrupt ? (
+        <p className="warn">⚠️ El mapa de calor recibido no tiene una forma válida — no se muestra.</p>
+      ) : (
+        <p className="legend">
+          <span className="dot cold" /> Menos tránsito
+          <span className="bar" />
+          <span className="dot hot" /> Más tránsito
+        </p>
+      )}
       <style jsx>{`
         .card {
           background: var(--card, #fff);
@@ -95,10 +110,21 @@ export function HeatmapCanvas({ heatmap, backgroundUrl, height = 300 }: Props) {
           border-radius: 14px;
           padding: 18px 20px;
         }
-        h3 {
+        .head {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 8px;
           margin: 0 0 12px;
+        }
+        h3 {
+          margin: 0;
           font-size: 15px;
           color: var(--fg, #111827);
+        }
+        .age {
+          font-size: 11px;
+          color: var(--muted, #6b7280);
         }
         .hm {
           width: 100%;
@@ -113,6 +139,11 @@ export function HeatmapCanvas({ heatmap, backgroundUrl, height = 300 }: Props) {
           margin: 12px 0 0;
           font-size: 12px;
           color: var(--muted, #6b7280);
+        }
+        .warn {
+          margin: 12px 0 0;
+          font-size: 12px;
+          color: #cc2020;
         }
         .dot {
           width: 12px;

@@ -1,5 +1,5 @@
 import { getAnalytics } from "./api";
-import type { CountRow, HeatmapRow, HealthRow, HourlyPoint, ZoneSeconds } from "./types";
+import type { CountRow, HeatmapRow, HealthResponse, HourlyPoint, ZoneSeconds } from "./types";
 
 // Las lecturas van por /api/analytics/* (servidor, solo supervisores): el POS no
 // usa Supabase Auth, así que el navegador no puede leer analytics_* directo (RLS).
@@ -8,6 +8,12 @@ export interface CountsResponse {
   rows: CountRow[];
   /** Día (YYYY-MM-DD, hora de Argentina) al que corresponden las filas. */
   day: string;
+  /**
+   * Antigüedad (en segundos, calculada por el servidor) de la fila más nueva
+   * de esta respuesta. `null` si esta respuesta no trajo filas nuevas (poll
+   * incremental sin novedades) — el llamador conserva la antigüedad anterior.
+   */
+  latestAgeSeconds: number | null;
 }
 
 /**
@@ -26,22 +32,20 @@ export async function fetchTodayCounts(
   );
 }
 
-/** Última grilla de calor disponible para un local. */
-export async function fetchLatestHeatmap(
-  storeId: string,
-  signal?: AbortSignal
-): Promise<HeatmapRow | null> {
-  const { heatmap } = await getAnalytics<{ heatmap: HeatmapRow | null }>("heatmap", storeId, signal);
-  return heatmap;
+export interface HeatmapResponse {
+  heatmap: HeatmapRow | null;
+  /** Antigüedad en segundos de `heatmap`, calculada por el servidor. `null` si no hay heatmap. */
+  ageSeconds: number | null;
 }
 
-/** Último latido de salud del motor para un local. */
-export async function fetchLatestHealth(
-  storeId: string,
-  signal?: AbortSignal
-): Promise<HealthRow | null> {
-  const { health } = await getAnalytics<{ health: HealthRow | null }>("health", storeId, signal);
-  return health;
+/** Última grilla de calor disponible para un local. */
+export async function fetchLatestHeatmap(storeId: string, signal?: AbortSignal): Promise<HeatmapResponse> {
+  return getAnalytics<HeatmapResponse>("heatmap", storeId, signal);
+}
+
+/** Último latido de salud del motor para un local, por cámara. */
+export async function fetchHealthSummary(storeId: string, signal?: AbortSignal): Promise<HealthResponse> {
+  return getAnalytics<HealthResponse>("health", storeId, signal);
 }
 
 /** Permanencia del día por zona, de mayor a menor. */
@@ -50,37 +54,56 @@ export async function fetchZones(storeId: string, signal?: AbortSignal): Promise
   return zones;
 }
 
+const HOUR_MS = 3_600_000;
+
+/** Trunca un ts ISO al inicio de su hora (epoch ms). Aritmética en UTC: no
+ * depende de la zona horaria del proceso que corre este código (server o test). */
+function hourStartMs(ts: string): number {
+  const ms = new Date(ts).getTime();
+  return ms - (ms % HOUR_MS);
+}
+
 /**
- * Ingresos por hora a partir de los conteos acumulados.
- * `entries` es acumulado, así que el ingreso de cada hora es el delta entre
- * el máximo de esa hora y el de la anterior (o el mínimo de la propia hora).
+ * Ingresos por hora a partir de los conteos acumulados del día.
+ *
+ * Contrato del motor: `entries` es un acumulado que ahora persiste entre
+ * reinicios del motor, así que ya no hay que asumir que arranca en 0 en cada
+ * fila — pero un reinicio real (o un cambio de hardware) puede seguir haciendo
+ * que el contador vuelva para atrás, y hay que tratarlo defensivamente.
+ *
+ * Se suman deltas entre filas CONSECUTIVAS (ordenadas por ts), no por máximo/
+ * mínimo dentro de cada hora: `cur.entries - prev.entries`, salvo que
+ * `cur.entries < prev.entries` (reinicio del motor), en cuyo caso el delta es
+ * `cur.entries` (se cuenta desde cero otra vez). La primera fila del día no es
+ * un caso especial: se resuelve con un `prev` virtual de 0 entries (el día
+ * arranca en 0 en el motor).
  */
 export function toHourly(rows: CountRow[]): HourlyPoint[] {
-  const byHour = new Map<string, { max: number; min: number; peak: number }>();
+  if (rows.length === 0) return [];
 
-  for (const r of rows) {
-    const hour = new Date(r.ts);
-    hour.setMinutes(0, 0, 0);
-    const key = hour.toISOString();
-    const cur = byHour.get(key) ?? { max: -Infinity, min: Infinity, peak: 0 };
-    cur.max = Math.max(cur.max, r.entries);
-    cur.min = Math.min(cur.min, r.entries);
-    cur.peak = Math.max(cur.peak, r.occupancy);
-    byHour.set(key, cur);
+  const sorted = [...rows].sort((a, b) => {
+    const byTs = new Date(a.ts).getTime() - new Date(b.ts).getTime();
+    return byTs !== 0 ? byTs : a.id - b.id;
+  });
+
+  const byHour = new Map<number, number>(); // hourStartMs -> entries del período
+  let prevEntries = 0;
+
+  for (const r of sorted) {
+    const delta = r.entries >= prevEntries ? r.entries - prevEntries : r.entries;
+    prevEntries = r.entries;
+
+    const key = hourStartMs(r.ts);
+    byHour.set(key, (byHour.get(key) ?? 0) + delta);
   }
 
-  const keys = [...byHour.keys()].sort();
-  let prevMax: number | null = null;
+  // Rellena los huecos entre la primera y la última hora con datos: una hora
+  // sin filas (cámara caída, poco tránsito) es 0 ingresos, no un salto en el
+  // eje del gráfico.
+  const keys = [...byHour.keys()].sort((a, b) => a - b);
   const out: HourlyPoint[] = [];
-
-  for (const key of keys) {
-    const b = byHour.get(key)!;
-    // Si hay hora previa, el ingreso es max(hora) - max(hora previa);
-    // si no, es max - min dentro de la misma hora.
-    const entries =
-      prevMax !== null ? Math.max(0, b.max - prevMax) : Math.max(0, b.max - b.min);
-    out.push({ hour: key, entries, peakOccupancy: b.peak });
-    prevMax = b.max;
+  for (let t = keys[0]; t <= keys[keys.length - 1]; t += HOUR_MS) {
+    out.push({ hour: new Date(t).toISOString(), entries: byHour.get(t) ?? 0 });
   }
   return out;
 }

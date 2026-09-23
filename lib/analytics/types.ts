@@ -2,11 +2,9 @@
 
 export interface CountRow {
   id: number;
-  store_id: string;
   ts: string; // ISO timestamptz
-  entries: number; // acumulado en la sesión del motor
-  exits: number; // acumulado en la sesión del motor
-  occupancy: number; // personas detectadas en ese instante
+  entries: number; // acumulado del día, persiste entre reinicios del motor
+  occupancy: number; // entries - exits ya resuelto por el motor (personas dentro)
 }
 
 export interface HeatmapRow {
@@ -21,24 +19,25 @@ export interface HeatmapRow {
 export interface HourlyPoint {
   hour: string; // ISO, truncado a la hora
   entries: number; // ingresos en esa hora
-  peakOccupancy: number;
 }
 
+/** Último latido de una cámara puntual (multi-cámara: una fila por camera_id). */
 export interface HealthRow {
   id: number;
-  store_id: string;
   camera_id: string;
   ts: string;
   fps: number;
-  status: string; // "online" | "offline"
+  status: string; // "online" | "offline", tal cual lo escribe el motor
+  /** Antigüedad del latido en segundos, calculada por el servidor (no el reloj del navegador). */
+  ageSeconds: number;
+  /** status === "online" && ageSeconds por debajo del umbral de "sin señal". */
+  online: boolean;
 }
 
-export interface ZoneDwellRow {
-  id: number;
-  store_id: string;
-  ts: string;
-  zone: string;
-  dwell_seconds: number;
+export interface HealthResponse {
+  cameras: HealthRow[];
+  onlineCount: number;
+  totalCount: number;
 }
 
 /** Permanencia total del día en una zona (suma de analytics_zone_dwell). */

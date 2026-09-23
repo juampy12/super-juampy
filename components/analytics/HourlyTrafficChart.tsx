@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import type { HourlyPoint } from "@/lib/analytics/types";
+import { hourLabelAR } from "@/lib/analytics/time";
 
 interface Props {
   data: HourlyPoint[];
@@ -21,7 +22,7 @@ interface Props {
  */
 export function HourlyTrafficChart({ data }: Props) {
   const chartData = data.map((d) => ({
-    hourLabel: `${new Date(d.hour).getHours()}h`,
+    hourLabel: hourLabelAR(d.hour),
     entries: d.entries,
   }));
 

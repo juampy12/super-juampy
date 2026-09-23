@@ -15,9 +15,10 @@ export function useZones(storeId: string): {
   zones: ZoneSeconds[];
   loading: boolean;
   error: string | null;
+  refetch: () => void;
 } {
   const fetcher = useCallback((signal: AbortSignal) => fetchZones(storeId, signal), [storeId]);
-  const { data, loading, error } = usePolling(storeId, fetcher);
+  const { data, loading, error, refetch } = usePolling(storeId, fetcher);
 
-  return { zones: data ?? NO_ZONES, loading, error };
+  return { zones: data ?? NO_ZONES, loading, error, refetch };
 }

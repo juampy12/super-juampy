@@ -1,12 +1,14 @@
 "use client";
 
 import type { ZoneSeconds } from "@/lib/analytics/types";
+import { ErrorRetry } from "./ErrorRetry";
 
 interface Props {
   /** Zonas con su permanencia del día, de mayor a menor. */
   zones: ZoneSeconds[];
   loading?: boolean;
   error?: string | null;
+  onRetry?: () => void;
 }
 
 /**
@@ -15,7 +17,7 @@ interface Props {
  * productos (solo si hay al menos dos zonas: con una sola sería a la vez la más
  * caliente y la más fría).
  */
-export function TopZones({ zones, loading = false, error = null }: Props) {
+export function TopZones({ zones, loading = false, error = null, onRetry }: Props) {
   const ranked = zones.filter((z) => z.seconds > 0);
   const total = ranked.reduce((a, z) => a + z.seconds, 0);
   const coldZone = ranked.length >= 2 ? ranked[ranked.length - 1].zone : null;
@@ -27,14 +29,10 @@ export function TopZones({ zones, loading = false, error = null }: Props) {
         Dónde para la gente. Las zonas frías son oportunidad de reubicar productos.
       </p>
 
-      {ranked.length === 0 ? (
-        <p className="empty">
-          {error
-            ? `No pude cargar las zonas: ${error}`
-            : loading
-              ? "Cargando…"
-              : "Todavía no hay zonas con datos."}
-        </p>
+      {error && onRetry ? (
+        <ErrorRetry message={error} onRetry={onRetry} />
+      ) : ranked.length === 0 ? (
+        <p className="empty">{loading ? "Cargando…" : "Todavía no hay zonas con datos."}</p>
       ) : (
         <ol className="list">
           {ranked.map((z, i) => {

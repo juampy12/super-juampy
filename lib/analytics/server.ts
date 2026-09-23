@@ -1,11 +1,16 @@
 // Helpers compartidos por las rutas /api/analytics/* (solo servidor).
 
+import { getSessionFromRequest, isSupervisor, unauthorized, forbidden, SessionPayload } from "@/lib/session";
+import { STORES } from "@/lib/stores";
+
 export const NO_STORE = { "Cache-Control": "no-store" } as const;
 
-/** `?store=<id>`: el store_id de analytics_* es texto libre; solo se valida forma y largo. */
+const VALID_STORE_IDS = new Set<string>(STORES.map((s) => s.id));
+
+/** `?store=<id>`: tiene que ser una sucursal activa de lib/stores.ts. */
 export function parseStoreParam(req: Request): string | null {
   const raw = new URL(req.url).searchParams.get("store")?.trim();
-  if (!raw || raw.length > 100) return null;
+  if (!raw || !VALID_STORE_IDS.has(raw)) return null;
   return raw;
 }
 
@@ -31,4 +36,21 @@ export function parseAfterIdParam(req: Request): number | null | undefined {
   if (raw === null) return undefined;
   if (!/^\d{1,15}$/.test(raw)) return null;
   return Number(raw);
+}
+
+/** Antigüedad en segundos de un ts ISO, calculada con el reloj del servidor. */
+export function ageSeconds(ts: string, now = Date.now()): number {
+  return Math.max(0, Math.round((now - new Date(ts).getTime()) / 1000));
+}
+
+/**
+ * Auth+rol común a las 4 rutas /api/analytics/*: exige sesión y rol
+ * supervisor. Devuelve la sesión, o la Response de error para que el caller
+ * corte ahí (`if (session instanceof Response) return session;`).
+ */
+export async function requireSupervisor(req: Request): Promise<SessionPayload | Response> {
+  const session = await getSessionFromRequest(req);
+  if (!session) return unauthorized();
+  if (!isSupervisor(session)) return forbidden("Solo supervisores pueden ver la analítica");
+  return session;
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { fetchTodayCounts } from "@/lib/analytics/queries";
 import { applyCounts, type CountsMemo } from "@/lib/analytics/countsMemo";
 import { usePolling } from "@/lib/analytics/usePolling";
+import { useTickingAge, type AgeBaseline } from "@/lib/analytics/useTickingAge";
 import type { CountRow } from "@/lib/analytics/types";
 
 interface State {
@@ -11,6 +12,9 @@ interface State {
   latest: CountRow | null;
   loading: boolean;
   error: string | null;
+  refetch: () => void;
+  /** Antigüedad en vivo (segundos) de `latest`, calculada desde el reloj del servidor. */
+  latestAgeSeconds: number | null;
 }
 
 const NO_ROWS: CountRow[] = [];
@@ -20,15 +24,16 @@ const NO_ROWS: CountRow[] = [];
  * La primera carga trae todo el día; los polls siguientes piden solo las filas
  * con id mayor al último recibido y las agregan a las que ya están en memoria.
  * Si cambia el día (hora de Argentina) descarta lo acumulado y vuelve a traer el
- * día completo. (El nombre se mantiene por compatibilidad con los componentes;
- * ya no usa Realtime.)
+ * día completo. Cada ~20 polls (ver usePolling) se ignora el incremental como
+ * red de seguridad, por si alguno se perdió silenciosamente.
  */
-export function useRealtimeCounts(storeId: string): State {
+export function useTodayCounts(storeId: string): State {
   const memoRef = useRef<{ store: string; memo: CountsMemo } | null>(null);
+  const [ageBaseline, setAgeBaseline] = useState<AgeBaseline | null>(null);
 
   const fetcher = useCallback(
-    async (signal: AbortSignal): Promise<CountRow[]> => {
-      let memo = memoRef.current?.store === storeId ? memoRef.current.memo : null;
+    async (signal: AbortSignal, forceFull: boolean): Promise<CountRow[]> => {
+      let memo = !forceFull && memoRef.current?.store === storeId ? memoRef.current.memo : null;
 
       let res = await fetchTodayCounts(storeId, { afterId: memo?.lastId, signal });
       if (memo && res.day !== memo.day) {
@@ -41,13 +46,24 @@ export function useRealtimeCounts(storeId: string): State {
 
       const next = applyCounts(memo, res);
       memoRef.current = { store: storeId, memo: next };
+      if (res.latestAgeSeconds !== null) {
+        setAgeBaseline({ seconds: res.latestAgeSeconds, capturedAtMs: Date.now() });
+      }
       return next.rows;
     },
     [storeId]
   );
 
-  const { data, loading, error } = usePolling(storeId, fetcher);
+  const { data, loading, error, refetch } = usePolling(storeId, fetcher);
+  const latestAgeSeconds = useTickingAge(ageBaseline);
 
   const rows = data ?? NO_ROWS;
-  return { rows, latest: rows.at(-1) ?? null, loading, error };
+  return {
+    rows,
+    latest: rows.at(-1) ?? null,
+    loading,
+    error,
+    refetch,
+    latestAgeSeconds: loading ? null : latestAgeSeconds,
+  };
 }

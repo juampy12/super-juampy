@@ -2,25 +2,18 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAllRows } from "@/lib/fetchAllRows";
-import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
-import {
-  NO_STORE,
-  parseStoreParam,
-  startOfDayArgentina,
-  todayArgentina,
-} from "@/lib/analytics/server";
+import { NO_STORE, parseStoreParam, requireSupervisor, startOfDayArgentina, todayArgentina } from "@/lib/analytics/server";
 import type { ZoneSeconds } from "@/lib/analytics/types";
 
 // GET /api/analytics/zones?store=<id>
 // → { zones: [{ zone, seconds }] }: permanencia del día (hora de Argentina) sumada
 // por zona a partir de analytics_zone_dwell, ordenada de mayor a menor.
 export async function GET(req: NextRequest) {
-  const session = await getSessionFromRequest(req);
-  if (!session) return unauthorized();
-  if (!isSupervisor(session)) return forbidden("Solo supervisores pueden ver la analítica");
+  const session = await requireSupervisor(req);
+  if (session instanceof Response) return session;
 
   const store = parseStoreParam(req);
-  if (!store) return NextResponse.json({ error: "Falta store" }, { status: 400 });
+  if (!store) return NextResponse.json({ error: "Falta store o no es válido" }, { status: 400 });
 
   try {
     const since = startOfDayArgentina(todayArgentina());

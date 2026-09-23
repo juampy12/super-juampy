@@ -1,28 +1,43 @@
 "use client";
 
 import type { CountRow, HourlyPoint } from "@/lib/analytics/types";
+import { formatAge } from "@/lib/analytics/formatAge";
+import { hourNumberAR } from "@/lib/analytics/time";
 
 interface Props {
   latest: CountRow | null;
   hourly: HourlyPoint[];
+  loading: boolean;
+  /** Antigüedad en vivo de `latest`, calculada por el servidor. */
+  latestAgeSeconds: number | null;
 }
 
 /** Tres números clave del día: visitas totales, ocupación actual, hora pico. */
-export function KpiCards({ latest, hourly }: Props) {
+export function KpiCards({ latest, hourly, loading, latestAgeSeconds }: Props) {
   const totalEntries = hourly.reduce((a, h) => a + h.entries, 0);
-  const occupancy = latest?.occupancy ?? 0;
 
   const peak = hourly.reduce<HourlyPoint | null>(
     (best, h) => (best === null || h.entries > best.entries ? h : best),
     null
   );
-  const peakLabel = peak ? `${new Date(peak.hour).getHours()}:00 hs` : "—";
+  const peakLabel = peak ? `${hourNumberAR(peak.hour)}:00 hs` : "—";
+
+  // Mientras carga no hay que mostrar 0 como si fuera un dato real.
+  const showValues = !loading;
 
   return (
     <div className="kpi-row">
-      <Kpi label="Visitas hoy" value={totalEntries.toLocaleString("es-AR")} />
-      <Kpi label="Personas ahora" value={occupancy.toLocaleString("es-AR")} />
-      <Kpi label="Hora pico" value={peakLabel} sub={peak ? `${peak.entries} ingresos` : ""} />
+      <Kpi label="Visitas hoy" value={showValues ? totalEntries.toLocaleString("es-AR") : "—"} />
+      <Kpi
+        label="Personas ahora"
+        value={showValues && latest ? latest.occupancy.toLocaleString("es-AR") : "—"}
+        sub={showValues && latestAgeSeconds != null ? `actualizado ${formatAge(latestAgeSeconds)}` : undefined}
+      />
+      <Kpi
+        label="Hora pico"
+        value={showValues ? peakLabel : "—"}
+        sub={showValues && peak ? `${peak.entries} ingresos` : ""}
+      />
 
       <style jsx>{`
         .kpi-row {

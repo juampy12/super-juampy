@@ -2,17 +2,20 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getSessionFromRequest, isSupervisor, unauthorized, forbidden } from "@/lib/session";
-import { NO_STORE, parseStoreParam } from "@/lib/analytics/server";
+import { NO_STORE, ageSeconds, parseStoreParam, requireSupervisor } from "@/lib/analytics/server";
+import type { HeatmapResponse } from "@/lib/analytics/queries";
+import type { HeatmapRow } from "@/lib/analytics/types";
 
-// GET /api/analytics/heatmap?store=<id> → última grilla de calor (o null si no hay).
+// GET /api/analytics/heatmap?store=<id>
+// → { heatmap, ageSeconds }: última grilla de calor (o null si no hay), con su
+// antigüedad calculada acá (no con el reloj del navegador) para que el panel
+// pueda avisar cuando lo que muestra ya no es actual.
 export async function GET(req: NextRequest) {
-  const session = await getSessionFromRequest(req);
-  if (!session) return unauthorized();
-  if (!isSupervisor(session)) return forbidden("Solo supervisores pueden ver la analítica");
+  const session = await requireSupervisor(req);
+  if (session instanceof Response) return session;
 
   const store = parseStoreParam(req);
-  if (!store) return NextResponse.json({ error: "Falta store" }, { status: 400 });
+  if (!store) return NextResponse.json({ error: "Falta store o no es válido" }, { status: 400 });
 
   const { data, error } = await supabaseAdmin
     .from("analytics_heatmap")
@@ -26,5 +29,11 @@ export async function GET(req: NextRequest) {
     console.error("analytics/heatmap error:", error);
     return NextResponse.json({ error: "Error consultando mapa de calor" }, { status: 500 });
   }
-  return NextResponse.json({ heatmap: data ?? null }, { headers: NO_STORE });
+
+  const heatmap = (data ?? null) as HeatmapRow | null;
+  const body: HeatmapResponse = {
+    heatmap,
+    ageSeconds: heatmap ? ageSeconds(heatmap.ts) : null,
+  };
+  return NextResponse.json(body, { headers: NO_STORE });
 }
