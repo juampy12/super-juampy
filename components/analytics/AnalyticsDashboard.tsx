@@ -5,9 +5,13 @@ import { useTodayCounts } from "@/lib/analytics/useTodayCounts";
 import { useLatestHeatmap } from "@/lib/analytics/useLatestHeatmap";
 import { useDeviceStatus } from "@/lib/analytics/useDeviceStatus";
 import { useZones } from "@/lib/analytics/useZones";
+import { useSales } from "@/lib/analytics/useSales";
 import { toHourly } from "@/lib/analytics/queries";
+import { computeConversion, toHourlyConversion } from "@/lib/analytics/conversion";
 import type { Store } from "@/lib/analytics/types";
 import { KpiCards } from "./KpiCards";
+import { ConversionKpis } from "./ConversionKpis";
+import { ConversionChart } from "./ConversionChart";
 import { HourlyTrafficChart } from "./HourlyTrafficChart";
 import { HeatmapCanvas } from "./HeatmapCanvas";
 import { StorePicker } from "./StorePicker";
@@ -28,8 +32,15 @@ export function AnalyticsDashboard({ stores }: Props) {
   const { heatmap, ageSeconds: heatmapAge } = useLatestHeatmap(storeId);
   const device = useDeviceStatus(storeId);
   const { zones, loading: zonesLoading, error: zonesError, refetch: refetchZones } = useZones(storeId);
+  const { sales, loading: salesLoading, error: salesError, refetch: refetchSales } = useSales(storeId);
 
   const hourly = useMemo(() => toHourly(rows), [rows]);
+  const totalVisits = useMemo(() => hourly.reduce((a, h) => a + h.entries, 0), [hourly]);
+  const conversion = useMemo(
+    () => computeConversion(sales.totalSales, sales.totalRevenue, totalVisits),
+    [sales, totalVisits]
+  );
+  const hourlyConversion = useMemo(() => toHourlyConversion(sales.perHour, hourly), [sales, hourly]);
 
   const deviceLabel =
     device.totalCount === 0 ? "Sin señal" : `${device.onlineCount} de ${device.totalCount} cámaras en línea`;
@@ -51,6 +62,13 @@ export function AnalyticsDashboard({ stores }: Props) {
         </div>
       </header>
 
+      {salesError ? <ErrorRetry message={salesError} onRetry={refetchSales} /> : null}
+      <ConversionKpis
+        loading={loading || salesLoading}
+        rate={conversion.rate}
+        revenuePerVisit={conversion.revenuePerVisit}
+      />
+
       {error ? <ErrorRetry message={error} onRetry={refetch} /> : null}
       {loading ? <div className="skeleton">Cargando…</div> : null}
 
@@ -60,6 +78,8 @@ export function AnalyticsDashboard({ stores }: Props) {
         <HourlyTrafficChart data={hourly} />
         <HeatmapCanvas heatmap={heatmap} ageSeconds={heatmapAge} />
       </div>
+
+      <ConversionChart data={hourlyConversion} />
 
       <TopZones zones={zones} loading={zonesLoading} error={zonesError} onRetry={refetchZones} />
 

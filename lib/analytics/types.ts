@@ -46,6 +46,20 @@ export interface ZoneSeconds {
   seconds: number;
 }
 
+/** Ventas confirmadas de una hora puntual (para cruzar con visitas y calcular conversión). */
+export interface SalesHourPoint {
+  hour: string; // ISO, truncado a la hora (misma clave que HourlyPoint.hour)
+  sales: number;
+  revenue: number;
+}
+
+/** public.sales de hoy (hora de Argentina), solo lectura — nunca se escribe desde acá. */
+export interface SalesResponse {
+  totalSales: number;
+  totalRevenue: number;
+  perHour: SalesHourPoint[];
+}
+
 export interface Store {
   id: string;
   name: string;

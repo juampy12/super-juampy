@@ -18,3 +18,16 @@ export function hourNumberAR(iso: string): number {
 export function hourLabelAR(iso: string): string {
   return `${hourNumberAR(iso)}h`;
 }
+
+export const HOUR_MS = 3_600_000;
+
+/**
+ * Trunca un ts ISO al inicio de su hora (ISO, UTC). Aritmética en epoch ms:
+ * no depende de la zona horaria del proceso que corre este código (server o
+ * test), y es la clave de bucketing común entre `toHourly` (visitas) y
+ * `analytics_sales`/conversión, para que después puedan cruzarse por hora.
+ */
+export function hourStartIso(ts: string): string {
+  const ms = new Date(ts).getTime();
+  return new Date(ms - (ms % HOUR_MS)).toISOString();
+}

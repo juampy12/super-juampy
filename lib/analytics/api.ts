@@ -11,7 +11,7 @@ const FETCH_TIMEOUT_MS = 10_000;
  * "sin cookie offline"), manda a /pos-login en lugar de mostrar un error genérico.
  */
 export async function getAnalytics<T>(
-  resource: "counts" | "heatmap" | "health" | "zones",
+  resource: "counts" | "heatmap" | "health" | "zones" | "sales",
   storeId: string,
   signal?: AbortSignal,
   extraParams?: Record<string, string | number>

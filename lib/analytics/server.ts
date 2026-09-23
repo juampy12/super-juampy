@@ -30,6 +30,17 @@ export function startOfDayArgentina(day: string): string {
   return `${day}T00:00:00-03:00`;
 }
 
+/**
+ * Inicio del día SIGUIENTE en hora de Argentina, como ISO UTC — el límite
+ * superior (exclusivo) para acotar una consulta a "hoy". Sumar 24h en epoch ms
+ * a startOfDayArgentina da la medianoche siguiente exacta, sin depender de la
+ * zona horaria del proceso (Argentina no tiene horario de verano).
+ */
+export function endOfDayArgentina(day: string): string {
+  const startMs = new Date(startOfDayArgentina(day)).getTime();
+  return new Date(startMs + 24 * 60 * 60 * 1000).toISOString();
+}
+
 /** `?after_id=<n>` (opcional): entero >= 0. `undefined` si no viene, `null` si es inválido. */
 export function parseAfterIdParam(req: Request): number | null | undefined {
   const raw = new URL(req.url).searchParams.get("after_id");
@@ -44,7 +55,7 @@ export function ageSeconds(ts: string, now = Date.now()): number {
 }
 
 /**
- * Auth+rol común a las 4 rutas /api/analytics/*: exige sesión y rol
+ * Auth+rol común a las rutas /api/analytics/*: exige sesión y rol
  * supervisor. Devuelve la sesión, o la Response de error para que el caller
  * corte ahí (`if (session instanceof Response) return session;`).
  */

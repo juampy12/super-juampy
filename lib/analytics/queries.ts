@@ -1,5 +1,6 @@
 import { getAnalytics } from "./api";
-import type { CountRow, HeatmapRow, HealthResponse, HourlyPoint, ZoneSeconds } from "./types";
+import { HOUR_MS, hourStartIso } from "./time";
+import type { CountRow, HeatmapRow, HealthResponse, HourlyPoint, SalesResponse, ZoneSeconds } from "./types";
 
 // Las lecturas van por /api/analytics/* (servidor, solo supervisores): el POS no
 // usa Supabase Auth, así que el navegador no puede leer analytics_* directo (RLS).
@@ -54,13 +55,9 @@ export async function fetchZones(storeId: string, signal?: AbortSignal): Promise
   return zones;
 }
 
-const HOUR_MS = 3_600_000;
-
-/** Trunca un ts ISO al inicio de su hora (epoch ms). Aritmética en UTC: no
- * depende de la zona horaria del proceso que corre este código (server o test). */
-function hourStartMs(ts: string): number {
-  const ms = new Date(ts).getTime();
-  return ms - (ms % HOUR_MS);
+/** Ventas confirmadas de hoy (hora de Argentina) para un local, con su desglose por hora. */
+export async function fetchSales(storeId: string, signal?: AbortSignal): Promise<SalesResponse> {
+  return getAnalytics<SalesResponse>("sales", storeId, signal);
 }
 
 /**
@@ -86,24 +83,27 @@ export function toHourly(rows: CountRow[]): HourlyPoint[] {
     return byTs !== 0 ? byTs : a.id - b.id;
   });
 
-  const byHour = new Map<number, number>(); // hourStartMs -> entries del período
+  const byHour = new Map<string, number>(); // hourStartIso -> entries del período
   let prevEntries = 0;
 
   for (const r of sorted) {
     const delta = r.entries >= prevEntries ? r.entries - prevEntries : r.entries;
     prevEntries = r.entries;
 
-    const key = hourStartMs(r.ts);
+    const key = hourStartIso(r.ts);
     byHour.set(key, (byHour.get(key) ?? 0) + delta);
   }
 
   // Rellena los huecos entre la primera y la última hora con datos: una hora
   // sin filas (cámara caída, poco tránsito) es 0 ingresos, no un salto en el
   // eje del gráfico.
-  const keys = [...byHour.keys()].sort((a, b) => a - b);
+  const keys = [...byHour.keys()].sort();
+  const firstMs = new Date(keys[0]).getTime();
+  const lastMs = new Date(keys[keys.length - 1]).getTime();
   const out: HourlyPoint[] = [];
-  for (let t = keys[0]; t <= keys[keys.length - 1]; t += HOUR_MS) {
-    out.push({ hour: new Date(t).toISOString(), entries: byHour.get(t) ?? 0 });
+  for (let t = firstMs; t <= lastMs; t += HOUR_MS) {
+    const hour = new Date(t).toISOString();
+    out.push({ hour, entries: byHour.get(hour) ?? 0 });
   }
   return out;
 }
