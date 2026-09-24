@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { startOfDayArgentina, todayArgentina } from "../server";
+import { timeLabelAR } from "../time";
 
 describe("todayArgentina (zona horaria)", () => {
   it("un mediodía UTC cae en el mismo día en Argentina", () => {
@@ -29,5 +30,15 @@ describe("startOfDayArgentina", () => {
   it("ese ISO corresponde efectivamente a las 03:00 UTC", () => {
     const iso = startOfDayArgentina("2026-09-23");
     expect(new Date(iso).toISOString()).toBe("2026-09-23T03:00:00.000Z");
+  });
+});
+
+describe("timeLabelAR", () => {
+  it("formatea HH:mm en hora de Argentina (UTC-3)", () => {
+    expect(timeLabelAR("2026-09-23T17:05:00Z")).toBe("14:05");
+  });
+
+  it("cruce de medianoche: 02:30 UTC son las 23:30 del día anterior", () => {
+    expect(timeLabelAR("2026-09-23T02:30:00Z")).toBe("23:30");
   });
 });

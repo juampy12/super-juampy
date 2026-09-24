@@ -31,3 +31,13 @@ export function hourStartIso(ts: string): string {
   const ms = new Date(ts).getTime();
   return new Date(ms - (ms % HOUR_MS)).toISOString();
 }
+
+/** Hora y minutos (ej. "14:05") de un timestamp, en hora de Argentina. */
+export function timeLabelAR(iso: string | number): string {
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: AR_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(iso));
+}

@@ -8,11 +8,13 @@ import { useZones } from "@/lib/analytics/useZones";
 import { useSales } from "@/lib/analytics/useSales";
 import { toHourly } from "@/lib/analytics/queries";
 import { computeConversion, toHourlyConversion } from "@/lib/analytics/conversion";
+import { currentOccupancy, toOccupancySeries } from "@/lib/analytics/occupancy";
 import type { Store } from "@/lib/analytics/types";
 import { KpiCards } from "./KpiCards";
 import { ConversionKpis } from "./ConversionKpis";
 import { ConversionChart } from "./ConversionChart";
 import { HourlyTrafficChart } from "./HourlyTrafficChart";
+import { OccupancyChart } from "./OccupancyChart";
 import { HeatmapCanvas } from "./HeatmapCanvas";
 import { StorePicker } from "./StorePicker";
 import { TopZones } from "./TopZones";
@@ -28,13 +30,15 @@ interface Props {
  */
 export function AnalyticsDashboard({ stores }: Props) {
   const [storeId, setStoreId] = useState(stores[0]?.id ?? "");
-  const { rows, latest, loading, error, refetch, latestAgeSeconds } = useTodayCounts(storeId);
+  const { rows, loading, error, refetch, latestAgeSeconds } = useTodayCounts(storeId);
   const { heatmap, ageSeconds: heatmapAge } = useLatestHeatmap(storeId);
   const device = useDeviceStatus(storeId);
   const { zones, loading: zonesLoading, error: zonesError, refetch: refetchZones } = useZones(storeId);
   const { sales, loading: salesLoading, error: salesError, refetch: refetchSales } = useSales(storeId);
 
   const hourly = useMemo(() => toHourly(rows), [rows]);
+  const occupancyNow = useMemo(() => currentOccupancy(rows), [rows]);
+  const occupancySeries = useMemo(() => toOccupancySeries(rows), [rows]);
   const totalVisits = useMemo(() => hourly.reduce((a, h) => a + h.entries, 0), [hourly]);
   const conversion = useMemo(
     () => computeConversion(sales.totalSales, sales.totalRevenue, totalVisits),
@@ -62,6 +66,16 @@ export function AnalyticsDashboard({ stores }: Props) {
         </div>
       </header>
 
+      {error ? <ErrorRetry message={error} onRetry={refetch} /> : null}
+      {loading ? <div className="skeleton">Cargando…</div> : null}
+
+      <KpiCards
+        occupancyNow={occupancyNow}
+        hourly={hourly}
+        loading={loading}
+        latestAgeSeconds={latestAgeSeconds}
+      />
+
       {salesError ? <ErrorRetry message={salesError} onRetry={refetchSales} /> : null}
       <ConversionKpis
         loading={loading || salesLoading}
@@ -69,10 +83,7 @@ export function AnalyticsDashboard({ stores }: Props) {
         revenuePerVisit={conversion.revenuePerVisit}
       />
 
-      {error ? <ErrorRetry message={error} onRetry={refetch} /> : null}
-      {loading ? <div className="skeleton">Cargando…</div> : null}
-
-      <KpiCards latest={latest} hourly={hourly} loading={loading} latestAgeSeconds={latestAgeSeconds} />
+      <OccupancyChart data={occupancySeries} />
 
       <div className="grid">
         <HourlyTrafficChart data={hourly} />

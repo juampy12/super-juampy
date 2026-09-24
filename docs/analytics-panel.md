@@ -16,6 +16,10 @@ actualiza por polling cada 15 s (se pausa con la pestaña oculta o sin conexión
   `camera_id`. El heatmap viene de una sola cámara.
 - `occupancy = entries − exits` (personas dentro), ya resuelto por el motor de la
   cámara de entrada — el cliente no recibe `exits` ni lo recalcula.
+  Es un valor **directo** (no acumulado): el panel lo usa tal cual para el tile
+  "Personas dentro ahora" (fila más reciente por ts) y para el gráfico "Ocupación
+  durante el día" (última fila de cada minuto), siempre acotado a `max(0, occupancy)`
+  (`lib/analytics/occupancy.ts`). No se calculan deltas como en `toHourly`.
 
 ## Cómo llegan los datos
 
