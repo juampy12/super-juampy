@@ -34,7 +34,7 @@ export async function GET(req: Request) {
     const todayDayName = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: tz }).format(now);
 
     // ── Round 1: todas las queries en paralelo ────────────────────────────
-    const [lowStockRes, recentSoldRes, todaySalesRes, pastSales, closuresRes, stockDeficitRes] = await Promise.all([
+    const [lowStockRes, recentSoldRes, todaySalesRes, pastSales, stockDeficitRes] = await Promise.all([
       supabaseAdmin
         .from("product_stocks")
         .select("product_id, store_id, stock")
@@ -64,13 +64,6 @@ export async function GET(req: Request) {
           .lt("created_at", `${todayAR}T00:00:00-03:00`)
       ),
 
-      // 2A: últimos cierres para detectar discrepancias
-      supabaseAdmin
-        .from("cash_closures")
-        .select("store_id, date, total_sales, total_cash")
-        .order("date", { ascending: false })
-        .limit(5),
-
       // 2B: productos vendidos con stock insuficiente ayer
       supabaseAdmin
         .from("stock_movements")
@@ -84,7 +77,6 @@ export async function GET(req: Request) {
     logIfError("product_stocks (bajo stock)", lowStockRes.error);
     logIfError("fn_top_products_range_all (semana)", recentSoldRes.error);
     logIfError("sales (hoy)", todaySalesRes.error);
-    logIfError("cash_closures", closuresRes.error);
     logIfError("stock_movements (deficit)", stockDeficitRes.error);
 
     // ── Productos con stock bajo y ventas recientes ───────────────────────
@@ -101,13 +93,7 @@ export async function GET(req: Request) {
 
     // ── Round 2: nombres de productos y sucursales ────────────────────────
     const productIds = [...new Set(lowStockItems.map((r: any) => r.product_id as string))];
-    const closureItems: any[] = closuresRes.data ?? [];
-    const storeIds = [
-      ...new Set([
-        ...lowStockItems.map((r: any) => r.store_id as string),
-        ...closureItems.map((c: any) => c.store_id as string),
-      ])
-    ];
+    const storeIds = [...new Set(lowStockItems.map((r: any) => r.store_id as string))];
 
     const [productsRes, storesRes] = await Promise.all([
       productIds.length > 0
@@ -158,26 +144,6 @@ export async function GET(req: Request) {
         ? Math.round((1 - todayTotal / avgSameDay) * 100)
         : null;
 
-    // ── 2A: Discrepancias en cierres de caja ─────────────────────────────
-    const discrepancyClosures = closureItems
-      .filter((c: any) => {
-        const sales = Number(c.total_sales);
-        if (sales <= 0) return false;
-        return Math.abs(Number(c.total_cash) - sales) / sales > 0.05;
-      })
-      .map((c: any) => {
-        const sales = Number(c.total_sales);
-        const cash = Number(c.total_cash);
-        return {
-          date: c.date,
-          storeName: storeNameMap[c.store_id] ?? c.store_id,
-          sales,
-          cash,
-          diff: cash - sales,
-          pct: Math.round(Math.abs(cash - sales) / sales * 100),
-        };
-      });
-
     // ── 2B: Productos vendidos con stock insuficiente ayer ────────────────
     const deficitItems = (stockDeficitRes.data ?? []).map((m: any) => ({
       name: (m.products as any)?.name ?? m.product_id,
@@ -206,15 +172,6 @@ export async function GET(req: Request) {
       lines.push("**📦 Productos vendidos con stock insuficiente ayer**");
       for (const item of deficitItems) {
         lines.push(`- ${item.name} (${item.qty} un. en déficit)`);
-      }
-      lines.push("");
-    }
-
-    if (discrepancyClosures.length > 0) {
-      lines.push("**🔴 Discrepancia en cierre de caja**");
-      for (const c of discrepancyClosures) {
-        const dir = c.diff > 0 ? "sobrante" : "faltante";
-        lines.push(`- *${c.storeName} — ${c.date}:* ventas ${fmt(c.sales)}, efectivo ${fmt(c.cash)} → **${c.pct}% de ${dir}**`);
       }
       lines.push("");
     }

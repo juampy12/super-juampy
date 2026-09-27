@@ -30,7 +30,7 @@ Producto: ${productName}
 Precio: $${price.toLocaleString("es-AR")}
 ${offerLine}Negocio: Super Juampy — Charata, Chaco
 
-Creá exactamente DOS versiones:
+Creá dos versiones:
 
 1. INSTAGRAM: Texto con emojis, hashtags relevantes al supermercado/producto, llamada a acción. Máximo 220 palabras. Usá saltos de línea para que se vea bien en el feed.
 
@@ -40,27 +40,38 @@ Ambos deben mencionar:
 - El nombre del producto
 - El precio
 - "Super Juampy — Charata, Chaco"
-- Una llamada a acción (visitá, no te lo pierdas, etc.)
-
-Respondé SOLO con JSON válido con esta estructura exacta, sin texto adicional:
-{"instagram":"...","facebook":"..."}`;
+- Una llamada a acción (visitá, no te lo pierdas, etc.)`;
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 1024,
+      max_tokens: 2048,
+      // Salida estructurada: la API garantiza un JSON válido con estos dos campos.
+      output_config: {
+        format: {
+          type: "json_schema",
+          schema: {
+            type: "object",
+            properties: {
+              instagram: { type: "string" },
+              facebook: { type: "string" },
+            },
+            required: ["instagram", "facebook"],
+            additionalProperties: false,
+          },
+        },
+      },
       messages: [{ role: "user", content: prompt }],
     });
 
-    const raw = message.content[0].type === "text" ? message.content[0].text.trim() : "";
-
-    // Extract JSON from response (Claude sometimes adds markdown code fences)
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error("Claude response no contiene JSON:", raw);
+    // El formato está garantizado solo si terminó normalmente (un corte por
+    // max_tokens o un rechazo pueden dejar el JSON incompleto).
+    const textBlock = message.content.find((b): b is Anthropic.TextBlock => b.type === "text");
+    if (message.stop_reason !== "end_turn" || !textBlock) {
+      console.error("Respuesta de la IA incompleta:", message.stop_reason);
       return NextResponse.json({ error: "Respuesta inesperada de la IA" }, { status: 500 });
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(textBlock.text);
     if (!parsed.instagram || !parsed.facebook) {
       return NextResponse.json({ error: "La IA no generó los textos esperados" }, { status: 500 });
     }

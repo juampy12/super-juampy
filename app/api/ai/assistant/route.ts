@@ -104,7 +104,7 @@ async function getBusinessData() {
     supabase.from("stores").select("id, name"),
     supabase.from("products").select("id, name, price, cost_net, markup_rate, active")
       .eq("active", true).gt("cost_net", 0).gt("price", 0),
-    supabase.from("cash_closures").select("store_id, date, total_sales, total_cash, total_tickets").order("date", { ascending: false }).limit(10),
+    supabase.from("cash_closures").select("store_id, date, total_sales, total_cash, total_debit, total_credit, total_mp, total_cuenta_corriente, total_tickets").order("date", { ascending: false }).limit(10),
     supabase.from("stock_movements")
       .select("reason, product_id, qty, created_at, products(name)")
       .gte("created_at", monthAgo.toISOString())
@@ -307,7 +307,11 @@ async function getBusinessData() {
     productos_peor_margen: productosConMargen.slice(-10).reverse(),
     ultimos_cierres: (closures.data ?? []).map((c: any) => ({
       fecha: c.date, sucursal: storeMap[c.store_id] ?? c.store_id,
-      ventas: Number(c.total_sales), efectivo: Number(c.total_cash), tickets: c.total_tickets,
+      ventas: Number(c.total_sales), tickets: c.total_tickets,
+      por_medio_de_pago: {
+        efectivo: Number(c.total_cash), debito: Number(c.total_debit), credito: Number(c.total_credit),
+        mercadopago: Number(c.total_mp), cuenta_corriente: Number(c.total_cuenta_corriente),
+      },
     })),
     sucursales: Object.values(storeMap),
     ventas_por_hora_semana: Object.entries(porHora)
@@ -354,24 +358,33 @@ export async function POST(req: Request) {
       : (session.store_id ?? "all");
     const data = supervisorRole ? await getBusinessDataCached(storeId) : null;
 
-    const systemPrompt = supervisorRole
-      ? `Sos el asistente de inteligencia artificial del sistema POS de Super Juampy, una cadena de supermercados en Charata, Chaco, Argentina.
+    // Supervisor: instrucciones primero y datos al final, con breakpoint de caché
+    // en el bloque de datos. Así, desde la segunda pregunta de la charla, todo el
+    // system prompt se lee del caché (mientras los datos no cambien, TTL 20 min).
+    const systemPrompt: string | Anthropic.TextBlockParam[] = supervisorRole
+      ? [
+          {
+            type: "text",
+            text: `Sos el asistente de inteligencia artificial del sistema POS de Super Juampy, una cadena de supermercados en Charata, Chaco, Argentina.
 
-Tenés acceso a los datos actualizados del negocio. Respondé siempre en español argentino, de forma clara, concisa y útil para el gerente del supermercado.
-
-Datos actuales del negocio:
-${JSON.stringify(data)}
+Tenés acceso a los datos actualizados del negocio (al final de este mensaje). Respondé siempre en español argentino, de forma clara, concisa y útil para el gerente del supermercado.
 
 Reglas:
 - Usá pesos argentinos (ARS) con formato $X.XXX,XX
-- Respondé de forma directa y útil
 - Si no tenés datos para responder algo, decilo claramente
 - Podés hacer análisis, comparaciones y sugerencias basadas en los datos
 - Fecha actual: ${data!.fecha_hoy}
 - Las sucursales son: ${data!.sucursales.join(", ")}
-- Revisá siempre las diferencias entre ventas y efectivo en los cierres (ultimos_cierres). Si la discrepancia supera el 10%, alertá mencionando el porcentaje exacto y los montos.
+- En "ultimos_cierres", "ventas" es el total del día y "por_medio_de_pago" lo desglosa; el efectivo es solo una parte de las ventas, no un arqueo de caja.
 - Tenés en "historico_mensual" el detalle mes a mes por sucursal de los últimos 12 meses: usalo para responder comparativas como "¿cómo fue diciembre vs enero?" o "¿cuánto crecimos este mes?".
-- Tenés en "tendencias_productos" la evolución mensual de los top 50 productos de los últimos 6 meses: usalo para detectar caídas o crecimientos por producto, como "¿cuánto bajaron las ventas del Villa del Sur?".`
+- Tenés en "tendencias_productos" la evolución mensual de los top 50 productos de los últimos 6 meses: usalo para detectar caídas o crecimientos por producto, como "¿cuánto bajaron las ventas del Villa del Sur?".`,
+          },
+          {
+            type: "text",
+            text: `Datos actuales del negocio:\n${JSON.stringify(data)}`,
+            cache_control: { type: "ephemeral" },
+          },
+        ]
       : `Sos el asistente de soporte del sistema POS de Super Juampy para cajeros.
 
 Tu función es ÚNICAMENTE ayudar con problemas técnicos y errores del sistema POS.
@@ -406,13 +419,20 @@ Respondé siempre en español argentino, de forma simple y clara para un cajero.
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 1024,
+      // Techo acotado por el timeout de 30 s del cliente (asistente/page.tsx).
+      max_tokens: 2048,
       system: systemPrompt,
       messages: conversationMessages,
     });
 
-    const response =
-      message.content[0].type === "text" ? message.content[0].text : "";
+    let response = message.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("");
+    if (message.stop_reason === "max_tokens") {
+      console.warn("ai/assistant: respuesta cortada por max_tokens");
+      response += "\n\n_(La respuesta quedó cortada por ser muy larga. Pedime que continúe o hacé una pregunta más acotada.)_";
+    }
 
     return NextResponse.json({ response });
   } catch (e: any) {
