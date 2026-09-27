@@ -141,6 +141,17 @@ useEffect(() => {
     return ids;
   }, [rows, minValue, minOrig]);
 
+  // Vuelve los mínimos editados de esta página al valor cargado. Solo pantalla.
+  function discardChanges() {
+    if (dirtyIdsOnPage.length === 0) return;
+    setMinValue((prev) => {
+      const next = { ...prev };
+      for (const id of dirtyIdsOnPage) next[id] = minOrig[id] ?? "";
+      return next;
+    });
+    setMsg("");
+  }
+
   async function saveAllChanges() {
     if (!storeId) return setMsg("Elegí una sucursal.");
     if (dirtyIdsOnPage.length === 0) return setMsg("No hay cambios para guardar.");
@@ -265,6 +276,15 @@ useEffect(() => {
             title="Guarda todos los cambios de esta página"
           >
             {saving ? "Guardando..." : `Guardar cambios (${dirtyIdsOnPage.length})`}
+          </button>
+
+          <button
+            className="px-4 py-2 rounded border disabled:opacity-60"
+            onClick={discardChanges}
+            disabled={saving || dirtyIdsOnPage.length === 0}
+            title="Vuelve los mínimos editados de esta página al valor guardado, sin guardar"
+          >
+            Descartar cambios
           </button>
         </div>
       </div>

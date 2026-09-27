@@ -376,7 +376,9 @@ export default function EtiquetasPage() {
               {items.length > 0 && (
                 <button
                   className="text-xs font-normal text-red-600 hover:text-red-800 flex items-center gap-1"
-                  onClick={() => setItems([])}
+                  onClick={() => {
+                    if (window.confirm(`¿Eliminar los ${items.length} producto${items.length === 1 ? "" : "s"} de la lista de etiquetas?`)) setItems([]);
+                  }}
                 >
                   <i className="ti ti-trash" aria-hidden="true" />
                   Eliminar todos

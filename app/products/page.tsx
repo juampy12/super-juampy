@@ -390,6 +390,26 @@ export default function ProductsPage() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [hasChanges]);
 
+  // Descartar = sacar la fila de dirtyById: RowLine/PriceMobileCard
+  // resincronizan sus inputs con los valores de la base cuando `pending`
+  // queda vacío. Solo pantalla, no toca la base.
+  const revertRow = (id: string) => {
+    setDirtyById((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const discardAll = () => {
+    if (dirtyCount === 0) return;
+    const ok = window.confirm(
+      `¿Descartar ${dirtyCount} cambio${dirtyCount === 1 ? "" : "s"} sin guardar?\n\nLas filas vuelven a los valores guardados en la base.`
+    );
+    if (!ok) return;
+    setDirtyById({});
+  };
+
   const saveAll = async () => {
     const ids = Object.keys(dirtyById);
     if (ids.length === 0) return;
@@ -577,6 +597,15 @@ export default function ProductsPage() {
           {dirtyCount === 0 ? "Guardar cambios" : `Guardar ${dirtyCount} cambio${dirtyCount === 1 ? "" : "s"}`}
         </button>
 
+        <button
+          className="border rounded px-4 py-3 text-gray-700 disabled:opacity-50 sm:py-2"
+          onClick={discardAll}
+          disabled={dirtyCount === 0 || loading}
+          title="Vuelve todas las filas editadas a los valores guardados, sin guardar"
+        >
+          Descartar cambios
+        </button>
+
         <span
           className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold sm:self-center ${
             dirtyCount > 0
@@ -661,6 +690,7 @@ export default function ProductsPage() {
               row={r}
               isDirty={!!dirtyById[r.id]}
               pending={dirtyById[r.id]}
+              onRevert={() => revertRow(r.id)}
               firstRow={idx === 0}
               firstInputRef={firstInputRef}
               onDirtyChange={(payload) => {
@@ -704,6 +734,7 @@ export default function ProductsPage() {
                 row={r}
                 isDirty={!!dirtyById[r.id]}
                 pending={dirtyById[r.id]}
+                onRevert={() => revertRow(r.id)}
                 firstRow={idx === 0}
                 firstInputRef={firstInputRef}
                 onDirtyChange={(payload) => {
@@ -749,6 +780,7 @@ function PriceMobileCard({
   isDirty,
   pending,
   onDirtyChange,
+  onRevert,
   firstRow,
   firstInputRef,
 }: {
@@ -756,6 +788,7 @@ function PriceMobileCard({
   isDirty: boolean;
   pending?: DirtyPayload;
   onDirtyChange: (payload: DirtyPayload) => void;
+  onRevert: () => void;
   firstRow: boolean;
   firstInputRef: React.MutableRefObject<HTMLInputElement | null>;
 }) {
@@ -820,6 +853,16 @@ function PriceMobileCard({
           {noMargin && <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600">Sin margen</span>}
           {belowCost && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">Bajo costo</span>}
           {isDirty && <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-medium text-orange-700">Sin guardar</span>}
+          {isDirty && (
+            <button
+              type="button"
+              onClick={onRevert}
+              title="Volver esta fila a los valores guardados"
+              className="rounded-full border border-orange-300 px-2 py-0.5 text-[11px] font-medium text-orange-700 hover:bg-orange-50"
+            >
+              ↺ Deshacer
+            </button>
+          )}
         </div>
       </div>
 
@@ -880,6 +923,7 @@ function RowLine({
   isDirty,
   pending,
   onDirtyChange,
+  onRevert,
   firstRow,
   firstInputRef,
 }: {
@@ -887,6 +931,7 @@ function RowLine({
   isDirty: boolean;
   pending?: DirtyPayload;
   onDirtyChange: (payload: DirtyPayload) => void;
+  onRevert: () => void;
   firstRow: boolean;
   firstInputRef: React.MutableRefObject<HTMLInputElement | null>;
 }) {
@@ -985,6 +1030,16 @@ function RowLine({
             <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-medium text-orange-700">
               Sin guardar
             </span>
+          )}
+          {isDirty && (
+            <button
+              type="button"
+              onClick={onRevert}
+              title="Volver esta fila a los valores guardados"
+              className="rounded-full border border-orange-300 px-2 py-0.5 text-[11px] font-medium text-orange-700 hover:bg-orange-50"
+            >
+              ↺ Deshacer
+            </button>
           )}
         </div>
       </td>
