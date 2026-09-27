@@ -10,7 +10,7 @@ import { isMobileViewport, isStandalonePwa } from "@/lib/useIsMobile";
 import { addToQueue, getFailedQueue, retryFailedSale, discardFailedSale, type FailedSale } from "@/lib/offlineQueue";
 import { warmCache, searchCachedProducts, mergeIntoCachedProducts, initProductCache, getCacheSavedAt } from "@/lib/productCache";
 import { useOnlineSync } from "@/lib/useOnlineSync";
-import { getHolds, saveHold, removeHold, type Hold } from "@/app/ventas/lib/hold";
+import { getHolds, saveHold, removeHold, toHoldItem, fromHoldItem, type Hold } from "@/app/ventas/lib/hold";
 
 type Store = { id: string; name: string };
 
@@ -535,15 +535,7 @@ export default function VentasPage() {
 
   function holdCart() {
     if (items.length === 0) { toast.error("El carrito está vacío."); return; }
-    saveHold(items.map(it => ({
-      product_id: it.product_id,
-      name: it.name,
-      sku: it.sku,
-      qty: it.qty,
-      unit_price: it.unit_price,
-      is_weighted: it.is_weighted,
-      is_balanza: it.is_balanza,
-    })), total, selectedRegisterId);
+    saveHold(items.map(toHoldItem), total, selectedRegisterId);
     setHolds(getHolds(selectedRegisterId));
     setItems([]);
     setSearch("");
@@ -554,16 +546,7 @@ export default function VentasPage() {
     if (items.length > 0) {
       if (!window.confirm("Hay productos en el carrito. ¿Querés reemplazarlo con la venta en espera?")) return;
     }
-    setItems(hold.items.map(it => ({
-      product_id: it.product_id,
-      name: it.name,
-      sku: it.sku,
-      qty: it.qty,
-      unit_price: it.unit_price,
-      base_unit_price: it.unit_price,
-      is_weighted: it.is_weighted ?? false,
-      is_balanza: it.is_balanza ?? false,
-    })));
+    setItems(hold.items.map((it, index) => fromHoldItem(it, hold.id, index)));
     removeHold(hold.id);
     setHolds(getHolds(selectedRegisterId));
     setShowHolds(false);
