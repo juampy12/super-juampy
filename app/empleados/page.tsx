@@ -109,6 +109,13 @@ export default function EmpleadosPage() {
   }
 
   async function toggleActive(emp: Employee) {
+    if (emp.active) {
+      const ok = window.confirm(
+        `¿Desactivar a ${emp.name} (código ${emp.code})?\n\n` +
+        `No va a poder iniciar sesión en el POS. Si está en pleno turno, no va a poder volver a loguearse hasta que lo actives de nuevo.`
+      );
+      if (!ok) return;
+    }
     try {
       const res = await fetch("/api/employees", {
         method: "PATCH", headers: { "Content-Type": "application/json" },

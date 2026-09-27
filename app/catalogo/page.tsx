@@ -316,6 +316,12 @@ export default function CatalogoPage() {
       toast.error("El nombre no puede quedar vacío");
       return;
     }
+    if (newName !== selected.name) {
+      const ok = window.confirm(
+        `¿Cambiar el nombre del producto?\n\nAntes: ${selected.name}\nAhora: ${newName}\n\n¿Confirmás?`
+      );
+      if (!ok) return;
+    }
 
     setWorking(true);
     try {
@@ -343,6 +349,17 @@ export default function CatalogoPage() {
   async function savePlu() {
     if (!isSupervisor) { toast.error("Solo supervisor puede editar productos."); return; }
     if (!selected?.id) return;
+
+    // Un PLU mal cargado hace que la balanza no encuentre el pesable en caja.
+    const oldPlu = selected.plu ?? "";
+    const newPlu = editPlu.trim();
+    if (newPlu !== oldPlu) {
+      const ok = window.confirm(
+        `¿Cambiar el PLU de "${selected.name}"?\n\nPLU ${oldPlu || "(sin PLU)"} → ${newPlu || "(sin PLU)"}\n\n` +
+        `Si el PLU no coincide con el de la balanza, este pesable no se va a encontrar en caja.\n\n¿Confirmás?`
+      );
+      if (!ok) return;
+    }
 
     setWorking(true);
     try {

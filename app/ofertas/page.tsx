@@ -49,6 +49,16 @@ const NXM_SHORTCUTS: Array<{ label: string; qty_buy: number; qty_pay: number }> 
 
 const SECOND_UNIT_SHORTCUTS = [50, 70];
 
+function describeOffer(o: Offer): string {
+  return o.type === "fixed_price"
+    ? `$${o.value}`
+    : o.type === "percent"
+    ? `-${o.value}%`
+    : o.type === "second_unit_pct"
+    ? `2da unidad -${o.value}%`
+    : `Llevá ${o.qty_buy} · Pagá ${o.qty_pay}`;
+}
+
 function isoLocalInput(dt?: Date) {
   const d = dt ?? new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -221,6 +231,21 @@ export default function OfertasPage() {
       return void toast.error("Valor inválido");
     }
 
+    // El server deja 1 oferta activa por producto y ámbito (sucursal o
+    // global): si ya hay una vigente en el mismo ámbito, se reemplaza.
+    const targetStoreId = isGlobal ? null : storeId;
+    const replaced = offers.find(
+      (o) => o.product_id === selected.id && (o.store_id ?? null) === targetStoreId
+    );
+    if (replaced) {
+      const ok = window.confirm(
+        `"${selected.name}" ya tiene una oferta activa (${targetStoreId ? "sucursal" : "global"}):\n\n` +
+        `${describeOffer(replaced)} · hasta ${new Date(replaced.ends_at).toLocaleString()}\n\n` +
+        `Se va a reemplazar por la nueva y la anterior queda desactivada.\n\n¿Confirmás?`
+      );
+      if (!ok) return;
+    }
+
     setLoading(true);
 
     const payload = {
@@ -255,6 +280,14 @@ export default function OfertasPage() {
 
   // ✅ SIN PIN
   async function deactivateOffer(id: string) {
+    const offer = offers.find((o) => o.id === id);
+    const p = offer ? productMap[offer.product_id] : undefined;
+    const ok = window.confirm(
+      `¿Desactivar esta oferta?\n\n${p?.name ?? "Producto"}${offer ? ` — ${describeOffer(offer)}` : ""}\n\n` +
+      `Deja de aplicarse en caja de inmediato. No se puede reactivar: habría que crearla de nuevo.`
+    );
+    if (!ok) return;
+
     setLoading(true);
     
     const res = await fetch("/api/offers", {
@@ -591,15 +624,7 @@ export default function OfertasPage() {
                         <div>
                           <div className="font-medium">{label}</div>
                           <div className="text-xs opacity-80 mt-1">
-                            <b>
-                              {o.type === "fixed_price"
-                                ? `$${o.value}`
-                                : o.type === "percent"
-                                ? `-${o.value}%`
-                                : o.type === "second_unit_pct"
-                                ? `2da unidad -${o.value}%`
-                                : `Llevá ${o.qty_buy} · Pagá ${o.qty_pay}`}
-                            </b>
+                            <b>{describeOffer(o)}</b>
                             <span className="mx-2">·</span>
                             {o.store_id ? "Sucursal" : "Global"}
                             <span className="mx-2">·</span>
