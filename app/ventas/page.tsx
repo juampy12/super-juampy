@@ -11,6 +11,7 @@ import { addToQueue, getFailedQueue, retryFailedSale, discardFailedSale, type Fa
 import { warmCache, searchCachedProducts, mergeIntoCachedProducts, initProductCache, getCacheSavedAt } from "@/lib/productCache";
 import { useOnlineSync } from "@/lib/useOnlineSync";
 import { getHolds, saveHold, removeHold, toHoldItem, fromHoldItem, type Hold } from "@/app/ventas/lib/hold";
+import { collectRemovedLines, restoreRemovedLines, type RemovedLine } from "@/app/ventas/lib/cartUndo";
 
 type Store = { id: string; name: string };
 
@@ -162,6 +163,9 @@ function paymentLabel(m: PaymentMethod) {
       return m;
   }
 }
+
+// Cuánto dura el aviso "Quitaste X · Deshacer" al quitar un ítem del carrito.
+const UNDO_REMOVE_MS = 6000;
 
 function round2(n: number) {
   return Math.round((Number(n) || 0) * 100) / 100;
@@ -518,6 +522,7 @@ export default function VentasPage() {
   }
 
   function cancelSale() {
+    clearPendingUndo();
     setItems([]);
     setSearch("");
     setResults([]);
@@ -535,6 +540,7 @@ export default function VentasPage() {
 
   function holdCart() {
     if (items.length === 0) { toast.error("El carrito está vacío."); return; }
+    clearPendingUndo();
     saveHold(items.map(toHoldItem), total, selectedRegisterId);
     setHolds(getHolds(selectedRegisterId));
     setItems([]);
@@ -546,6 +552,7 @@ export default function VentasPage() {
     if (items.length > 0) {
       if (!window.confirm("Hay productos en el carrito. ¿Querés reemplazarlo con la venta en espera?")) return;
     }
+    clearPendingUndo();
     setItems(hold.items.map((it, index) => fromHoldItem(it, hold.id, index)));
     removeHold(hold.id);
     setHolds(getHolds(selectedRegisterId));
@@ -824,6 +831,11 @@ export default function VentasPage() {
   // true solo cuando el usuario usó ↑/↓ o hover para elegir un resultado
   const hasNavigatedRef = useRef(false);
   const [items, setItems] = useState<CartItem[]>([]);
+  // "Deshacer" al quitar ítems: último quitado (un solo nivel) + id del aviso.
+  // itemsRef da el carrito actual a quien quita desde un closure viejo (modal de gramos).
+  const itemsRef = useRef<CartItem[]>([]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  const pendingUndoRef = useRef<{ lines: RemovedLine<CartItem>[]; toastId: string } | null>(null);
   // Resalta unos segundos la fila del último producto agregado, para que el
   // cajero confirme de un vistazo que el escaneo entró bien.
   const [lastAddedKey, setLastAddedKey] = useState<string | null>(null);
@@ -1358,6 +1370,7 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
   }
 
   function updateQty(key: string, qty: number) {
+    if (qty <= 0) rememberRemoved(key);
     setItems((prev) => {
       if (qty <= 0) return prev.filter((it) => lineKey(it) !== key);
       return prev.map((it) => {
@@ -1380,8 +1393,71 @@ if (opts?.autoAddFirst && ordered.length >= 1) {
   }
 
   function removeItem(key: string) {
+    rememberRemoved(key);
     setItems((prev) => prev.filter((it) => lineKey(it) !== key));
   }
+
+  function clearPendingUndo() {
+    const pending = pendingUndoRef.current;
+    if (!pending) return;
+    toast.dismiss(pending.toastId);
+    pendingUndoRef.current = null;
+  }
+
+  // Guarda las líneas (objeto completo + posición) ANTES de quitarlas — fuera
+  // del updater de setItems, que React puede ejecutar dos veces.
+  function rememberRemoved(key: string) {
+    const lines = collectRemovedLines(itemsRef.current, key, lineKey);
+    if (lines.length === 0) return;
+    clearPendingUndo();
+
+    const name = lines[0].item.name;
+    const label = lines.length > 1 ? `${lines.length} líneas de ${name}` : name;
+    const toastId = toast(
+      () => (
+        <span className="flex items-center gap-3 text-sm">
+          <span>Quitaste <b>{label}</b></span>
+          <button
+            type="button"
+            // No robar el foco del buscador: la pistola escribe ahí.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={undoRemove}
+            className="rounded border border-blue-300 px-2 py-1 font-semibold text-blue-700 hover:bg-blue-50"
+          >
+            Deshacer
+          </button>
+        </span>
+      ),
+      { duration: UNDO_REMOVE_MS }
+    );
+
+    const pending = { lines, toastId };
+    pendingUndoRef.current = pending;
+    setTimeout(() => {
+      if (pendingUndoRef.current === pending) pendingUndoRef.current = null;
+    }, UNDO_REMOVE_MS);
+  }
+
+  function undoRemove() {
+    const pending = pendingUndoRef.current;
+    clearPendingUndo();
+    if (pending) {
+      // Si el cajero ya volvió a escanear ese producto, no se mezcla.
+      if (restoreRemovedLines(itemsRef.current, pending.lines, lineKey)) {
+        setItems((prev) => restoreRemovedLines(prev, pending.lines, lineKey) ?? prev);
+        flashLastAdded(lineKey(pending.lines[0].item));
+      } else {
+        toast.error("No se restauró: ese producto ya está de nuevo en el carrito.");
+      }
+    }
+    setTimeout(() => searchInputRef.current?.focus(), 0);
+  }
+
+  // Nunca dejar un deshacer colgado para otra caja/sucursal, ni al salir de /ventas.
+  useEffect(() => {
+    clearPendingUndo();
+  }, [selectedStoreId, selectedRegisterId]);
+  useEffect(() => () => clearPendingUndo(), []);
 
   // =========================
   // CONFIRM
@@ -2712,6 +2788,7 @@ onKeyDown={(e) => {
                     notes: notes || undefined,
                   }}
                   onConfirmed={(saleId) => {
+                    clearPendingUndo();
                     showSaleFeedback({
                       total,
                       totalPaid,
