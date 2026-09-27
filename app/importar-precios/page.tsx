@@ -189,6 +189,29 @@ function impliedMarkupRate(price: number, costNet: number): number {
 
 const PDF_HEADERS = ["Cod.Barra", "Detalle", "Precio/SI", "Precio/CI"];
 
+// Foto de la vista previa tal como quedó al generarla — "Restablecer vista
+// previa" vuelve a esto sin releer el archivo ni consultar la base.
+type PreviewSnapshot = {
+  matched: ProductMatch[];
+  notFound: NotFoundItem[];
+  newProductPrices: Record<string, number>;
+  newProductNames: Record<string, string>;
+  margin: number;
+  ivaMode: "incluido" | "sumar21";
+  divideByUnits: boolean;
+  saveCost: boolean;
+  updateNames: boolean;
+  priceCol: string;
+  salePriceCol: string;
+  unitOverrides: Record<string, number>;
+};
+
+// CSV para Excel en español: separador ";" y coma decimal.
+function csvCell(v: string | number): string {
+  const s = typeof v === "number" ? v.toFixed(2).replace(".", ",") : v;
+  return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 // Aplicar precios en lotes: cada request hace un solo UPDATE en lote server-side,
 // pero igual lo dividimos acá para mostrar progreso real y no perder todo el
 // trabajo si un lote individual tarda demasiado.
@@ -253,6 +276,7 @@ export default function ImportarPreciosPage() {
   const [totalInFile, setTotalInFile] = useState(0);
   // Sección de nuevos expandida/colapsada
   const [isNewExpanded, setIsNewExpanded] = useState(true);
+  const previewSnapshotRef = useRef<PreviewSnapshot | null>(null);
 
   useEffect(() => {
     const emp = getPosEmployee();
@@ -562,6 +586,20 @@ export default function ImportarPreciosPage() {
       setApplySummary(null);
       setAssignSummary(null);
       setIsNewExpanded(true);
+      previewSnapshotRef.current = {
+        matched: matchedList,
+        notFound: notFoundList,
+        newProductPrices: initPrices,
+        newProductNames: initNames,
+        margin,
+        ivaMode,
+        divideByUnits,
+        saveCost,
+        updateNames,
+        priceCol,
+        salePriceCol,
+        unitOverrides: { ...unitOverrides },
+      };
       setStep("preview");
     } catch (e: any) {
       alert(`Error consultando la base de datos: ${e?.message ?? e}`);
@@ -733,7 +771,51 @@ export default function ImportarPreciosPage() {
     }
   }
 
+  // Solo pantalla: vuelve la vista previa a como estaba al generarla. No
+  // deshace nada ya aplicado a la base.
+  function restorePreview() {
+    const snap = previewSnapshotRef.current;
+    if (!snap) return;
+    if (!window.confirm("¿Restablecer la vista previa? Se pierden los cambios hechos en esta pantalla (margen, IVA, columnas, unidades, precios y nombres editados, selección).")) return;
+    setMatched(snap.matched);
+    setNotFound(snap.notFound);
+    setNewProductPrices(snap.newProductPrices);
+    setNewProductNames(snap.newProductNames);
+    setSelectedNew(new Set());
+    setMargin(snap.margin);
+    setIvaMode(snap.ivaMode);
+    setDivideByUnits(snap.divideByUnits);
+    setSaveCost(snap.saveCost);
+    setUpdateNames(snap.updateNames);
+    setPriceCol(snap.priceCol);
+    setSalePriceCol(snap.salePriceCol);
+    setUnitOverrides(snap.unitOverrides);
+  }
+
+  // Respaldo de los precios que "Aplicar" va a pisar, tomado de la vista
+  // previa (precio actual en la base al momento de generarla). Solo lectura.
+  function downloadBackupCsv(rowsToBackup: ProductMatch[]) {
+    const lines = [
+      ["codigo_barras", "nombre", "precio_anterior", "precio_nuevo", "id_producto"].join(";"),
+      ...rowsToBackup.map((m) =>
+        [csvCell(m.sku), csvCell(m.dbName), csvCell(m.currentPrice), csvCell(m.finalPrice), csvCell(m.dbId)].join(";")
+      ),
+    ];
+    const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toLocaleString("sv-SE", { timeZone: "America/Argentina/Cordoba" })
+      .slice(0, 16).replace(" ", "_").replace(":", "");
+    a.href = url;
+    a.download = `respaldo-precios-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function reset() {
+    previewSnapshotRef.current = null;
     setStep("upload");
     setHeaders([]);
     setRows([]);
@@ -1038,6 +1120,14 @@ export default function ImportarPreciosPage() {
             <button onClick={() => setStep("upload")} className="text-sm text-gray-600 underline">
               ← Volver
             </button>
+            <button
+              onClick={restorePreview}
+              disabled={loading}
+              title="Vuelve la vista previa a como estaba al generarla (no deshace importaciones ya aplicadas)"
+              className="text-sm text-gray-600 underline disabled:opacity-50"
+            >
+              ↺ Restablecer vista previa
+            </button>
             <div className="flex items-center gap-2 text-sm flex-wrap">
               <span className="bg-gray-100 rounded-full px-3 py-1 font-semibold text-gray-700">
                 {totalInFile} en el {fileType === "pdf" ? "PDF" : "archivo"}
@@ -1233,6 +1323,15 @@ export default function ImportarPreciosPage() {
                 </select>
               </div>
             )}
+
+            <button
+              onClick={() => downloadBackupCsv(applicableMatched)}
+              disabled={loading || applicableMatched.length === 0}
+              title="Descarga el precio actual de los productos que se van a pisar, para poder restaurarlos si la importación sale mal"
+              className="border border-emerald-700 text-emerald-800 rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              Descargar respaldo (CSV)
+            </button>
 
             <button
               onClick={applyPrices}
