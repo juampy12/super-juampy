@@ -49,6 +49,18 @@ export function parseAfterIdParam(req: Request): number | null | undefined {
   return Number(raw);
 }
 
+export const DEFAULT_TREND_DAYS = 14;
+const MAX_TREND_DAYS = 31;
+
+/** `?days=<n>` (opcional, default 14): entero 1..31. `null` si es inválido. */
+export function parseDaysParam(req: Request): number | null {
+  const raw = new URL(req.url).searchParams.get("days");
+  if (raw === null) return DEFAULT_TREND_DAYS;
+  if (!/^\d{1,2}$/.test(raw)) return null;
+  const n = Number(raw);
+  return n >= 1 && n <= MAX_TREND_DAYS ? n : null;
+}
+
 /** Antigüedad en segundos de un ts ISO, calculada con el reloj del servidor. */
 export function ageSeconds(ts: string, now = Date.now()): number {
   return Math.max(0, Math.round((now - new Date(ts).getTime()) / 1000));

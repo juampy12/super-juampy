@@ -38,6 +38,13 @@ export interface HealthResponse {
   cameras: HealthRow[];
   onlineCount: number;
   totalCount: number;
+  /**
+   * Antigüedad (segundos, reloj del servidor) del último latido de CUALQUIER
+   * cámara del local, sin límite de ventana: es lo que permite decir "el motor
+   * no manda datos desde hace X" aunque lleve horas caído. `null` si el local
+   * nunca tuvo un latido (no hay motor instalado).
+   */
+  lastHeartbeatAgeSeconds: number | null;
 }
 
 /** Permanencia total del día en una zona (suma de analytics_zone_dwell). */
@@ -58,6 +65,29 @@ export interface SalesResponse {
   totalSales: number;
   totalRevenue: number;
   perHour: SalesHourPoint[];
+}
+
+/** Un día calendario (hora de Argentina) de la tendencia. */
+export interface DailyPoint {
+  day: string; // YYYY-MM-DD
+  /** Visitas del día = max(entries) de ese día. `null` si el motor no escribió nada ese día. */
+  visits: number | null;
+  /** Ventas confirmadas del día. */
+  tickets: number;
+  /** Facturación ($ARS) de esas ventas. */
+  revenue: number;
+}
+
+export interface DailyResponse {
+  /** Hoy (YYYY-MM-DD, hora de Argentina); es el último elemento de `days`. */
+  today: string;
+  days: DailyPoint[];
+  /**
+   * Visitas acumuladas HASTA ESTA MISMA HORA en cada uno de los mismos días de
+   * la semana anteriores (hasta 4 semanas atrás) que tienen datos. Se compara
+   * contra las visitas de hoy hasta ahora: mismo tramo del día, no el día entero.
+   */
+  weekdaySamples: number[];
 }
 
 export interface Store {

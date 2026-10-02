@@ -1,6 +1,14 @@
 import { getAnalytics } from "./api";
 import { HOUR_MS, hourStartIso } from "./time";
-import type { CountRow, HeatmapRow, HealthResponse, HourlyPoint, SalesResponse, ZoneSeconds } from "./types";
+import type {
+  CountRow,
+  DailyResponse,
+  HeatmapRow,
+  HealthResponse,
+  HourlyPoint,
+  SalesResponse,
+  ZoneSeconds,
+} from "./types";
 
 // Las lecturas van por /api/analytics/* (servidor, solo supervisores): el POS no
 // usa Supabase Auth, así que el navegador no puede leer analytics_* directo (RLS).
@@ -58,6 +66,11 @@ export async function fetchZones(storeId: string, signal?: AbortSignal): Promise
 /** Ventas confirmadas de hoy (hora de Argentina) para un local, con su desglose por hora. */
 export async function fetchSales(storeId: string, signal?: AbortSignal): Promise<SalesResponse> {
   return getAnalytics<SalesResponse>("sales", storeId, signal);
+}
+
+/** Visitas, tickets y facturación por día (últimos `days` días, hora de Argentina) de un local. */
+export async function fetchDaily(storeId: string, days: number, signal?: AbortSignal): Promise<DailyResponse> {
+  return getAnalytics<DailyResponse>("daily", storeId, signal, { days });
 }
 
 /**

@@ -6,6 +6,8 @@ import { useLatestHeatmap } from "@/lib/analytics/useLatestHeatmap";
 import { useDeviceStatus } from "@/lib/analytics/useDeviceStatus";
 import { useZones } from "@/lib/analytics/useZones";
 import { useSales } from "@/lib/analytics/useSales";
+import { useDaily } from "@/lib/analytics/useDaily";
+import { compareToWeekdayAverage, isEngineSilent, isLowTraffic } from "@/lib/analytics/trend";
 import { toHourly } from "@/lib/analytics/queries";
 import { computeConversion, toHourlyConversion } from "@/lib/analytics/conversion";
 import { currentOccupancy, toOccupancySeries } from "@/lib/analytics/occupancy";
@@ -19,6 +21,8 @@ import { HeatmapCanvas } from "./HeatmapCanvas";
 import { StorePicker } from "./StorePicker";
 import { TopZones } from "./TopZones";
 import { ErrorRetry } from "./ErrorRetry";
+import { AlertBanners } from "./AlertBanners";
+import { TrendSection } from "./TrendSection";
 
 interface Props {
   stores: Store[];
@@ -36,6 +40,8 @@ export function AnalyticsDashboard({ stores }: Props) {
   const { zones, loading: zonesLoading, error: zonesError, refetch: refetchZones } = useZones(storeId);
   const { sales, loading: salesLoading, error: salesError, refetch: refetchSales } = useSales(storeId);
 
+  const { daily, loading: dailyLoading, error: dailyError, refetch: refetchDaily } = useDaily(storeId);
+
   const hourly = useMemo(() => toHourly(rows), [rows]);
   const occupancyNow = useMemo(() => currentOccupancy(rows), [rows]);
   const occupancySeries = useMemo(() => toOccupancySeries(rows), [rows]);
@@ -45,6 +51,20 @@ export function AnalyticsDashboard({ stores }: Props) {
     [sales, totalVisits]
   );
   const hourlyConversion = useMemo(() => toHourlyConversion(sales.perHour, hourly), [sales, hourly]);
+
+  // "Hoy vs. tu promedio": las visitas de hoy y las muestras de las semanas
+  // anteriores salen de la MISMA respuesta de /api/analytics/daily (cortadas a
+  // la misma hora por el servidor), para comparar siempre el mismo tramo del día.
+  const comparison = useMemo(
+    () => (daily ? compareToWeekdayAverage(daily.days.at(-1)?.visits ?? null, daily.weekdaySamples) : null),
+    [daily]
+  );
+  const engineSilent = isEngineSilent(device.lastHeartbeatAgeSeconds);
+  // Con el motor caído las visitas de hoy quedan congeladas: "tráfico bajo"
+  // sería un falso positivo, y la alerta del motor ya explica el problema.
+  const lowTraffic =
+    !engineSilent && comparison?.status === "ok" && isLowTraffic(comparison) ? comparison : null;
+  const storeName = stores.find((s) => s.id === storeId)?.name ?? "la sucursal";
 
   const deviceLabel =
     device.totalCount === 0 ? "Sin señal" : `${device.onlineCount} de ${device.totalCount} cámaras en línea`;
@@ -65,6 +85,12 @@ export function AnalyticsDashboard({ stores }: Props) {
           </span>
         </div>
       </header>
+
+      <AlertBanners
+        storeName={storeName}
+        engineSilentSeconds={engineSilent ? device.lastHeartbeatAgeSeconds : null}
+        lowTraffic={lowTraffic}
+      />
 
       {error ? <ErrorRetry message={error} onRetry={refetch} /> : null}
       {loading ? <div className="skeleton">Cargando…</div> : null}
@@ -91,6 +117,14 @@ export function AnalyticsDashboard({ stores }: Props) {
       </div>
 
       <ConversionChart data={hourlyConversion} />
+
+      <TrendSection
+        daily={daily}
+        comparison={comparison}
+        loading={dailyLoading}
+        error={dailyError}
+        onRetry={refetchDaily}
+      />
 
       <TopZones zones={zones} loading={zonesLoading} error={zonesError} onRetry={refetchZones} />
 

@@ -26,7 +26,7 @@ actualiza por polling cada 15 s (se pausa con la pestaña oculta o sin conexión
 ```
 motor de visión ──(service_role)──▶ analytics_* (Supabase)
                                          │
-navegador ──polling 15s──▶ /api/analytics/{counts,heatmap,health,zones}?store=<id>
+navegador ──polling 15s──▶ /api/analytics/{counts,heatmap,health,zones,sales,daily}?store=<id>
                                 (supabaseAdmin + sesión supervisor)
 ```
 
@@ -59,20 +59,57 @@ real.
 (`STALE_SECONDS = 60`). El panel muestra "N de M cámaras en línea" en vez de un único
 estado binario.
 
+## Tendencia y "hoy vs. tu promedio"
+
+`GET /api/analytics/daily?store=<id>[&days=<n>]` (default 14, máx. 31; solo lectura)
+devuelve `{ today, days, weekdaySamples }`:
+
+- `days`: una fila por día calendario de Argentina (hoy incluido) con `visits`
+  (= `max(entries)` de ese día, porque `entries` se reinicia cada medianoche; `null` si
+  el motor no escribió nada ese día), `tickets` y `revenue` (ventas `confirmed` de
+  `public.sales`, mismo criterio que `/api/analytics/sales`). Las visitas se piden con
+  una consulta `order by entries desc limit 1` por día: no se traen las ~2900 filas
+  diarias.
+- `weekdaySamples`: visitas **hasta esta misma hora** en el mismo día de la semana de
+  las 4 semanas anteriores (solo las que tienen datos). Comparar contra el día entero
+  daría siempre "abajo" a la mañana.
+
+El panel lo consulta una vez por minuto (`useDaily`). La sección "Tendencia (últimos 14
+días)" muestra visitas por día y conversión por día (tickets ÷ visitas; "—" si ese día
+no tuvo visitas), y el KPI "Hoy vs. tu promedio" (verde arriba / rojo abajo). Con menos
+de 3 semanas de historia para ese día de la semana no se muestra ningún porcentaje
+("Juntando más datos"). Las reglas viven en `lib/analytics/trend.ts`.
+
+## Alertas (banner arriba del panel)
+
+Solo visuales, sin mail ni push:
+
+- **Motor sin señal** (rojo): el último latido de `analytics_health` del local tiene más
+  de 10 minutos (`ENGINE_SILENT_SECONDS`). `/api/analytics/health` devuelve
+  `lastHeartbeatAgeSeconds` sin límite de ventana para poder decir "desde hace X" aunque
+  lleve días caído. Un local que nunca tuvo latidos (sin motor instalado) no alerta.
+- **Tráfico bajo hoy** (amarillo): hoy va 30% o más abajo del promedio a esta hora. No
+  aparece sin historia suficiente, ni si el promedio a esta hora es menor a 20 visitas
+  (ruido de primera hora), ni con el motor sin señal (las visitas quedan congeladas y
+  sería un falso positivo).
+
 ## Estructura
 
 ```
 app/analytics/page.tsx, error.tsx       # ruta /analytics; exige sesión + supervisor
-app/api/analytics/{counts,heatmap,health,zones}/route.ts
+app/api/analytics/{counts,heatmap,health,zones,sales,daily}/route.ts
 components/analytics/
   AnalyticsDashboard.tsx, KpiCards.tsx, HourlyTrafficChart.tsx,
-  HeatmapCanvas.tsx, StorePicker.tsx, TopZones.tsx, ErrorRetry.tsx
+  HeatmapCanvas.tsx, StorePicker.tsx, TopZones.tsx, ErrorRetry.tsx,
+  AlertBanners.tsx, TrendSection.tsx, TodayVsAverageKpi.tsx,
+  DailyVisitsChart.tsx, DailyConversionChart.tsx
 lib/analytics/
   types.ts, queries.ts                  # tipos, fetchers (vía API) y toHourly
   countsMemo.ts                         # acumulación incremental de conteos (función pura)
   api.ts                                # GET autenticado (ensureSession + timeout 10s + 401→login)
   usePolling.ts                         # polling genérico (+ refetch manual, full-refetch cada ~20 polls)
-  useTodayCounts.ts, useLatestHeatmap.ts, useDeviceStatus.ts, useZones.ts
+  useTodayCounts.ts, useLatestHeatmap.ts, useDeviceStatus.ts, useZones.ts, useDaily.ts
+  trend.ts                              # serie diaria, hoy vs. promedio, umbrales de alertas (puro)
   useTickingAge.ts                      # antigüedad en vivo a partir de un baseline del servidor
   formatAge.ts, time.ts, validateHeatmap.ts
   server.ts                             # helpers de las rutas (auth, store param, "hoy" AR, ageSeconds)

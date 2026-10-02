@@ -17,10 +17,13 @@ interface HealthRawRow {
 }
 
 // GET /api/analytics/health?store=<id>
-// → { cameras, onlineCount, totalCount }: multi-cámara — cada cámara escribe su
+// → { cameras, onlineCount, totalCount, lastHeartbeatAgeSeconds }: multi-cámara — cada cámara escribe su
 // propio latido con su camera_id (solo la cámara de entrada escribe counts/
 // ocupación, pero todas escriben health). Se trae el último latido POR
 // camera_id, con la antigüedad calculada acá (no con el reloj del navegador).
+// `lastHeartbeatAgeSeconds` es la antigüedad del último latido del local SIN
+// límite de ventana (para la alerta "motor sin señal" del panel): si el motor
+// lleva más de 5 min caído, `cameras` viene vacío y hay que ir a buscarlo aparte.
 export async function GET(req: NextRequest) {
   const session = await requireSupervisor(req);
   if (session instanceof Response) return session;
@@ -62,10 +65,28 @@ export async function GET(req: NextRequest) {
   }
   cameras.sort((a, b) => a.camera_id.localeCompare(b.camera_id));
 
+  let lastHeartbeatAgeSeconds: number | null =
+    cameras.length > 0 ? Math.min(...cameras.map((c) => c.ageSeconds)) : null;
+  if (lastHeartbeatAgeSeconds === null) {
+    const last = await supabaseAdmin
+      .from("analytics_health")
+      .select("ts")
+      .eq("store_id", store)
+      .order("ts", { ascending: false })
+      .limit(1);
+    if (last.error) {
+      console.error("analytics/health error:", last.error);
+      return NextResponse.json({ error: "Error consultando estado del motor" }, { status: 500 });
+    }
+    const row = (last.data ?? [])[0] as { ts: string } | undefined;
+    lastHeartbeatAgeSeconds = row ? ageSeconds(row.ts) : null;
+  }
+
   const body: HealthResponse = {
     cameras,
     onlineCount: cameras.filter((c) => c.online).length,
     totalCount: cameras.length,
+    lastHeartbeatAgeSeconds,
   };
   return NextResponse.json(body, { headers: NO_STORE });
 }

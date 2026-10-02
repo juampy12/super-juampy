@@ -41,3 +41,37 @@ export function timeLabelAR(iso: string | number): string {
     hourCycle: "h23",
   }).format(new Date(iso));
 }
+
+export const DAY_MS = 24 * HOUR_MS;
+
+/** Día calendario (YYYY-MM-DD) de un timestamp, en hora de Argentina. */
+export function dayAR(iso: string | number | Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: AR_TZ }).format(new Date(iso));
+}
+
+/**
+ * Suma `delta` días calendario a un día YYYY-MM-DD. Aritmética sobre la fecha
+ * en UTC (no sobre un instante): no depende de la zona horaria del proceso.
+ */
+export function shiftDay(day: string, delta: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + delta)).toISOString().slice(0, 10);
+}
+
+/** Los últimos `n` días calendario terminando en `today` (inclusive), del más viejo al más nuevo. */
+export function lastDays(today: string, n: number): string[] {
+  return Array.from({ length: n }, (_, i) => shiftDay(today, i - (n - 1)));
+}
+
+/** Etiqueta corta de un día YYYY-MM-DD para gráficos (ej. "01/10"). */
+export function dayLabelAR(day: string): string {
+  const [, m, d] = day.split("-");
+  return `${d}/${m}`;
+}
+
+/** Nombre del día de la semana (ej. "jueves") de un día YYYY-MM-DD. */
+export function weekdayNameAR(day: string): string {
+  return new Intl.DateTimeFormat("es-AR", { timeZone: AR_TZ, weekday: "long" }).format(
+    new Date(`${day}T12:00:00-03:00`)
+  );
+}

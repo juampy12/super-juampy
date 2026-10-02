@@ -5,5 +5,6 @@ export function formatAge(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `hace ${minutes} min`;
   const hours = Math.floor(minutes / 60);
-  return `hace ${hours} h`;
+  if (hours < 48) return `hace ${hours} h`;
+  return `hace ${Math.floor(hours / 24)} días`;
 }
