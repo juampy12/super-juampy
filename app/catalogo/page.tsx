@@ -37,6 +37,31 @@ type ProductMini = {
   active: boolean | null;
 };
 
+type CatalogRef = {
+  ean: string;
+  nombre: string | null;
+  marca: string | null;
+  cantidad: string | null;
+  unidad: string | null;
+};
+
+// Resultado de consultar el código escaneado en el alta. `code` es el código
+// tal como se consultó: si el campo SKU ya no dice eso, el resultado no aplica.
+type CodeLookup =
+  | { code: string; kind: "exists"; product: ProductMini }
+  | { code: string; kind: "catalog"; catalog: CatalogRef };
+
+const LOOKUP_TIMEOUT_MS = 3000;
+
+function catalogRefLine(c: CatalogRef) {
+  const marca = (c.marca ?? "").trim();
+  const presentacion = [c.cantidad, c.unidad]
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return [marca, presentacion].filter(Boolean).join(" · ");
+}
+
 export default function CatalogoPage() {
   // 🔒 roles (client-only, sin romper hydration)
   const [isSupervisor, setIsSupervisor] = useState(false);
@@ -96,6 +121,108 @@ export default function CatalogoPage() {
   const finalPriceRef = useRef<HTMLInputElement>(null);
   const stockRef = useRef<HTMLInputElement>(null);
 
+  // Consulta del código escaneado (ya existe / está en el catálogo SEPA).
+  // Es solo una ayuda: nunca frena el alta ni muestra errores.
+  const [lookup, setLookup] = useState<CodeLookup | null>(null);
+  const [reactivating, setReactivating] = useState(false);
+  const lookupSeqRef = useRef(0);
+  const lookupAbortRef = useRef<AbortController | null>(null);
+
+  // Invalida cualquier consulta en vuelo y borra el resultado anterior.
+  function clearLookup() {
+    lookupSeqRef.current++;
+    lookupAbortRef.current?.abort();
+    lookupAbortRef.current = null;
+    setLookup(null);
+  }
+
+  async function lookupCode(rawCode: string) {
+    const code = rawCode.trim();
+    clearLookup();
+    if (!code) return;
+
+    const seq = lookupSeqRef.current;
+    const ctrl = new AbortController();
+    lookupAbortRef.current = ctrl;
+    const timer = setTimeout(() => ctrl.abort(), LOOKUP_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(`/api/products/catalog-lookup?code=${encodeURIComponent(code)}`, {
+        signal: ctrl.signal,
+      });
+      // Sin conexión el service worker responde 503 {offline:true} en vez de
+      // rechazar: hay que mirar la respuesta, no alcanza con el catch.
+      if (!res.ok) return;
+      const json = await res.json().catch(() => null);
+      if (!json?.ok) return;
+      // El código cambió (o se limpió el form) mientras llegaba la respuesta.
+      if (seq !== lookupSeqRef.current) return;
+
+      if (json.status === "exists" && json.product?.id) {
+        setLookup({ code, kind: "exists", product: json.product as ProductMini });
+      } else if (json.status === "catalog" && json.catalog) {
+        const catalog = json.catalog as CatalogRef;
+        setLookup({ code, kind: "catalog", catalog });
+        const nombre = String(catalog.nombre ?? "").trim();
+        // Nunca pisar un nombre que ya se empezó a escribir.
+        if (nombre) setName((prev) => (prev.trim() ? prev : nombre));
+      }
+    } catch {
+      // red caída, timeout o abort: se sigue con alta manual
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function handleSkuKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" && !e.ctrlKey) {
+      // El foco salta primero; la consulta corre en paralelo.
+      focusNext(e, nameRef);
+      void lookupCode(sku);
+    }
+  }
+
+  function editExisting(p: ProductMini) {
+    setTab("editar");
+    setShowInactive(p.active === false);
+    setQ(p.sku ?? "");
+    setResults([p]);
+    pick(p);
+  }
+
+  async function reactivateExisting(p: ProductMini) {
+    if (!isSupervisor) {
+      toast.error("Solo supervisor puede reactivar productos.");
+      return;
+    }
+    const ok = window.confirm(`¿Reactivar este producto?\n\n${p.name}`);
+    if (!ok) return;
+
+    setReactivating(true);
+    try {
+      const res = await fetch("/api/products/update-active", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: p.id, active: true }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!json?.ok) {
+        toast.error(`Error reactivando: ${json?.error ?? "desconocido"}`);
+        return;
+      }
+      toast.success(`${p.name} reactivado`);
+      setLookup((prev) =>
+        prev?.kind === "exists" && prev.product.id === p.id
+          ? { ...prev, product: { ...prev.product, active: true } }
+          : prev
+      );
+    } catch {
+      toast.error("No se pudo reactivar. Revisá la conexión.");
+    } finally {
+      setReactivating(false);
+    }
+  }
+
   function focusNext(e: React.KeyboardEvent, nextRef: React.RefObject<HTMLElement | null>) {
     if (e.key === "Enter" && !e.ctrlKey) {
       e.preventDefault();
@@ -132,6 +259,7 @@ export default function CatalogoPage() {
 
   // Reset completo (botón "Limpiar"): también borra IVA/Margen/Sucursal
   const resetAll = () => {
+    clearLookup();
     setName("");
     setIsOwn(true);
     setSku("");
@@ -148,6 +276,7 @@ export default function CatalogoPage() {
 
   // Reset tras crear: IVA%, Margen% y Sucursal persisten (mismo remito, misma sucursal)
   const resetAfterCreate = () => {
+    clearLookup();
     setName("");
     setIsOwn(true);
     setSku("");
@@ -529,12 +658,48 @@ export default function CatalogoPage() {
                     autoFocus
                     className="border rounded px-3 py-2 w-full"
                     value={sku}
-                    onChange={(e) => setSku(e.target.value)}
-                    onKeyDown={(e) => focusNext(e, nameRef)}
+                    onChange={(e) => {
+                      setSku(e.target.value);
+                      clearLookup();
+                    }}
+                    onKeyDown={handleSkuKeyDown}
                     placeholder={
                       isOwn ? "Escanear o dejar vacío para autogenerar" : "Escanear código de barras"
                     }
                   />
+                  {lookup?.kind === "exists" && (
+                    <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+                      <div>
+                        Este código ya existe{lookup.product.active === false ? " y está " : ": "}
+                        {lookup.product.active === false && <b>desactivado</b>}
+                        {lookup.product.active === false && ": "}
+                        <b>{lookup.product.name}</b>
+                        {lookup.product.sku && lookup.product.sku !== lookup.code
+                          ? ` (SKU ${lookup.product.sku})`
+                          : ""}
+                        {lookup.product.price != null ? ` — ${money(n(lookup.product.price, 0))}` : ""}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {lookup.product.active === false && (
+                          <button
+                            className="px-3 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                            disabled={reactivating || !isSupervisor}
+                            onClick={() => void reactivateExisting(lookup.product)}
+                            type="button"
+                          >
+                            {reactivating ? "Reactivando..." : "Reactivar"}
+                          </button>
+                        )}
+                        <button
+                          className="px-3 py-1 rounded bg-white border hover:bg-neutral-100"
+                          onClick={() => editExisting(lookup.product)}
+                          type="button"
+                        >
+                          Ver en Editar / Desactivar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="md:col-span-2 flex items-center gap-2">
@@ -559,6 +724,11 @@ export default function CatalogoPage() {
                     onKeyDown={(e) => focusNext(e, costRef)}
                     placeholder="Ej: Pan hamburguesa x6"
                   />
+                  {lookup?.kind === "catalog" && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      Catálogo SEPA: {catalogRefLine(lookup.catalog) || lookup.catalog.nombre || lookup.catalog.ean}
+                    </div>
+                  )}
                 </div>
 
                 <div>
