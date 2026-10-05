@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPosEmployee } from "@/lib/posSession";
+import { normalizeSku } from "@/lib/sku";
 
 type ExcelRow = Record<string, string | number | null>;
 
@@ -44,6 +45,7 @@ type ApplySummary = {
   errors: string[];
   supplierAssigned?: number;
   unitsSkipped?: number;
+  zeroPriceSkipped?: number;
 };
 
 type Supplier = { id: string; name: string };
@@ -528,13 +530,24 @@ export default function ImportarPreciosPage() {
         dbProducts.push(...((json.data ?? []) as typeof dbProducts));
       }
 
-      const dbBySku: Record<string, typeof dbProducts[0]> = {};
-      for (const p of dbProducts) { if (p.sku) dbBySku[p.sku] = p; }
+      // Indexado por SKU normalizado (sin ceros a la izquierda) — el endpoint
+      // ya resuelve el match así del lado del servidor, pero devuelve el SKU
+      // tal cual está guardado en la base; si acá se vuelve a indexar por el
+      // string literal se pierde esa normalización y un código del Excel con
+      // distinto padding de ceros cae como "no encontrado" aunque el
+      // servidor sí lo haya matcheado.
+      const dbByNormSku: Record<string, typeof dbProducts[0]> = {};
+      for (const p of dbProducts) { if (p.sku) dbByNormSku[normalizeSku(p.sku)] = p; }
 
       const matchedList: ProductMatch[] = [];
       const notFoundList: NotFoundItem[] = [];
       const initPrices: Record<string, number> = {};
       const initNames: Record<string, string> = {};
+      // Si dos códigos distintos del Excel (ej. "004166" y "4166") normalizan
+      // al mismo producto, solo se toma el primero — mandar el mismo dbId dos
+      // veces en el mismo lote de bulk-price-import es ambiguo para el
+      // UPDATE ... FROM unnest().
+      const claimedDbIds = new Set<string>();
 
       for (const sku of skus) {
         const row = skuToRow[sku];
@@ -542,8 +555,11 @@ export default function ImportarPreciosPage() {
         const rawBulkPrice = parsePrice(row[priceCol]);
         const sinExistencia = row["Existencia"] === "S/E";
 
-        if (dbBySku[sku]) {
-          const db = dbBySku[sku];
+        const db = dbByNormSku[normalizeSku(sku)];
+        if (db && claimedDbIds.has(db.id)) continue;
+
+        if (db) {
+          claimedDbIds.add(db.id);
           const deriv = deriveUnitPricing(rawBulkPrice, sourceName, divideByUnits, ivaMode, unitOverrides[sku] ?? null);
           const importedPrice = deriv.effectiveCost;
           const finalPrice = Math.round(importedPrice * (1 + margin / 100) * 100) / 100;
@@ -615,20 +631,39 @@ export default function ImportarPreciosPage() {
     // "Precio por bulto" activo: nunca aplicamos una división dudosa — las
     // filas sin unidades resueltas quedan afuera de esta tanda (se avisa
     // antes de confirmar y en el resumen final).
-    const applicable = divideByUnits ? matched.filter((m) => !m.unitsUnresolved) : matched;
-    const skippedByUnits = matched.length - applicable.length;
+    const afterUnits = divideByUnits ? matched.filter((m) => !m.unitsUnresolved) : matched;
+    const skippedByUnits = matched.length - afterUnits.length;
+
+    // Precio final $0 (celda vacía o con formato irreconocible en el Excel):
+    // nunca se aplica una fila así — mismo criterio que las unidades sin
+    // detectar arriba.
+    const applicable = afterUnits.filter((m) => m.finalPrice > 0);
+    const skippedByZeroPrice = afterUnits.length - applicable.length;
+
     if (applicable.length === 0) {
-      alert("Ningún producto tiene unidades resueltas — corregí las unidades en la vista previa antes de aplicar.");
+      alert("Ningún producto tiene un precio válido para aplicar — revisá las unidades y los precios en 0 en la vista previa.");
       return;
     }
 
+    // Margen 0% + "guardar como costo": el precio de venta queda IGUAL al
+    // costo y se pisa el markup_rate guardado de cada producto a 0 — es el
+    // caso más fácil de aplicar sin querer porque el margen arranca en 0 por
+    // default en cada archivo nuevo.
+    const marginZeroTrap = saveCost && margin <= 0;
+
     const supplierName_ = supplierName.trim();
     const confirmMsg =
+      (marginZeroTrap
+        ? `⚠️ Margen en 0% con "Guardar también como costo" tildado: el precio de venta va a quedar IGUAL AL COSTO (sin ganancia) y se va a reemplazar el margen guardado de ${applicable.length} producto(s) por 0%.\n\n`
+        : "") +
       (supplierName_
         ? `¿Aplicar precios a ${applicable.length} productos y asignarles el proveedor "${supplierName_}"?`
         : `¿Aplicar precios a ${applicable.length} productos?`) +
       (skippedByUnits > 0
         ? `\n\n⚠️ ${skippedByUnits} producto(s) sin unidades detectadas quedan AFUERA de esta tanda.`
+        : "") +
+      (skippedByZeroPrice > 0
+        ? `\n\n⚠️ ${skippedByZeroPrice} producto(s) quedarían en $0,00 (precio vacío o no reconocido en el archivo) y quedan AFUERA de esta tanda.`
         : "");
     if (!window.confirm(confirmMsg)) return;
 
@@ -708,6 +743,7 @@ export default function ImportarPreciosPage() {
       errors: allErrors,
       supplierAssigned,
       unitsSkipped: skippedByUnits > 0 ? skippedByUnits : undefined,
+      zeroPriceSkipped: skippedByZeroPrice > 0 ? skippedByZeroPrice : undefined,
     });
     setStep("done");
   }
@@ -899,7 +935,12 @@ export default function ImportarPreciosPage() {
     matched.filter((m) => !m.unitsUnresolved).length + notFound.filter((n) => !n.unitsUnresolved).length;
   const unitsUnresolvedCount =
     matched.filter((m) => m.unitsUnresolved).length + notFound.filter((n) => n.unitsUnresolved).length;
-  const applicableMatched = divideByUnits ? matched.filter((m) => !m.unitsUnresolved) : matched;
+  const afterUnitsMatched = divideByUnits ? matched.filter((m) => !m.unitsUnresolved) : matched;
+  const unitsExcludedCount = matched.length - afterUnitsMatched.length;
+  // Precio final $0 (celda vacía o con formato irreconocible) — nunca se
+  // aplica, mismo criterio que las unidades sin detectar.
+  const applicableMatched = afterUnitsMatched.filter((m) => m.finalPrice > 0);
+  const zeroPriceMatchedCount = afterUnitsMatched.length - applicableMatched.length;
   const excludedMatchedCount = matched.length - applicableMatched.length;
 
   return (
@@ -1341,8 +1382,8 @@ export default function ImportarPreciosPage() {
               {loading
                 ? loadingMsg
                 : `Aplicar precios a existentes (${applicableMatched.length}${
-                    excludedMatchedCount > 0 ? ` · ${excludedMatchedCount} sin unidades` : ""
-                  })`}
+                    unitsExcludedCount > 0 ? ` · ${unitsExcludedCount} sin unidades` : ""
+                  }${zeroPriceMatchedCount > 0 ? ` · ${zeroPriceMatchedCount} en $0` : ""})`}
             </button>
 
             <button
@@ -1369,10 +1410,17 @@ export default function ImportarPreciosPage() {
             </p>
           )}
 
-          {divideByUnits && excludedMatchedCount > 0 && (
+          {divideByUnits && unitsExcludedCount > 0 && (
             <p className="text-xs text-red-700 mb-2 font-medium">
-              ⚠️ {excludedMatchedCount} producto(s) sin unidades detectadas — no se van a aplicar
+              ⚠️ {unitsExcludedCount} producto(s) sin unidades detectadas — no se van a aplicar
               hasta que corrijas la columna "Unidades" en la tabla de abajo (o los cargues aparte).
+            </p>
+          )}
+
+          {zeroPriceMatchedCount > 0 && (
+            <p className="text-xs text-red-700 mb-2 font-medium">
+              ⚠️ {zeroPriceMatchedCount} producto(s) quedarían en $0,00 (precio vacío o no reconocido
+              en el archivo) — no se van a aplicar. Revisá esas filas en el Excel.
             </p>
           )}
 
@@ -1596,7 +1644,7 @@ export default function ImportarPreciosPage() {
                 </thead>
                 <tbody>
                   {matched.map((m) => (
-                    <tr key={m.sku} className={`border-t hover:bg-gray-50 ${m.unitsUnresolved ? "bg-red-50" : ""}`}>
+                    <tr key={m.sku} className={`border-t hover:bg-gray-50 ${m.unitsUnresolved || m.finalPrice <= 0 ? "bg-red-50" : ""}`}>
                       <td className="p-2">
                         <div className="font-medium flex items-center gap-1.5">
                           {m.dbName}
@@ -1685,6 +1733,12 @@ export default function ImportarPreciosPage() {
               <div className="flex justify-between items-center py-2 border-b">
                 <span className="text-gray-600">Sin unidades detectadas (no aplicados)</span>
                 <span className="font-bold text-red-600 text-lg">{applySummary.unitsSkipped}</span>
+              </div>
+            )}
+            {applySummary.zeroPriceSkipped !== undefined && (
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-gray-600">En $0,00 (no aplicados)</span>
+                <span className="font-bold text-red-600 text-lg">{applySummary.zeroPriceSkipped}</span>
               </div>
             )}
             {addSummary && (addSummary.created > 0 || addSummary.updated > 0) && (
