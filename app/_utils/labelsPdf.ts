@@ -131,7 +131,7 @@ function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo
   if (opts.blankPrice) {
     // Recuadro para escribir a mano: ocupa la misma franja que el precio
     // impreso (precio viejo tachado + precio grande), sin pisar el pie.
-    const boxTop = priceBaseline - 7.5;
+    const boxTop = priceBaseline - 8;
     const boxH = 8.5;
     doc.setDrawColor(150, 150, 150);
     doc.setLineWidth(0.25);
@@ -167,21 +167,27 @@ function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo
   let skuX = x + PAD;
 
   if (logo) {
-    const logoH = 2.8;
+    const logoH = 3.3;
     const logoW = logoH * LOGO_ASPECT;
     doc.addImage(logo, "PNG", x + PAD, footerY - logoH - 0.2, logoW, logoH);
     skuX = x + PAD + logoW + 1;
   }
 
+  // $/kg primero: el SKU usa el ancho que queda libre, así no se pisan
+  const rightEdge = x + LABEL_W - PAD;
+  let skuMaxW = rightEdge - skuX;
   doc.setTextColor(136, 136, 136);
-  doc.setFont("helvetica", "normal");
-  fitFontSize(doc, `SKU ${product.sku}`, contentW * 0.55, 5.5, 4, "normal");
-  doc.text(`SKU ${product.sku}`, skuX, footerY, { align: "left" });
   if (product.is_weighted) {
     const kgText = opts.blankPrice ? "precio x kg" : `$${fmt(product.price)}/kg`;
     fitFontSize(doc, kgText, contentW * 0.4, 5.5, 4, "normal");
-    doc.text(kgText, x + LABEL_W - PAD, footerY, { align: "right" });
+    doc.text(kgText, rightEdge, footerY, { align: "right" });
+    skuMaxW -= doc.getTextWidth(kgText) + 1;
   }
+
+  // SKU grande y oscuro: los empleados lo leen para no confundir etiquetas
+  doc.setTextColor(68, 68, 68);
+  fitFontSize(doc, `SKU ${product.sku}`, skuMaxW, 7, 4.5, "bold");
+  doc.text(`SKU ${product.sku}`, skuX, footerY, { align: "left" });
   doc.setTextColor(0, 0, 0);
 }
 
