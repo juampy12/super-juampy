@@ -42,6 +42,12 @@ const MARGIN_X = (PAGE_W - COLS * LABEL_W) / 2;
 const MARGIN_Y = (PAGE_H - ROWS * LABEL_H) / 2;
 const PAD = 2;
 
+export type LabelOptions = {
+  // Imprime un recuadro vacío en lugar del precio, para escribirlo a mano.
+  // Solo cambia el dibujo — no toca ningún dato del producto.
+  blankPrice?: boolean;
+};
+
 function fmt(n: number) {
   return n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -80,7 +86,7 @@ function fitTextLines(doc: jsPDF, text: string, maxWidth: number, maxSize: numbe
   return { size, lines };
 }
 
-function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo: string | null) {
+function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo: string | null, opts: LabelOptions) {
   const contentW = LABEL_W - PAD * 2;
   const centerX = x + LABEL_W / 2;
 
@@ -93,7 +99,7 @@ function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo
 
   const qtyPromo = product.qty_buy && (product.offer_type === "nxm" ? product.qty_pay : product.offer_type === "second_unit_pct" ? product.offer_value : null);
   const hasQtyPromo = !!qtyPromo;
-  const hasPriceOffer = product.has_offer && !hasQtyPromo && product.effective_price < product.price;
+  const hasPriceOffer = !opts.blankPrice && product.has_offer && !hasQtyPromo && product.effective_price < product.price;
 
   let nameTop = y + PAD + 1;
 
@@ -122,7 +128,19 @@ function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo
   // Price block, anchored to a fixed baseline regardless of name length — el protagonista
   const priceBaseline = y + LABEL_H - 7;
 
-  if (hasPriceOffer) {
+  if (opts.blankPrice) {
+    // Recuadro para escribir a mano: ocupa la misma franja que el precio
+    // impreso (precio viejo tachado + precio grande), sin pisar el pie.
+    const boxTop = priceBaseline - 7.5;
+    const boxH = 8.5;
+    doc.setDrawColor(150, 150, 150);
+    doc.setLineWidth(0.25);
+    doc.roundedRect(x + PAD, boxTop, contentW, boxH, 1, 1);
+    doc.setTextColor(150, 150, 150);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("$", x + PAD + 1.2, boxTop + boxH / 2 + 1.7);
+  } else if (hasPriceOffer) {
     doc.setTextColor(110, 110, 110);
     doc.setFont("helvetica", "normal");
     const oldText = `$${fmt(product.price)}`;
@@ -160,13 +178,14 @@ function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo
   fitFontSize(doc, `SKU ${product.sku}`, contentW * 0.55, 5.5, 4, "normal");
   doc.text(`SKU ${product.sku}`, skuX, footerY, { align: "left" });
   if (product.is_weighted) {
-    fitFontSize(doc, `$${fmt(product.price)}/kg`, contentW * 0.4, 5.5, 4, "normal");
-    doc.text(`$${fmt(product.price)}/kg`, x + LABEL_W - PAD, footerY, { align: "right" });
+    const kgText = opts.blankPrice ? "precio x kg" : `$${fmt(product.price)}/kg`;
+    fitFontSize(doc, kgText, contentW * 0.4, 5.5, 4, "normal");
+    doc.text(kgText, x + LABEL_W - PAD, footerY, { align: "right" });
   }
   doc.setTextColor(0, 0, 0);
 }
 
-export async function generateLabelsPDF(products: LabelProduct[]): Promise<jsPDF> {
+export async function generateLabelsPDF(products: LabelProduct[], opts: LabelOptions = {}): Promise<jsPDF> {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const logo = await loadLogoDataURL();
 
@@ -177,13 +196,13 @@ export async function generateLabelsPDF(products: LabelProduct[]): Promise<jsPDF
     const col = posInPage % COLS;
     const x = MARGIN_X + col * LABEL_W;
     const y = MARGIN_Y + row * LABEL_H;
-    drawLabel(doc, x, y, product, logo);
+    drawLabel(doc, x, y, product, logo, opts);
   });
 
   return doc;
 }
 
-export async function exportLabelsPDF(products: LabelProduct[], filename = "etiquetas.pdf") {
-  const doc = await generateLabelsPDF(products);
+export async function exportLabelsPDF(products: LabelProduct[], filename = "etiquetas.pdf", opts: LabelOptions = {}) {
+  const doc = await generateLabelsPDF(products, opts);
   doc.save(filename);
 }

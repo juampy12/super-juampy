@@ -48,6 +48,8 @@ export default function EtiquetasPage() {
   const [loadingAll, setLoadingAll] = useState(false);
   const [items, setItems] = useState<LabelItem[]>([]);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  // Solo afecta el dibujo del PDF: deja el recuadro del precio en blanco.
+  const [blankPrice, setBlankPrice] = useState(false);
 
   // "Todo el catálogo": traer todo lo que tiene precio, o solo lo que
   // cambió de precio recientemente (para no reimprimir todo de nuevo).
@@ -144,8 +146,9 @@ export default function EtiquetasPage() {
       const data = await res.json();
       // Excluye productos sin precio cargado (price <= 0): imprimir una
       // etiqueta "$0" no sirve — el usuario los tenía que sacar a mano.
+      // En modo "sin precio" sí entran: el precio se escribe a mano.
       const rows: ProductRow[] = Array.isArray(data)
-        ? (data as ProductRow[]).filter((r) => r.active !== false && Number(r.price) > 0)
+        ? (data as ProductRow[]).filter((r) => r.active !== false && (blankPrice || Number(r.price) > 0))
         : [];
       const supplierSuffix = supplierScopeLabel ? ` de ${supplierScopeLabel}` : "";
 
@@ -153,7 +156,7 @@ export default function EtiquetasPage() {
         toast(
           catalogMode === "recent"
             ? `No hay productos${supplierSuffix} con precio actualizado en ese rango`
-            : `No se encontraron productos activos${supplierSuffix} con precio cargado`
+            : `No se encontraron productos activos${supplierSuffix}${blankPrice ? "" : " con precio cargado"}`
         );
         return;
       }
@@ -188,9 +191,18 @@ export default function EtiquetasPage() {
 
   async function generatePdf() {
     const expanded = items.flatMap((item) => Array.from({ length: item.qty }, () => item.product));
+    // Si se cargaron productos $0 en modo "sin precio" y después se lo
+    // desactivó, avisar antes de imprimir etiquetas con "$0,00".
+    const zeroCount = blankPrice ? 0 : items.filter((i) => !(Number(i.product.price) > 0)).length;
+    if (zeroCount > 0 && !window.confirm(`${zeroCount} producto${zeroCount === 1 ? "" : "s"} de la lista no tiene${zeroCount === 1 ? "" : "n"} precio y va${zeroCount === 1 ? "" : "n"} a salir con "$0,00". ¿Imprimir igual?`)) return;
     setGeneratingPdf(true);
     try {
-      await exportLabelsPDF(expanded, `etiquetas-${new Date().toISOString().slice(0, 10)}.pdf`);
+      const date = new Date().toISOString().slice(0, 10);
+      await exportLabelsPDF(
+        expanded,
+        `etiquetas-${date}${blankPrice ? "-sin-precio" : ""}.pdf`,
+        { blankPrice }
+      );
     } catch (e: any) {
       toast.error(e?.message || "Error generando el PDF");
     } finally {
@@ -206,7 +218,8 @@ export default function EtiquetasPage() {
   const supplierScopeLabel =
     supplierId === "none" ? "sin proveedor" : suppliers.find((s) => s.id === supplierId)?.name ?? null;
   const bulkScopeText = supplierScopeLabel ? supplierScopeLabel : "todo el catálogo";
-  const bulkModeText = catalogMode === "recent" ? "actualizados recientemente" : "con precio";
+  const bulkModeText =
+    catalogMode === "recent" ? "actualizados recientemente" : blankPrice ? "todos, incluso sin precio" : "con precio";
 
   return (
     <div className="max-w-7xl mx-auto px-3 py-4">
@@ -253,7 +266,7 @@ export default function EtiquetasPage() {
                 onChange={(e) => setCatalogMode(e.target.value as "all" | "recent")}
                 aria-label="Rango"
               >
-                <option value="all">Todos con precio</option>
+                <option value="all">{blankPrice ? "Todos (incluso sin precio)" : "Todos con precio"}</option>
                 <option value="recent">Actualizados recientemente</option>
               </select>
               {catalogMode === "recent" && (
@@ -278,6 +291,16 @@ export default function EtiquetasPage() {
                 </>
               )}
             </div>
+
+            <label className="flex items-center gap-2 text-sm text-blue-900 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="w-4 h-4"
+                checked={blankPrice}
+                onChange={(e) => setBlankPrice(e.target.checked)}
+              />
+              Imprimir sin precio (incluye productos con precio $0)
+            </label>
 
             <button
               className="w-full px-4 py-2.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60 flex items-center justify-center gap-2"
@@ -320,13 +343,24 @@ export default function EtiquetasPage() {
             <div className="text-sm text-red-900">
               <b>{totalLabels}</b> {totalLabels === 1 ? "etiqueta lista" : "etiquetas listas"} para imprimir
             </div>
+            <label className="flex items-center gap-2 text-sm text-red-900 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="w-4 h-4"
+                checked={blankPrice}
+                onChange={(e) => setBlankPrice(e.target.checked)}
+              />
+              Imprimir sin precio (dejar espacio en blanco para escribir a mano)
+            </label>
             <button
               className="px-5 py-2 rounded-lg bg-[#CC2020] text-white font-semibold hover:bg-[#a81a1a] disabled:opacity-60 flex items-center gap-2"
               onClick={generatePdf}
               disabled={generatingPdf}
             >
               <i className="ti ti-file-type-pdf" aria-hidden="true" />
-              {generatingPdf ? "Generando…" : `Generar PDF (${totalLabels} ${totalLabels === 1 ? "etiqueta" : "etiquetas"})`}
+              {generatingPdf
+                ? "Generando…"
+                : `Generar PDF${blankPrice ? " sin precio" : ""} (${totalLabels} ${totalLabels === 1 ? "etiqueta" : "etiquetas"})`}
             </button>
           </div>
         )}
@@ -438,7 +472,7 @@ export default function EtiquetasPage() {
             </div>
             {items.length > 0 && (
               <div className="px-4 py-3 border-t bg-gray-50 text-sm text-gray-600">
-                Total: <b>{totalLabels}</b> {totalLabels === 1 ? "etiqueta" : "etiquetas"} · 50×40mm, 28 por hoja A4
+                Total: <b>{totalLabels}</b> {totalLabels === 1 ? "etiqueta" : "etiquetas"} · 46×36mm, 32 por hoja A4
               </div>
             )}
           </div>
