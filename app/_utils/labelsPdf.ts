@@ -40,7 +40,7 @@ const ROWS = 8;
 const PER_PAGE = COLS * ROWS;
 const MARGIN_X = (PAGE_W - COLS * LABEL_W) / 2;
 const MARGIN_Y = (PAGE_H - ROWS * LABEL_H) / 2;
-const PAD = 2;
+const PAD = 2.5; // margen interno del contenido
 
 export type LabelOptions = {
   // Imprime un recuadro vacío en lugar del precio, para escribirlo a mano.
@@ -64,13 +64,38 @@ function fitFontSize(doc: jsPDF, text: string, maxWidth: number, maxSize: number
   return size;
 }
 
+// Corte de líneas palabra por palabra con el ancho real del texto.
+// splitTextToSize de jsPDF corta de más con algunos caracteres (ej. 12").
+function wrapWords(doc: jsPDF, text: string, maxWidth: number): string[] {
+  const lines: string[] = [];
+  let current = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (doc.getTextWidth(candidate) <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+    if (current) lines.push(current);
+    if (doc.getTextWidth(word) <= maxWidth) {
+      current = word;
+    } else {
+      // Palabra más ancha que la etiqueta: se parte a la fuerza
+      const parts: string[] = doc.splitTextToSize(word, maxWidth);
+      lines.push(...parts.slice(0, -1));
+      current = parts[parts.length - 1] ?? "";
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [text];
+}
+
 function fitTextLines(doc: jsPDF, text: string, maxWidth: number, maxSize: number, minSize: number, maxLines: number, style: "bold" | "normal" = "bold") {
   doc.setFont("helvetica", style);
   let size = maxSize;
   let lines: string[] = [text];
   while (size >= minSize) {
     doc.setFontSize(size);
-    lines = doc.splitTextToSize(text, maxWidth);
+    lines = wrapWords(doc, text, maxWidth);
     if (lines.length <= maxLines) break;
     size -= 0.5;
   }
@@ -86,8 +111,32 @@ function fitTextLines(doc: jsPDF, text: string, maxWidth: number, maxSize: numbe
   return { size, lines };
 }
 
+// Colores de marca
+const RED: [number, number, number] = [204, 32, 32]; // #CC2020
+const BLUE: [number, number, number] = [26, 95, 168]; // #1A5FA8
+const LIME: [number, number, number] = [168, 198, 42]; // #A8C62A
+
+// Franjas de la etiqueta, en mm desde su borde superior. Sin rellenos
+// grandes (se imprimen muchas seguidas): el color va en texto y líneas.
+const INSET = 0.8; // borde azul, hacia adentro del corte
+const NAME_TOP = INSET;
+const NAME_BOTTOM = 11.8;
+const DIVIDER_H = 0.6;
+const PRICE_TOP = NAME_BOTTOM + DIVIDER_H;
+const PRICE_BOTTOM = 29.6;
+const FOOTER_LINE = 29.8;
+const FOOTER_BOTTOM = LABEL_H - INSET;
+const BLANK_BOX_H = 9.5;
+
+// Alto de mayúsculas/números de Helvetica, en mm, para un tamaño en pt
+function capH(size: number) {
+  return size * 0.254;
+}
+
 function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo: string | null, opts: LabelOptions) {
   const contentW = LABEL_W - PAD * 2;
+  const left = x + PAD;
+  const right = x + LABEL_W - PAD;
   const centerX = x + LABEL_W / 2;
 
   // Cut guide (dashed border)
@@ -97,90 +146,109 @@ function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo
   doc.rect(x, y, LABEL_W, LABEL_H);
   doc.setLineDashPattern([], 0);
 
+  // Borde de marca, redondeado y dentro de los 46×36mm
+  doc.setDrawColor(...BLUE);
+  doc.setLineWidth(0.35);
+  doc.roundedRect(x + INSET, y + INSET, LABEL_W - INSET * 2, LABEL_H - INSET * 2, 1.5, 1.5);
+
   const qtyPromo = product.qty_buy && (product.offer_type === "nxm" ? product.qty_pay : product.offer_type === "second_unit_pct" ? product.offer_value : null);
   const hasQtyPromo = !!qtyPromo;
   const hasPriceOffer = !opts.blankPrice && product.has_offer && !hasQtyPromo && product.effective_price < product.price;
 
-  let nameTop = y + PAD + 1;
+  // Nombre en rojo de marca, hasta 2 líneas, centrado vertical en su franja
+  doc.setTextColor(...RED);
+  const { size: nameSize, lines: nameLines } = fitTextLines(doc, product.name, contentW, 10, 6.5, 2, "bold");
+  const nameLineH = nameSize * 0.4;
+  const nameBlockH = (nameLines.length - 1) * nameLineH + capH(nameSize);
+  const nameFirstBaseline = y + (NAME_TOP + NAME_BOTTOM) / 2 - nameBlockH / 2 + capH(nameSize);
+  nameLines.forEach((line, i) => {
+    doc.text(line, centerX, nameFirstBaseline + i * nameLineH, { align: "center" });
+  });
+
+  // Divisor verde lima entre nombre y precio
+  doc.setFillColor(...LIME);
+  doc.rect(left, y + NAME_BOTTOM, contentW, DIVIDER_H, "F");
+
+  // Zona de precio. La pastilla 2X1 / 2DA AL N% va arriba y empuja el resto.
+  let zoneTop = y + PRICE_TOP;
+  const zoneBottom = y + PRICE_BOTTOM;
 
   if (hasQtyPromo) {
-    const badgeH = 4;
-    doc.setFillColor(20, 20, 20);
-    doc.rect(x, y, LABEL_W, badgeH, "F");
     const badgeText = product.offer_type === "nxm"
       ? `${product.qty_buy}X${product.qty_pay}`
       : `2DA AL ${product.offer_value}%`;
-    doc.setTextColor(255, 255, 255);
-    fitFontSize(doc, badgeText, contentW, 7, 5, "bold");
-    doc.text(badgeText, centerX, y + badgeH - 1.1, { align: "center" });
-    doc.setTextColor(0, 0, 0);
-    nameTop = y + badgeH + 2.3;
+    const pillTop = zoneTop + 1.1;
+    const pillH = 3.2;
+    fitFontSize(doc, badgeText, contentW - 3, 7, 5, "bold");
+    const pillW = doc.getTextWidth(badgeText) + 3;
+    doc.setFillColor(...LIME);
+    doc.roundedRect(centerX - pillW / 2, pillTop, pillW, pillH, 1.2, 1.2, "F");
+    doc.setTextColor(17, 17, 17);
+    doc.text(badgeText, centerX, pillTop + pillH / 2 + capH(doc.getFontSize()) / 2, { align: "center" });
+    zoneTop = pillTop + pillH + 0.3;
   }
-
-  // Product name (up to 2 lines, shrink-to-fit) — protagonista secundario
-  doc.setTextColor(17, 17, 17);
-  const { size: nameSize, lines: nameLines } = fitTextLines(doc, product.name, contentW, 11, 7.5, 2, "bold");
-  const nameLineH = nameSize * 0.4;
-  nameLines.forEach((line, i) => {
-    doc.text(line, centerX, nameTop + nameSize * 0.32 + i * nameLineH, { align: "center" });
-  });
-
-  // Price block, anchored to a fixed baseline regardless of name length — el protagonista
-  const priceBaseline = y + LABEL_H - 7;
+  const zoneCenter = (zoneTop + zoneBottom) / 2;
 
   if (opts.blankPrice) {
-    // Recuadro para escribir a mano: ocupa la misma franja que el precio
-    // impreso (precio viejo tachado + precio grande), sin pisar el pie.
-    const boxTop = priceBaseline - 8;
-    const boxH = 8.5;
+    // Recuadro para escribir el precio a mano, centrado en la zona de precio
+    const boxTop = zoneCenter - BLANK_BOX_H / 2;
     doc.setDrawColor(150, 150, 150);
     doc.setLineWidth(0.25);
-    doc.roundedRect(x + PAD, boxTop, contentW, boxH, 1, 1);
+    doc.roundedRect(left, boxTop, contentW, BLANK_BOX_H, 1, 1);
     doc.setTextColor(150, 150, 150);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text("$", x + PAD + 1.2, boxTop + boxH / 2 + 1.7);
+    doc.text("$", left + 1.2, boxTop + BLANK_BOX_H / 2 + capH(14) / 2);
   } else if (hasPriceOffer) {
-    doc.setTextColor(110, 110, 110);
-    doc.setFont("helvetica", "normal");
     const oldText = `$${fmt(product.price)}`;
-    fitFontSize(doc, oldText, contentW, 7, 5, "normal");
-    doc.text(oldText, centerX, priceBaseline - 5.6, { align: "center" });
+    const newText = `$${fmt(product.effective_price)}`;
+    const oldSize = fitFontSize(doc, oldText, contentW, 7, 5, "normal");
     const oldW = doc.getTextWidth(oldText);
+    const newSize = fitFontSize(doc, newText, contentW, 22, 13, "bold");
+    const gap = 1.8;
+    const blockTop = zoneCenter - (capH(oldSize) + gap + capH(newSize)) / 2;
+    const oldBaseline = blockTop + capH(oldSize);
+
+    doc.setTextColor(110, 110, 110);
+    fitFontSize(doc, oldText, contentW, 7, 5, "normal");
+    doc.text(oldText, centerX, oldBaseline, { align: "center" });
     doc.setDrawColor(120, 120, 120);
     doc.setLineWidth(0.25);
-    doc.line(centerX - oldW / 2, priceBaseline - 6.7, centerX + oldW / 2, priceBaseline - 6.7);
+    doc.line(centerX - oldW / 2, oldBaseline - capH(oldSize) * 0.45, centerX + oldW / 2, oldBaseline - capH(oldSize) * 0.45);
 
-    doc.setTextColor(204, 32, 32);
-    const newText = `$${fmt(product.effective_price)}`;
+    doc.setTextColor(...RED);
     fitFontSize(doc, newText, contentW, 22, 13, "bold");
-    doc.text(newText, centerX, priceBaseline, { align: "center" });
+    doc.text(newText, centerX, oldBaseline + gap + capH(newSize), { align: "center" });
   } else {
     doc.setTextColor(17, 17, 17);
     const priceText = `$${fmt(product.price)}`;
-    fitFontSize(doc, priceText, contentW, 22, 13, "bold");
-    doc.text(priceText, centerX, priceBaseline, { align: "center" });
+    const size = fitFontSize(doc, priceText, contentW, 22, 13, "bold");
+    doc.text(priceText, centerX, zoneCenter + capH(size) / 2, { align: "center" });
   }
 
-  // Footer: logo chico + SKU a la izquierda, $/kg a la derecha si es pesable
-  const footerY = y + LABEL_H - PAD + 0.3;
-  let skuX = x + PAD;
+  // Pie: línea gris finita, logo + SKU a la izquierda, $/kg a la derecha
+  doc.setDrawColor(215, 215, 215);
+  doc.setLineWidth(0.15);
+  doc.line(left, y + FOOTER_LINE, right, y + FOOTER_LINE);
+
+  const footerCenter = y + (FOOTER_LINE + FOOTER_BOTTOM) / 2;
+  const footerY = footerCenter + capH(7) / 2;
+  let skuX = left;
 
   if (logo) {
     const logoH = 3.3;
     const logoW = logoH * LOGO_ASPECT;
-    doc.addImage(logo, "PNG", x + PAD, footerY - logoH - 0.2, logoW, logoH);
-    skuX = x + PAD + logoW + 1;
+    doc.addImage(logo, "PNG", left, footerCenter - logoH / 2, logoW, logoH);
+    skuX = left + logoW + 1;
   }
 
   // $/kg primero: el SKU usa el ancho que queda libre, así no se pisan
-  const rightEdge = x + LABEL_W - PAD;
-  let skuMaxW = rightEdge - skuX;
+  let skuMaxW = right - skuX;
   doc.setTextColor(136, 136, 136);
   if (product.is_weighted) {
     const kgText = opts.blankPrice ? "precio x kg" : `$${fmt(product.price)}/kg`;
     fitFontSize(doc, kgText, contentW * 0.4, 5.5, 4, "normal");
-    doc.text(kgText, rightEdge, footerY, { align: "right" });
+    doc.text(kgText, right, footerY, { align: "right" });
     skuMaxW -= doc.getTextWidth(kgText) + 1;
   }
 
