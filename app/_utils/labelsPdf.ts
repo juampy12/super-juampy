@@ -155,8 +155,8 @@ function drawLabel(doc: jsPDF, x: number, y: number, product: LabelProduct, logo
   const hasQtyPromo = !!qtyPromo;
   const hasPriceOffer = !opts.blankPrice && product.has_offer && !hasQtyPromo && product.effective_price < product.price;
 
-  // Nombre en rojo de marca, hasta 2 líneas, centrado vertical en su franja
-  doc.setTextColor(...RED);
+  // Nombre en negro, hasta 2 líneas, centrado vertical en su franja
+  doc.setTextColor(17, 17, 17);
   const { size: nameSize, lines: nameLines } = fitTextLines(doc, product.name, contentW, 10, 6.5, 2, "bold");
   const nameLineH = nameSize * 0.4;
   const nameBlockH = (nameLines.length - 1) * nameLineH + capH(nameSize);
