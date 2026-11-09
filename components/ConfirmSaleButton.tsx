@@ -102,17 +102,37 @@ export default function ConfirmSaleButton({
 
     const currentKey = idempotencyKeyRef.current;
 
-    try {
-      // Sin conexión conocida: encolar directamente sin intentar la red.
-      if (!isOnline) {
-        const { addToQueue } = await import("@/lib/offlineQueue");
+    // Guarda la venta en la cola offline. Si el navegador no la puede guardar
+    // (memoria llena / storage dañado), NO se da la venta por hecha: alerta
+    // bien visible, el carrito queda como está y se conserva el mismo key
+    // (si la venta llegó al servidor igual, un reintento no la duplica).
+    async function enqueue(): Promise<boolean> {
+      const { addToQueue } = await import("@/lib/offlineQueue");
+      try {
         addToQueue(
           { items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null },
           currentKey,
         );
-        idempotencyKeyRef.current = crypto.randomUUID();
-        onConfirmed?.(null);
-        onQueued?.();
+      } catch (e) {
+        console.error("No se pudo guardar la venta en la cola offline:", e);
+        alert(
+          "⚠️ ATENCIÓN: la venta NO se pudo guardar en este dispositivo " +
+            "(sin conexión y memoria del navegador llena o dañada).\n\n" +
+            "NO quedó registrada. Anotala en papel (productos, total y forma de pago) " +
+            "y avisá al supervisor.",
+        );
+        return false;
+      }
+      idempotencyKeyRef.current = crypto.randomUUID();
+      onConfirmed?.(null);
+      onQueued?.();
+      return true;
+    }
+
+    try {
+      // Sin conexión conocida: encolar directamente sin intentar la red.
+      if (!isOnline) {
+        await enqueue();
         return;
       }
 
@@ -134,14 +154,7 @@ export default function ConfirmSaleButton({
         // Encolar con el MISMO key que se envió al servidor: si el servidor ya procesó
         // la venta (pero la respuesta no llegó), el sync detectará el duplicado y
         // devolverá la venta existente en vez de crear una nueva.
-        const { addToQueue } = await import("@/lib/offlineQueue");
-        addToQueue(
-          { items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null },
-          currentKey,
-        );
-        idempotencyKeyRef.current = crypto.randomUUID();
-        onConfirmed?.(null);
-        onQueued?.();
+        await enqueue();
         return;
       }
 
@@ -149,28 +162,15 @@ export default function ConfirmSaleButton({
         const json = await res.json().catch(() => ({}));
         if (res.status >= 500) {
           // 5xx: servidor caído o error transitorio → encolar con el mismo key.
-          const { addToQueue } = await import("@/lib/offlineQueue");
-          addToQueue(
-            { items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null },
-            currentKey,
-          );
-          idempotencyKeyRef.current = crypto.randomUUID();
-          onConfirmed?.(null);
-          onQueued?.();
+          await enqueue();
         } else if (res.status === 401) {
           // Sesión expirada: encolar la venta para no perderla y avisar al cajero.
-          const { addToQueue } = await import("@/lib/offlineQueue");
-          addToQueue(
-            { items, total, payment, store_id: storeId ?? "", register_id: registerId ?? null },
-            currentKey,
-          );
-          idempotencyKeyRef.current = crypto.randomUUID();
-          onConfirmed?.(null);
-          onQueued?.();
-          toast.error(
-            "Tu sesión expiró. Recargá la página e iniciá sesión de nuevo. La venta quedó guardada.",
-            { duration: 10000 },
-          );
+          if (await enqueue()) {
+            toast.error(
+              "Tu sesión expiró. Recargá la página e iniciá sesión de nuevo. La venta quedó guardada.",
+              { duration: 10000 },
+            );
+          }
         } else {
           // 4xx: error permanente (producto inactivo, datos inválidos) → no encolar.
           // No se resetea el key: misma venta, el usuario puede corregir y reintentar.
