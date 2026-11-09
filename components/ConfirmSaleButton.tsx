@@ -1,6 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { fetchWithTimeout, FetchTimeoutError } from "@/lib/fetchWithTimeout";
+
+// Tope para confirmar una venta en vivo. Una confirmación normal tarda <2s y
+// un arranque en frío de Vercel 3-5s; pasado esto la venta va a la cola
+// offline (con la misma clave de idempotencia) y la caja queda libre.
+const CONFIRM_TIMEOUT_MS = 12_000;
 
 type ConfirmItem = {
   product_id: string;
@@ -138,23 +144,36 @@ export default function ConfirmSaleButton({
 
       let res: Response;
       try {
-        res = await fetch("/api/pos/confirm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // idempotency_key se envía junto con el payload para que el servidor
-          // pueda detectar y rechazar el duplicado si el request llega dos veces.
-          body: JSON.stringify({
-            items, total, payment,
-            store_id: storeId, register_id: registerId,
-            idempotency_key: currentKey,
-          }),
-        });
-      } catch {
-        // Error de red: el dispositivo perdió conectividad o el servidor es inalcanzable.
-        // Encolar con el MISMO key que se envió al servidor: si el servidor ya procesó
-        // la venta (pero la respuesta no llegó), el sync detectará el duplicado y
-        // devolverá la venta existente en vez de crear una nueva.
-        await enqueue();
+        // Con límite de tiempo: si la conexión queda colgada (ni anda ni corta),
+        // la caja no puede quedar trabada en "Confirmando..." con el cliente
+        // esperando. Al cortarse cae al mismo camino que un error de red.
+        res = await fetchWithTimeout(
+          "/api/pos/confirm",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            // idempotency_key se envía junto con el payload para que el servidor
+            // pueda detectar y rechazar el duplicado si el request llega dos veces.
+            body: JSON.stringify({
+              items, total, payment,
+              store_id: storeId, register_id: registerId,
+              idempotency_key: currentKey,
+            }),
+          },
+          CONFIRM_TIMEOUT_MS,
+        );
+      } catch (e) {
+        // Error de red o timeout: el dispositivo perdió conectividad, el servidor
+        // es inalcanzable o no respondió a tiempo. Encolar con el MISMO key que se
+        // envió al servidor: si el servidor ya procesó la venta (pero la respuesta
+        // no llegó), el sync detectará el duplicado y devolverá la venta existente
+        // en vez de crear una nueva.
+        if ((await enqueue()) && e instanceof FetchTimeoutError) {
+          toast(
+            "El servidor no respondió a tiempo: la venta quedó guardada y se enviará sola.",
+            { icon: "⏳", duration: 6000 },
+          );
+        }
         return;
       }
 

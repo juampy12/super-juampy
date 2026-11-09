@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "./fetchWithTimeout";
+
 export type QueuedSale = {
   id: string;
   payload: {
@@ -9,7 +11,12 @@ export type QueuedSale = {
     idempotency_key: string;
   };
   queuedAt: number;
+  /** Rechazos de negocio (4xx que no son 401). */
   attempts: number;
+  /** Respuestas 5xx del servidor (opcional: ventas encoladas antes no lo tienen). */
+  serverErrors?: number;
+  /** Momento (ms epoch) del primer 5xx de esta venta. */
+  firstServerErrorAt?: number;
 };
 
 // Venta que agotó los reintentos automáticos por un rechazo de negocio (4xx
@@ -24,6 +31,19 @@ export type FailedSale = QueuedSale & {
 const QUEUE_KEY = "pos_offline_queue_v1";
 const FAILED_QUEUE_KEY = "failed_sales_queue_v1";
 const MAX_ATTEMPTS = 3;
+// Red de seguridad para errores 5xx: una venta pasa a "Ventas con error"
+// solo si el servidor respondió error al menos MAX_SERVER_ERRORS veces Y
+// pasaron al menos SERVER_ERROR_MIN_AGE_MS desde el primero. Las dos
+// condiciones a la vez: una caída corta de Supabase (<30 min) se resuelve
+// sola reintentando, sin mandar todas las ventas pendientes a revisión; un
+// error que persiste media hora es casi seguro permanente y lo tiene que ver
+// un humano. Los 401, la falta de red y los timeouts NUNCA cuentan acá (una
+// caja puede estar offline días).
+const MAX_SERVER_ERRORS = 10;
+const SERVER_ERROR_MIN_AGE_MS = 30 * 60 * 1000;
+// Tope por envío en el sync (no hay cliente esperando, se tolera más que en
+// la caja). Sin esto, un fetch colgado retiene los candados de la cola.
+const SYNC_TIMEOUT_MS = 20_000;
 // Nombre del candado Web Locks compartido entre pestañas del mismo origen.
 const SYNC_LOCK_NAME = "sj_pos_offline_sync";
 
@@ -246,15 +266,19 @@ async function runSync(): Promise<SyncResult> {
     if (!sale) continue;
 
     try {
-      const res = await fetch("/api/pos/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // offline_resync: true avisa al server que el precio pudo cambiar
-        // (oferta vencida, etc.) entre que se cobró en el local y este
-        // reintento — tolera un faltante acotado en vez de rechazar y
-        // perder la venta ya cobrada.
-        body: JSON.stringify({ ...sale.payload, offline_resync: true }),
-      });
+      const res = await fetchWithTimeout(
+        "/api/pos/confirm",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // offline_resync: true avisa al server que el precio pudo cambiar
+          // (oferta vencida, etc.) entre que se cobró en el local y este
+          // reintento — tolera un faltante acotado en vez de rechazar y
+          // perder la venta ya cobrada.
+          body: JSON.stringify({ ...sale.payload, offline_resync: true }),
+        },
+        SYNC_TIMEOUT_MS,
+      );
 
       if (res.ok) {
         // Quitar SOLO esta venta, sobre la lista real del momento. Se guarda
@@ -291,8 +315,31 @@ async function runSync(): Promise<SyncResult> {
           failed++;
         }
       } else {
-        // 5xx: error transitorio (servidor caído), no cuenta como intento
-        failed++;
+        // 5xx: en principio transitorio (servidor caído) y no consume
+        // `attempts`. Pero se cuenta aparte: si persiste ≥ MAX_SERVER_ERRORS
+        // veces durante ≥ SERVER_ERROR_MIN_AGE_MS, pasa a revisión en vez de
+        // reintentarse para siempre. Sin ningún await hasta el final del
+        // bloque (lectura fresca + escritura atómica, igual que el 4xx).
+        const current = getQueue().find((s) => s.id === id);
+        if (!current) continue;
+        const now = Date.now();
+        const serverErrors = (current.serverErrors ?? 0) + 1;
+        const firstServerErrorAt = current.firstServerErrorAt ?? now;
+        const elapsedMs = now - firstServerErrorAt;
+
+        if (serverErrors >= MAX_SERVER_ERRORS && elapsedMs >= SERVER_ERROR_MIN_AGE_MS) {
+          moveToReview(
+            { ...current, serverErrors, firstServerErrorAt },
+            `El servidor respondió error (HTTP ${res.status}) ${serverErrors} veces ` +
+              `durante ${Math.round(elapsedMs / 60_000)} min`,
+          );
+          review++;
+        } else {
+          mutateList<QueuedSale>(QUEUE_KEY, (q) =>
+            q.map((s) => (s.id === id ? { ...s, serverErrors, firstServerErrorAt } : s)),
+          );
+          failed++;
+        }
       }
     } catch {
       // Sin conexión, timeout, o fallo de storage al actualizar la cola: en

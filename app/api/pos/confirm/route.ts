@@ -6,6 +6,7 @@ import {
   isSupervisor,
   unauthorized,
 } from "@/lib/session";
+import { classifyDbError } from "@/lib/posConfirmErrors";
 
 type InItem = {
   product_id?: string;
@@ -257,18 +258,29 @@ function validateAndNormalizePayment(
   });
 }
 
-/** Devuelve null si idempotencyKey no existe en sales; el sale_id si ya fue procesada. */
+/**
+ * Devuelve null si idempotencyKey no existe en sales; el sale_id si ya fue procesada.
+ *
+ * Sin ventana de tiempo: el filtro `payment->>idempotency_key = …` coincide
+ * exactamente con la expresión del índice único `uq_sales_idempotency_key`,
+ * así que es una búsqueda por índice sin importar la antigüedad de la venta.
+ * (Antes se buscaba con `@>` —que no usa ese índice— limitado a la última
+ * hora: un reintento tardío no encontraba la venta ya guardada.)
+ */
 async function findExistingSale(idempotencyKey: string): Promise<string | null> {
-  const { supabaseAdmin } = await import("@/lib/supabaseAdmin");
-  const oneHourAgo = new Date(Date.now() - 3600_000).toISOString();
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("sales")
     .select("id")
-    .contains("payment", { idempotency_key: idempotencyKey })
-    .gte("created_at", oneHourAgo)
+    .eq("payment->>idempotency_key", idempotencyKey)
     .limit(1)
     .maybeSingle();
-  return data?.id ?? null;
+  if (error) {
+    // No es fatal: si la venta ya existía, la RPC chocará con el índice único
+    // y ese caso se resuelve abajo como "venta ya registrada".
+    console.error("Error buscando venta por idempotency_key:", error);
+    return null;
+  }
+  return (data as { id?: string } | null)?.id ?? null;
 }
 
 export async function POST(req: Request) {
@@ -276,7 +288,12 @@ export async function POST(req: Request) {
   if (!session) return unauthorized();
 
   try {
-    const body = await req.json();
+    // Body ilegible = request mal formado (permanente) → 400, no 500: un 500
+    // haría que el cliente lo reintente para siempre como "servidor caído".
+    const body: any = await req.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Cuerpo de la venta inválido" }, { status: 400 });
+    }
 
     const bodyStoreId = resolveStoreId(body);
     const bodyRegisterId = body.register_id ?? body.registerId ?? null;
@@ -350,6 +367,13 @@ export async function POST(req: Request) {
 
     if (prodErr) {
       console.error("Error leyendo productos en confirm:", prodErr);
+      if (classifyDbError(prodErr) === "permanent") {
+        // p. ej. un product_id con formato inválido (22P02): reintentar no sirve.
+        return NextResponse.json(
+          { error: "La venta contiene productos con datos inválidos" },
+          { status: 422 }
+        );
+      }
       return NextResponse.json({ error: "Error al procesar la venta" }, { status: 500 });
     }
 
@@ -535,6 +559,33 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error("Error en confirm_sale_with_stock:", error);
+      const kind = classifyDbError(error);
+
+      if (kind === "duplicate_sale" && idempotencyKey) {
+        // La misma venta llegó dos veces a la vez (p. ej. la caja cortó por
+        // timeout y el sync la reenvió) y la otra ganó: la RPC chocó contra
+        // el índice único y se revirtió entera (no descontó stock). Para el
+        // cliente es un éxito: devolver la venta que ya quedó registrada.
+        const existingSaleId = await findExistingSale(idempotencyKey);
+        if (existingSaleId) {
+          return NextResponse.json({ ok: true, saleId: existingSaleId });
+        }
+      } else if (kind === "permanent") {
+        // Dato inválido / validación de la RPC: reintentar la misma venta no
+        // lo arregla. 422 → la caja lo muestra al cajero sin vaciar el
+        // carrito; el sync lo manda a "Ventas con error" tras 3 intentos.
+        return NextResponse.json(
+          {
+            error:
+              "El servidor rechazó la venta por datos inválidos" +
+              (error.code ? ` (código ${error.code})` : "") +
+              ". Revisá los productos o avisá al supervisor.",
+          },
+          { status: 422 }
+        );
+      }
+
+      // Pasajero (o duplicado que no se pudo releer): 500 → el cliente reintenta.
       return NextResponse.json({ error: "Error al registrar la venta" }, { status: 500 });
     }
 

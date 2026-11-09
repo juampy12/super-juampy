@@ -294,3 +294,139 @@ describe("cola offline: syncs concurrentes", () => {
     expect(await run).toEqual({ synced: 1, failed: 0, review: 0 });
   });
 });
+
+// ── Puntos 1 y 2 de la auditoría ────────────────────────────────────────────
+
+const MIN = 60_000;
+
+describe("cola offline: servidor colgado en el sync (timeout 20 s)", () => {
+  it("se corta a los 20 s: la venta queda, no consume intentos y el candado se libera", async () => {
+    vi.useFakeTimers();
+    try {
+      // Servidor que nunca responde (respeta la señal de corte, como el fetch real).
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_url: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () =>
+              reject(new DOMException("aborted", "AbortError")),
+            );
+          }),
+        ),
+      );
+      seedQueue([{ id: "A" }]);
+      let settled = false;
+      const run = syncQueue().finally(() => { settled = true; });
+
+      await vi.advanceTimersByTimeAsync(19_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(await run).toEqual({ synced: 0, failed: 1, review: 0 });
+      const [a] = getQueue();
+      expect(a.id).toBe("A");
+      expect(a.attempts).toBe(0);
+      expect(a.serverErrors).toBeUndefined(); // un timeout NO es un error del servidor
+
+      // Candados liberados: el siguiente sync corre y envía la venta.
+      vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(jsonResponse(200, { ok: true }))));
+      expect(await syncQueue()).toEqual({ synced: 1, failed: 0, review: 0 });
+      expect(getQueue()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("cola offline: tope de errores 5xx (10 errores + 30 min)", () => {
+  it("venta vieja sin los campos nuevos: el primer 5xx empieza a contar", async () => {
+    seedQueue([{ id: "A" }]);
+    const before = Date.now();
+    const run = syncQueue();
+
+    await respond(0, jsonResponse(500));
+    expect(await run).toEqual({ synced: 0, failed: 1, review: 0 });
+
+    const [a] = getQueue();
+    expect(a.serverErrors).toBe(1);
+    expect(a.firstServerErrorAt).toBeGreaterThanOrEqual(before);
+    expect(a.attempts).toBe(0);
+  });
+
+  it("10 errores pero hace menos de 30 min (caída corta de Supabase): sigue en la cola", async () => {
+    seedQueue([{ id: "A", serverErrors: 9, firstServerErrorAt: Date.now() - 5 * MIN }]);
+    const run = syncQueue();
+
+    await respond(0, jsonResponse(503));
+    expect(await run).toEqual({ synced: 0, failed: 1, review: 0 });
+    expect(getQueue()[0].serverErrors).toBe(10);
+    expect(getFailedQueue()).toHaveLength(0);
+  });
+
+  it("más de 30 min pero menos de 10 errores: sigue en la cola", async () => {
+    seedQueue([{ id: "A", serverErrors: 3, firstServerErrorAt: Date.now() - 120 * MIN }]);
+    const run = syncQueue();
+
+    await respond(0, jsonResponse(500));
+    expect(await run).toEqual({ synced: 0, failed: 1, review: 0 });
+    expect(getQueue()[0].serverErrors).toBe(4);
+    expect(getFailedQueue()).toHaveLength(0);
+  });
+
+  it("10 errores Y más de 30 min: pasa a 'Ventas con error' con un mensaje claro", async () => {
+    const firstAt = Date.now() - 34 * MIN;
+    seedQueue([{ id: "A", serverErrors: 9, firstServerErrorAt: firstAt }, { id: "B" }]);
+    const run = syncQueue();
+
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    addToQueue(payload("D"), "key-D"); // y una venta cobrada en el medio no se pierde
+    pending[0].resolve(jsonResponse(500));
+    await respond(1, jsonResponse(200));
+
+    expect(await run).toEqual({ synced: 1, failed: 0, review: 1 });
+    expect(queueKeys()).toEqual(["key-D"]);
+    const [f] = getFailedQueue();
+    expect(f.id).toBe("A");
+    expect(f.serverErrors).toBe(10);
+    expect(f.firstServerErrorAt).toBe(firstAt);
+    expect(f.lastError).toBe("El servidor respondió error (HTTP 500) 10 veces durante 34 min");
+  });
+
+  it("401 y falta de red no suman al contador de 5xx", async () => {
+    seedQueue([{ id: "A", serverErrors: 9, firstServerErrorAt: Date.now() - 60 * MIN }, { id: "B" }]);
+    const run = syncQueue();
+
+    await respond(0, jsonResponse(401));
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    // Simula falta de red para B: el fetch tira (como TypeError: Failed to fetch).
+    pending[1].resolve(Promise.reject(new TypeError("Failed to fetch")) as unknown as Response);
+
+    expect(await run).toEqual({ synced: 0, failed: 2, review: 0 });
+    const q = getQueue();
+    expect(q.find((s) => s.id === "A")!.serverErrors).toBe(9);
+    expect(q.find((s) => s.id === "B")!.serverErrors).toBeUndefined();
+    expect(getFailedQueue()).toHaveLength(0);
+  });
+
+  it("'Reintentar' desde Ventas con error pone el contador de 5xx en cero", () => {
+    const failedSale: FailedSale = {
+      id: "F",
+      payload: { ...payload("F"), idempotency_key: "key-F" },
+      queuedAt: 1_700_000_000_000,
+      attempts: 0,
+      serverErrors: 12,
+      firstServerErrorAt: 1_700_000_000_000,
+      failedAt: 1_700_000_100_000,
+      lastError: "El servidor respondió error (HTTP 500) 12 veces durante 40 min",
+    };
+    storage.setItem(FAILED_KEY, JSON.stringify([failedSale]));
+
+    retryFailedSale("F");
+
+    const [q] = getQueue();
+    expect(q.id).toBe("F");
+    expect(q.attempts).toBe(0);
+    expect(q.serverErrors).toBeUndefined();
+    expect(q.firstServerErrorAt).toBeUndefined();
+  });
+});
